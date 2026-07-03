@@ -1,0 +1,74 @@
+{
+  "sessionId": "station-001",
+  "sourceId": "icecast-station-001",
+  "ownerId": "demo-user",
+  "tenantId": "demo-project",
+  "sampleRateHz": 48000,
+  "channelCount": 2,
+  "fft": {
+    "length": 1024,
+    "hop": 512,
+    "windowType": "Hann",
+    "channels": [0, 1]
+  },
+  "array": {
+    "id": "station-001-linear-array",
+    "speedOfSoundMps": 1500.0,
+    "hydrophones": [
+      {"channel": 0, "xM": 0.0, "yM": 0.0, "zM": 0.0, "sensitivityDb": 0.0},
+      {"channel": 1, "xM": 1.0, "yM": 0.0, "zM": 0.0, "sensitivityDb": 0.0}
+    ]
+  },
+  "click": {
+    "enabled": true,
+    "localisation": true,
+    "channelBitmap": 3,
+    "triggerBitmap": 3,
+    "thresholdDb": 10.0,
+    "minTriggerChannels": 1,
+    "shortFilter": 0.1,
+    "longFilter": 0.00001,
+    "preSample": 40,
+    "postSample": 40,
+    "minSep": 100,
+    "maxLength": 1024,
+    "featuresEnabled": true,
+    "features": {
+      "fftLength": 1024,
+      "lengthEnergyFraction": 90.0,
+      "widthEnergyFraction": 90.0,
+      "energyBandsHz": [[1000.0, 6000.0], [6000.0, 14000.0]],
+      "peakFrequencySearchHz": [500.0, 20000.0],
+      "meanFrequencyRangeHz": [500.0, 20000.0]
+    },
+    "basicClassifier": {
+      "enabled": true,
+      "standardTypes": ["beakedWhale", "porpoise"]
+    },
+    "train": {
+      "enabled": true,
+      "maxIciSeconds": 0.5,
+      "minClicks": 3
+    }
+  },
+  "whistle": {
+    "enabled": true,
+    "regionEnabled": true,
+    "detectionThresholdDb": 6.0,
+    "peakTimeConstant0": 10.0,
+    "peakTimeConstant1": 100.0,
+    "maxPercentOverThreshold": 50.0,
+    "minPeakWidth": 3,
+    "maxPeakWidth": 20,
+    "searchBin0": 1,
+    "searchBin1": 0,
+    "warmupSlices": 100,
+    "minPixels": 20,
+    "minLength": 10,
+    "connectType": 8,
+    "keepShapeStubs": false,
+    "fragmentationMethod": 3,
+    "maxCrossLength": 5,
+    "rejectFirstQuarterSecond": true
+  }
+}

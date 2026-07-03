@@ -1,0 +1,60 @@
+{
+  "sessionId": "array-001",
+  "sourceId": "array-stream-001",
+  "ownerId": "demo-user",
+  "tenantId": "demo-project",
+  "sampleRateHz": 48000,
+  "channelCount": 4,
+  "fft": {
+    "length": 1024,
+    "hop": 512,
+    "windowType": "Hann",
+    "channels": [0, 1, 2, 3]
+  },
+  "array": {
+    "id": "example-square-array",
+    "speedOfSoundMps": 1500.0,
+    "hydrophones": [
+      {"channel": 0, "xM": 0.0, "yM": 0.0, "zM": 0.0, "sensitivityDb": 0.0},
+      {"channel": 1, "xM": 1.0, "yM": 0.0, "zM": 0.0, "sensitivityDb": 0.0},
+      {"channel": 2, "xM": 0.0, "yM": 1.0, "zM": 0.0, "sensitivityDb": 0.0},
+      {"channel": 3, "xM": 1.0, "yM": 1.0, "zM": 0.0, "sensitivityDb": 0.0}
+    ]
+  },
+  "click": {
+    "enabled": true,
+    "localisation": true,
+    "channelBitmap": 15,
+    "triggerBitmap": 15,
+    "thresholdDb": 10.0,
+    "minTriggerChannels": 1,
+    "shortFilter": 0.1,
+    "longFilter": 0.00001,
+    "preSample": 20,
+    "postSample": 40,
+    "minSep": 64,
+    "maxLength": 256,
+    "featuresEnabled": true,
+    "features": {
+      "fftLength": 1024,
+      "lengthEnergyFraction": 0.9,
+      "widthEnergyFraction": 0.8,
+      "energyBandsHz": [[1000, 12000], [12000, 24000]],
+      "peakFrequencySearchHz": [1000, 24000],
+      "meanFrequencyRangeHz": [1000, 24000]
+    },
+    "classifier": {
+      "enabled": true,
+      "standardTypes": ["beakedWhale", "porpoise"]
+    },
+    "train": {
+      "enabled": true,
+      "maxIciSeconds": 0.5,
+      "minClicks": 3
+    }
+  },
+  "whistle": {
+    "enabled": false,
+    "regionEnabled": false
+  }
+}

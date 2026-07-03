@@ -1,0 +1,17 @@
+*
+!cpp-engine/
+!cpp-engine/**
+!platform/
+!platform/station-session.example.json
+!platform/array-session.example.json
+!platform/ingest-sources.example.json
+!platform/openapi.yaml
+!ops/
+!ops/ingest_supervisor.py
+!ops/archive_retention.py
+!web-ui/
+!web-ui/index.html
+!Dockerfile.engine
+cpp-engine/build/
+cpp-engine/.vs/
+cpp-engine/out/

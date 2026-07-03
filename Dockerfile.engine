@@ -1,0 +1,57 @@
+FROM ubuntu:24.04 AS build
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY cpp-engine ./cpp-engine
+
+WORKDIR /src/cpp-engine
+RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --target pamguard_engine_service ffmpeg_stream_ingest
+
+FROM ubuntu:24.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PAMGUARD_HTTP_THREADS=32
+ENV PAMGUARD_MAX_SESSIONS=64
+ENV PAMGUARD_MAX_PCM_BODY_BYTES=8388608
+ENV PAMGUARD_MAX_ARCHIVE_QUERY_RECORDS=10000
+ENV PAMGUARD_CORS_ORIGIN=*
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        ffmpeg \
+        python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=build /src/cpp-engine/build/pamguard_engine_service /app/pamguard_engine_service
+COPY --from=build /src/cpp-engine/build/ffmpeg_stream_ingest /app/ffmpeg_stream_ingest
+COPY platform/station-session.example.json /app/station-session.example.json
+COPY platform/array-session.example.json /app/array-session.example.json
+COPY platform/ingest-sources.example.json /app/ingest-sources.example.json
+COPY platform/openapi.yaml /app/openapi.yaml
+COPY ops/ingest_supervisor.py /app/ops/ingest_supervisor.py
+COPY ops/archive_retention.py /app/ops/archive_retention.py
+COPY ops/archive_retention_smoke.py /app/ops/archive_retention_smoke.py
+COPY ops/rebuild_archive_event_index.py /app/ops/rebuild_archive_event_index.py
+COPY ops/rebuild_archive_event_index_smoke.py /app/ops/rebuild_archive_event_index_smoke.py
+COPY web-ui/index.html /app/web-ui/index.html
+
+ENV PAMGUARD_WEB_UI_FILE=/app/web-ui/index.html
+ENV PAMGUARD_OPENAPI_FILE=/app/openapi.yaml
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD python3 -c "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)); raise SystemExit(0 if data.get('ok') else 1)"
+
+CMD ["/app/pamguard_engine_service", "8080"]

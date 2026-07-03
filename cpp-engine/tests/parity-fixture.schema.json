@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pamguard-enterprise-port.local/parity-fixture.schema.json",
+  "title": "PAMGuard parity fixture manifest",
+  "type": "object",
+  "required": ["fixtureId", "pamguardVersion", "module", "source", "outputs"],
+  "properties": {
+    "fixtureId": {
+      "type": "string"
+    },
+    "pamguardVersion": {
+      "type": "string"
+    },
+    "module": {
+      "type": "string",
+      "enum": ["window", "fft", "click-detector", "whistle-moan-detector", "localisation"]
+    },
+    "source": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sampleRateHz": {
+          "type": "integer"
+        },
+        "channelCount": {
+          "type": "integer"
+        }
+      }
+    },
+    "configuration": {
+      "type": "object"
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "path", "format"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "tolerance": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,60 @@
+﻿# Build outputs
+build/
+cpp-engine/build/
+cmake-build-*/
+out/
+dist/
+
+# CMake / Ninja / compiler artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+.ninja_*
+build.ninja
+*.obj
+*.o
+*.lib
+*.a
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# Logs and runtime outputs
+*.log
+logs/
+run/
+.tmp/
+tmp/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.secret
+secrets/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node/frontend dependencies and outputs
+node_modules/
+web-ui/node_modules/
+web-ui/dist/
+web-ui/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor/OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

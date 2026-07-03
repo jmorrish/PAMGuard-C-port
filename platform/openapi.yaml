@@ -1,0 +1,1716 @@
+openapi: 3.1.0
+info:
+  title: PAMGuard Enterprise Port API
+  version: 0.1.0
+  description: Initial API contract sketch for source management, analysis sessions, and result access.
+paths:
+  /health:
+    get:
+      summary: Get low-level engine health
+      responses:
+        "200":
+          description: Engine health
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  sessions:
+                    type: integer
+                  maxSessions:
+                    type: integer
+                  resultSchemaVersion:
+                    type: integer
+                  maxPcmBodyBytes:
+                    type: integer
+                  maxArchiveQueryRecords:
+                    type: integer
+                  httpThreads:
+                    type: integer
+                  authRequired:
+                    type: boolean
+                  corsOrigin:
+                    type: string
+                  sessionMetadataRequired:
+                    type: boolean
+                  auditLogEnabled:
+                    type: boolean
+                  sessionConfigPersistenceEnabled:
+                    type: boolean
+                  resultArchiveEnabled:
+                    type: boolean
+                  archiveEventIndexEnabled:
+                    type: boolean
+                  ingestStatusEnabled:
+                    type: boolean
+                  webUiEnabled:
+                    type: boolean
+                  openApiEnabled:
+                    type: boolean
+  /ready:
+    get:
+      summary: Capacity-aware readiness check
+      responses:
+        "200":
+          description: Service is ready to accept another session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  ready:
+                    type: boolean
+                  sessions:
+                    type: integer
+                  maxSessions:
+                    type: integer
+                  capacityAvailable:
+                    type: boolean
+        "503":
+          description: Service is alive but not ready for new sessions
+  /ingest/status:
+    get:
+      summary: Get optional multi-source ingest supervisor status
+      description: Returns the JSON status file written by ops/ingest_supervisor.py when PAMGUARD_INGEST_STATUS_FILE is configured.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Configured ingest supervisor status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  exists:
+                    type: boolean
+                  status:
+                    type: object
+                    additionalProperties: true
+        "404":
+          description: Ingest status file is not configured or not present
+        "500":
+          description: Ingest status file is present but cannot be read as JSON
+  /sessions:
+    get:
+      summary: List low-level C++ engine sessions
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sourceId
+          in: query
+          description: Optional exact source ID filter.
+          schema:
+            type: string
+        - name: ownerId
+          in: query
+          description: Optional exact owner ID filter.
+          schema:
+            type: string
+        - name: tenantId
+          in: query
+          description: Optional exact tenant ID filter.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  totalSessions:
+                    type: integer
+                  sourceId:
+                    type:
+                      - string
+                      - "null"
+                  ownerId:
+                    type:
+                      - string
+                      - "null"
+                  tenantId:
+                    type:
+                      - string
+                      - "null"
+                  sessions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EngineSessionStatus"
+    post:
+      summary: Create a low-level C++ engine session
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EngineSessionCreate"
+      responses:
+        "201":
+          description: Engine session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  sourceId:
+                    type: string
+                  ownerId:
+                    type:
+                      - string
+                      - "null"
+                  tenantId:
+                    type:
+                      - string
+                      - "null"
+                  created:
+                    type: boolean
+  /sessions/{sessionId}:
+    get:
+      summary: Get low-level C++ engine session status
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Engine session status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngineSessionStatus"
+        "404":
+          description: Session not found
+    delete:
+      summary: Delete a low-level C++ engine session
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session removed
+        "404":
+          description: Session not found
+  /sessions/{sessionId}/pcm-f32le:
+    post:
+      summary: Submit interleaved little-endian float32 PCM to an engine session
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: startSample
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: timeMs
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: includeSpectrogram
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: includeSpectrogramComplex
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: includeClickWaveforms
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: includeClickSpectra
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: spectrogramMaxBins
+          in: query
+          schema:
+            type: integer
+        - name: spectrogramBinStride
+          in: query
+          schema:
+            type: integer
+            default: 1
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Chunk processing result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngineProcessResult"
+  /sessions/{sessionId}/archive:
+    get:
+      summary: Read archived chunk results for a low-level engine session
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Number of most recent archive records to return; zero requests all records unless capped by service configuration.
+          schema:
+            type: integer
+            minimum: 0
+            default: 100
+        - name: startSampleFrom
+          in: query
+          description: Include archived records with startSample greater than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: startSampleTo
+          in: query
+          description: Include archived records with startSample less than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: Archived result records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  count:
+                    type: integer
+                  limit:
+                    type: integer
+                  startSampleFrom:
+                    type:
+                      - integer
+                      - "null"
+                  startSampleTo:
+                    type:
+                      - integer
+                      - "null"
+                  records:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EngineProcessResult"
+  /sessions/{sessionId}/archive/detections:
+    get:
+      summary: Read archived detector events for a low-level engine session
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Optional exact detector event type filter.
+          schema:
+            type: string
+            enum:
+              - click
+              - click-feature
+              - click-classification
+              - click-localisation
+              - click-bearing
+              - click-track
+              - click-track-localisation
+              - click-track-bearing
+              - whistle-peak
+              - whistle-contour
+        - name: sourceId
+          in: query
+          description: Optional exact source ID metadata filter.
+          schema:
+            type: string
+        - name: ownerId
+          in: query
+          description: Optional exact owner ID metadata filter.
+          schema:
+            type: string
+        - name: tenantId
+          in: query
+          description: Optional exact tenant ID metadata filter.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Number of most recent detection events to return; zero requests all events unless capped by service configuration.
+          schema:
+            type: integer
+            minimum: 0
+            default: 100
+        - name: cursor
+          in: query
+          description: Optional zero-based cursor over the filtered event stream. When present, results are returned forward from this cursor instead of as a most-recent tail.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: startSampleFrom
+          in: query
+          description: Include detector events with startSample greater than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: startSampleTo
+          in: query
+          description: Include detector events with startSample less than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: overlapStartSample
+          in: query
+          description: Include detector events whose interval endSample, or startSample for instant events, is greater than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: overlapEndSample
+          in: query
+          description: Include detector events whose startSample is less than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: Archived detector events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  count:
+                    type: integer
+                  limit:
+                    type: integer
+                  indexed:
+                    type: boolean
+                    description: True when the service answered the detection archive query through the detector-event sidecar index; false means it fell back to raw sidecar/archive scanning.
+                  cursor:
+                    type:
+                      - integer
+                      - "null"
+                  nextCursor:
+                    type:
+                      - integer
+                      - "null"
+                  type:
+                    type:
+                      - string
+                      - "null"
+                  sourceId:
+                    type:
+                      - string
+                      - "null"
+                  ownerId:
+                    type:
+                      - string
+                      - "null"
+                  tenantId:
+                    type:
+                      - string
+                      - "null"
+                  startSampleFrom:
+                    type:
+                      - integer
+                      - "null"
+                  startSampleTo:
+                    type:
+                      - integer
+                      - "null"
+                  overlapStartSample:
+                    type:
+                      - integer
+                      - "null"
+                  overlapEndSample:
+                    type:
+                      - integer
+                      - "null"
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DetectionEvent"
+  /sessions/{sessionId}/archive/detections/summary:
+    get:
+      summary: Summarise archived detector events for a low-level engine session
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Optional exact detector event type filter.
+          schema:
+            type: string
+        - name: sourceId
+          in: query
+          description: Optional exact source ID metadata filter.
+          schema:
+            type: string
+        - name: ownerId
+          in: query
+          description: Optional exact owner ID metadata filter.
+          schema:
+            type: string
+        - name: tenantId
+          in: query
+          description: Optional exact tenant ID metadata filter.
+          schema:
+            type: string
+        - name: startSampleFrom
+          in: query
+          description: Include detector events with startSample greater than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: startSampleTo
+          in: query
+          description: Include detector events with startSample less than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: overlapStartSample
+          in: query
+          description: Include detector events whose interval endSample, or startSample for instant events, is greater than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: overlapEndSample
+          in: query
+          description: Include detector events whose startSample is less than or equal to this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: Archived detector event summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  source:
+                    type: string
+                    enum: [event-sidecar, result-archive, none]
+                  indexedAvailable:
+                    type: boolean
+                  totalCount:
+                    type: integer
+                    format: int64
+                  types:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                      format: int64
+                  minStartSample:
+                    type:
+                      - integer
+                      - "null"
+                    format: int64
+                  maxStartSample:
+                    type:
+                      - integer
+                      - "null"
+                    format: int64
+                  type:
+                    type:
+                      - string
+                      - "null"
+                  sourceId:
+                    type:
+                      - string
+                      - "null"
+                  ownerId:
+                    type:
+                      - string
+                      - "null"
+                  tenantId:
+                    type:
+                      - string
+                      - "null"
+                  startSampleFrom:
+                    type:
+                      - integer
+                      - "null"
+                  startSampleTo:
+                    type:
+                      - integer
+                      - "null"
+                  overlapStartSample:
+                    type:
+                      - integer
+                      - "null"
+                  overlapEndSample:
+                    type:
+                      - integer
+                      - "null"
+  /sessions/{sessionId}/archive/detections.csv:
+    get:
+      summary: Export archived detector events as CSV
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Optional exact detector event type filter.
+          schema:
+            type: string
+        - name: sourceId
+          in: query
+          description: Optional exact source ID metadata filter.
+          schema:
+            type: string
+        - name: ownerId
+          in: query
+          description: Optional exact owner ID metadata filter.
+          schema:
+            type: string
+        - name: tenantId
+          in: query
+          description: Optional exact tenant ID metadata filter.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Number of most recent detection events to export; zero requests all events unless capped by service configuration.
+          schema:
+            type: integer
+            minimum: 0
+            default: 100
+        - name: cursor
+          in: query
+          description: Optional zero-based cursor over the filtered event stream.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: startSampleFrom
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: startSampleTo
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: overlapStartSample
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: overlapEndSample
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: CSV detector event export
+          content:
+            text/csv:
+              schema:
+                type: string
+  /sessions/{sessionId}/flush:
+    post:
+      summary: Flush pending detector state for a finite stream or file
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Flush result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngineProcessResult"
+  /metrics:
+    get:
+      summary: Get low-level engine Prometheus metrics
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Prometheus text metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+  /sources:
+    post:
+      summary: Register an audio source
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceCreate"
+      responses:
+        "201":
+          description: Source registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Source"
+  /detector-configurations:
+    post:
+      summary: Create a PAMGuard-compatible detector configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetectorConfiguration"
+      responses:
+        "201":
+          description: Detector configuration created
+  /analysis-sessions:
+    post:
+      summary: Start or schedule an analysis session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalysisSessionCreate"
+      responses:
+        "202":
+          description: Session accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisSession"
+  /analysis-sessions/{sessionId}:
+    get:
+      summary: Get analysis session status
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisSession"
+  /analysis-sessions/{sessionId}/detections:
+    get:
+      summary: Query detections for a session and time range
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: startSample
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: endSample
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Detection list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detections:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DetectionEvent"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    EngineSessionCreate:
+      type: object
+      required: [sessionId, sampleRateHz, channelCount]
+      properties:
+        sessionId:
+          type: string
+          pattern: "^[A-Za-z0-9_.-]+$"
+        sourceId:
+          type: string
+        ownerId:
+          type: string
+          description: Web-tier/user ownership tag; optional by schema, but required when PAMGUARD_REQUIRE_SESSION_METADATA is enabled.
+        tenantId:
+          type: string
+          description: Tenant/project ownership tag; optional by schema, but required when PAMGUARD_REQUIRE_SESSION_METADATA is enabled.
+        sampleRateHz:
+          type: integer
+          minimum: 1
+        channelCount:
+          type: integer
+          minimum: 1
+          maximum: 1024
+        fft:
+          type: object
+          properties:
+            length:
+              type: integer
+              minimum: 1
+              description: Must be a power of two.
+            hop:
+              type: integer
+              minimum: 1
+              description: Must be less than or equal to fft.length.
+            windowType:
+              oneOf:
+                - type: string
+                  enum: [Rectangular, Hamming, Hann, Bartlett, Blackman, Blackman-Harris]
+                - type: integer
+            channels:
+              type: array
+              items:
+                type: integer
+                minimum: 0
+        array:
+          type: object
+          properties:
+            id:
+              type: string
+            speedOfSoundMps:
+              type: number
+              exclusiveMinimum: 0
+            hydrophones:
+              type: array
+              items:
+                type: object
+                properties:
+                  channel:
+                    type: integer
+                  xM:
+                    type: number
+                  yM:
+                    type: number
+                  zM:
+                    type: number
+                  sensitivityDb:
+                    type: number
+            clickLocalisationReadiness:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                mode:
+                  type: string
+                  enum:
+                    - disabled
+                    - invalid-click-channel-count
+                    - geometry-constrained
+                    - partial-geometry
+                    - delay-only-unconstrained
+                geometryComplete:
+                  type: boolean
+                bearingEnabled:
+                  type: boolean
+                delayLimitMode:
+                  type: string
+                  enum:
+                    - geometry-constrained
+                    - unconstrained
+                clickChannels:
+                  type: array
+                  items:
+                    type: integer
+                hydrophoneChannels:
+                  type: array
+                  items:
+                    type: integer
+                matchedClickHydrophoneChannels:
+                  type: array
+                  items:
+                    type: integer
+                missingClickHydrophoneChannels:
+                  type: array
+                  items:
+                    type: integer
+        click:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            localisation:
+              type: boolean
+            thresholdDb:
+              type: number
+            channelBitmap:
+              type: integer
+            triggerBitmap:
+              type: integer
+            minTriggerChannels:
+              type: integer
+            shortFilter:
+              type: number
+            longFilter:
+              type: number
+            preSample:
+              type: integer
+            postSample:
+              type: integer
+            minSep:
+              type: integer
+            maxLength:
+              type: integer
+            featuresEnabled:
+              type: boolean
+            features:
+              type: object
+              properties:
+                fftLength:
+                  type: integer
+                  description: Click feature FFT length; zero or omitted follows the session FFT length.
+                lengthEnergyFraction:
+                  type: number
+                widthEnergyFraction:
+                  type: number
+                energyBandsHz:
+                  type: array
+                  items:
+                    type: array
+                    items:
+                      type: number
+                peakFrequencySearchHz:
+                  type: array
+                  items:
+                    type: number
+                meanFrequencyRangeHz:
+                  type: array
+                  items:
+                    type: number
+            basicClassifier:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                standardTypes:
+                  type: array
+                  items:
+                    oneOf:
+                      - type: string
+                        enum: [beakedWhale, porpoise]
+                      - type: object
+                        properties:
+                          standard:
+                            type: string
+                            enum: [beakedWhale, porpoise]
+                          speciesCode:
+                            type: integer
+                          discard:
+                            type: boolean
+                          whichSelections:
+                            type: integer
+            train:
+              type: object
+        whistle:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            regionEnabled:
+              type: boolean
+            detectionThresholdDb:
+              type: number
+            peakTimeConstant0:
+              type: number
+            peakTimeConstant1:
+              type: number
+            maxPercentOverThreshold:
+              type: number
+            minPeakWidth:
+              type: integer
+            maxPeakWidth:
+              type: integer
+            searchBin0:
+              type: integer
+            searchBin1:
+              type: integer
+            warmupSlices:
+              type: integer
+            keepShapeStubs:
+              type: boolean
+            minPixels:
+              type: integer
+            minLength:
+              type: integer
+            connectType:
+              type: integer
+            fragmentationMethod:
+              type: integer
+            maxCrossLength:
+              type: integer
+            rejectFirstQuarterSecond:
+              type: boolean
+    EngineProcessResult:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs.
+        sessionId:
+          type: string
+        inputFrames:
+          type: integer
+        startSample:
+          type: integer
+          format: int64
+        expectedStartSample:
+          type: integer
+          format: int64
+        nextExpectedStartSample:
+          type: integer
+          format: int64
+        sampleDelta:
+          type: integer
+          format: int64
+          description: startSample minus expectedStartSample; positive means a gap, negative means overlap.
+        sampleContinuity:
+          type: string
+          enum: [first, contiguous, gap, overlap]
+        spectrogramFrames:
+          type: integer
+        spectrogram:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpectrogramFrame"
+        clicks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClickDetection"
+        clickFeatures:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClickFeatures"
+        clickClassifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClickClassification"
+        clickTrains:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClickTrain"
+        clickLocalisations:
+          type: array
+          items:
+            type: object
+            properties:
+              clickIndex:
+                type: integer
+              clickStartSample:
+                type: integer
+                format: int64
+              relatedTrainIds:
+                type: array
+                items:
+                  type: integer
+              delays:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    pairIndex:
+                      type: integer
+                    channelA:
+                      type: integer
+                    channelB:
+                      type: integer
+                    audioChannelA:
+                      type: integer
+                    audioChannelB:
+                      type: integer
+                    delaySamples:
+                      type: number
+                    delaySeconds:
+                      type: number
+                    pathDifferenceM:
+                      type: number
+                    geometryConstrained:
+                      type: boolean
+                    maxDelaySamples:
+                      type: number
+                    maxDelaySeconds:
+                      type: number
+                    hydrophoneDistanceM:
+                      type: number
+                    delayScore:
+                      type: number
+        clickTrainLocalisations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClickTrainLocalisation"
+        clickBearings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClickBearing"
+        clickTrainBearings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClickTrainBearing"
+        whistlePeaks:
+          type: array
+          items:
+            type: object
+        whistleRegions:
+          type: array
+          items:
+            type: object
+            properties:
+              channel:
+                type: integer
+              regionNumber:
+                type: integer
+              firstSlice:
+                type: integer
+              startSample:
+                type: integer
+                format: int64
+              lastStartSample:
+                type: integer
+                format: int64
+              timeMs:
+                type: integer
+                format: int64
+              timeSpanSamples:
+                type: integer
+                format: int64
+              durationSamples:
+                type: integer
+                format: int64
+              timeSpanMs:
+                type: integer
+                format: int64
+              timeSpanSeconds:
+                type: number
+              durationSeconds:
+                type: number
+              totalPixels:
+                type: integer
+              minFrequencyBin:
+                type: integer
+              maxFrequencyBin:
+                type: integer
+              frequencySpanBins:
+                type: integer
+              minFrequencyHz:
+                type: number
+              maxFrequencyHz:
+                type: number
+              frequencySpanHz:
+                type: number
+              minPeakBin:
+                type: integer
+              maxPeakBin:
+                type: integer
+              meanPeakBin:
+                type: number
+              startPeakBin:
+                type: integer
+              endPeakBin:
+                type: integer
+              minPeakHz:
+                type: number
+              maxPeakHz:
+                type: number
+              meanPeakHz:
+                type: number
+              startPeakHz:
+                type: number
+              endPeakHz:
+                type: number
+              peakSweepRateBinsPerSecond:
+                type: number
+              peakSweepRateHzPerSecond:
+                type: number
+              freqRange:
+                type: array
+                items:
+                  type: integer
+              freqRangeHz:
+                type: array
+                items:
+                  type: number
+              timesBins:
+                type: array
+                items:
+                  type: integer
+              peakFreqsBins:
+                type: array
+                items:
+                  type: integer
+              sliceCount:
+                type: integer
+              contourPoints:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    slice:
+                      type: integer
+                    startSample:
+                      type: integer
+                    timeMs:
+                      type: integer
+                    minBin:
+                      type: integer
+                    peakBin:
+                      type: integer
+                    maxBin:
+                      type: integer
+                    minHz:
+                      type: number
+                    peakHz:
+                      type: number
+                    maxHz:
+                      type: number
+    EngineSessionStatus:
+      allOf:
+        - $ref: "#/components/schemas/EngineSessionCreate"
+        - type: object
+          properties:
+            exists:
+              type: boolean
+            runtime:
+              type: object
+              properties:
+                chunksReceived:
+                  type: integer
+                  format: int64
+                framesReceived:
+                  type: integer
+                  format: int64
+                bytesReceived:
+                  type: integer
+                  format: int64
+                createdUnixMs:
+                  type: integer
+                  format: int64
+                lastReceiveUnixMs:
+                  type: integer
+                  format: int64
+                lastStartSample:
+                  type: integer
+                  format: int64
+                expectedStartSample:
+                  type: integer
+                  format: int64
+                sampleDiscontinuities:
+                  type: integer
+                  format: int64
+                lastSampleDelta:
+                  type: integer
+                  format: int64
+                lastSampleContinuity:
+                  type: string
+                  enum: [none, first, contiguous, gap, overlap]
+                lastTimeMs:
+                  type: integer
+                  format: int64
+            status:
+              type: object
+              description: Compact operational status for dashboards and orchestration.
+              properties:
+                activityState:
+                  type: string
+                  enum: [awaiting-audio, audio-received]
+                hasReceivedAudio:
+                  type: boolean
+                ageMs:
+                  type: integer
+                  format: int64
+                idleMs:
+                  type:
+                    - integer
+                    - "null"
+                  format: int64
+                sampleTimelineOk:
+                  type: boolean
+                sampleDiscontinuities:
+                  type: integer
+                  format: int64
+                lastSampleContinuity:
+                  type: string
+                  enum: [none, first, contiguous, gap, overlap]
+                lastSampleDelta:
+                  type: integer
+                  format: int64
+                nextExpectedStartSample:
+                  type: integer
+                  format: int64
+                chunksReceived:
+                  type: integer
+                  format: int64
+                framesReceived:
+                  type: integer
+                  format: int64
+                totalDetectorOutputs:
+                  type: integer
+                  format: int64
+                processCalls:
+                  type: integer
+                  format: int64
+                meanProcessMs:
+                  type: number
+                lastProcessMs:
+                  type: number
+    SpectrogramFrame:
+      type: object
+      properties:
+        channel:
+          type: integer
+        startSample:
+          type: integer
+          format: int64
+        timeMs:
+          type: integer
+          format: int64
+        slice:
+          type: integer
+        binStride:
+          type: integer
+        magnitudeSquared:
+          type: array
+          items:
+            type: number
+        complexBins:
+          type: array
+          items:
+            type: object
+            properties:
+              real:
+                type: number
+              imag:
+                type: number
+    ClickDetection:
+      type: object
+      properties:
+        startSample:
+          type: integer
+          format: int64
+        durationSamples:
+          type: integer
+        timeMs:
+          type: integer
+          format: int64
+        triggerBitmap:
+          type: integer
+        signalExcessDb:
+          type: number
+        relatedTrainIds:
+          type: array
+          items:
+            type: integer
+    ClickFeatures:
+      type: object
+      properties:
+        clickIndex:
+          type: integer
+        clickStartSample:
+          type: integer
+          format: int64
+        relatedTrainIds:
+          type: array
+          items:
+            type: integer
+        fftLength:
+          type: integer
+        clickLengthSeconds:
+          type: number
+        peakFrequencyHz:
+          type: number
+        peakWidthHz:
+          type: number
+        meanFrequencyHz:
+          type: number
+        bandEnergyDb:
+          type: array
+          items:
+            type: number
+        totalPowerSpectrum:
+          type: array
+          items:
+            type: number
+    ClickClassification:
+      type: object
+      properties:
+        clickIndex:
+          type: integer
+        clickStartSample:
+          type: integer
+          format: int64
+        relatedTrainIds:
+          type: array
+          items:
+            type: integer
+        clickType:
+          type: integer
+        discard:
+          type: boolean
+    ClickTrain:
+      type: object
+      properties:
+        trainId:
+          type: integer
+        channelBitmap:
+          type: integer
+        firstStartSample:
+          type: integer
+          format: int64
+        lastStartSample:
+          type: integer
+          format: int64
+        firstTimeMs:
+          type: integer
+          format: int64
+        lastTimeMs:
+          type: integer
+          format: int64
+        clickStartSamples:
+          type: array
+          items:
+            type: integer
+            format: int64
+        clickTimeMs:
+          type: array
+          items:
+            type: integer
+            format: int64
+        clickCount:
+          type: integer
+        durationSamples:
+          type: integer
+          format: int64
+        durationSeconds:
+          type: number
+        timeSpanSeconds:
+          type: number
+        lastIciSeconds:
+          type: number
+        minIciSeconds:
+          type: number
+        maxIciSeconds:
+          type: number
+        meanIciSeconds:
+          type: number
+        medianIciSeconds:
+          type: number
+        stdIciSeconds:
+          type: number
+        iciCv:
+          type: number
+        clickRateHz:
+          type: number
+        completed:
+          type: boolean
+    ClickBearing:
+      type: object
+      properties:
+        clickIndex:
+          type: integer
+        clickStartSample:
+          type: integer
+          format: int64
+        relatedTrainIds:
+          type: array
+          items:
+            type: integer
+        valid:
+          type: boolean
+        unit:
+          type: array
+          items:
+            type: number
+        azimuthDegrees:
+          type: number
+        elevationDegrees:
+          type: number
+        residualRmsSeconds:
+          type: number
+        usedPairs:
+          type: integer
+    ClickTrainLocalisation:
+      type: object
+      properties:
+        trainId:
+          type: integer
+        channelBitmap:
+          type: integer
+        firstStartSample:
+          type: integer
+          format: int64
+        lastStartSample:
+          type: integer
+          format: int64
+        clickCount:
+          type: integer
+        localisationCount:
+          type: integer
+        valid:
+          type: boolean
+        pairDelays:
+          type: array
+          items:
+            type: object
+            properties:
+              pairIndex:
+                type: integer
+              channelA:
+                type: integer
+              channelB:
+                type: integer
+              audioChannelA:
+                type: integer
+              audioChannelB:
+                type: integer
+              geometryConstrained:
+                type: boolean
+              maxDelaySamples:
+                type: number
+              maxDelaySeconds:
+                type: number
+              hydrophoneDistanceM:
+                type: number
+              delayCount:
+                type: integer
+              meanDelaySamples:
+                type: number
+              meanDelaySeconds:
+                type: number
+              meanPathDifferenceM:
+                type: number
+              meanDelayScore:
+                type: number
+    ClickTrainBearing:
+      type: object
+      properties:
+        trainId:
+          type: integer
+        channelBitmap:
+          type: integer
+        firstStartSample:
+          type: integer
+          format: int64
+        lastStartSample:
+          type: integer
+          format: int64
+        clickCount:
+          type: integer
+        bearingCount:
+          type: integer
+        valid:
+          type: boolean
+        unit:
+          type: array
+          items:
+            type: number
+        azimuthDegrees:
+          type: number
+        elevationDegrees:
+          type: number
+        meanResidualRmsSeconds:
+          type: number
+    SourceCreate:
+      type: object
+      required: [type, name]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [file, icecast, butt, direct-ethernet]
+        uri:
+          type: string
+        expectedSampleRateHz:
+          type: integer
+        expectedChannelCount:
+          type: integer
+    Source:
+      allOf:
+        - $ref: "#/components/schemas/SourceCreate"
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: string
+    DetectorConfiguration:
+      type: object
+      required: [id, pamguardTargetVersion, fft]
+      properties:
+        id:
+          type: string
+        pamguardTargetVersion:
+          type: string
+        fft:
+          type: object
+        clickDetector:
+          type: object
+        whistleMoanDetector:
+          type: object
+    AnalysisSessionCreate:
+      type: object
+      required: [sourceId, detectorConfigurationId]
+      properties:
+        sourceId:
+          type: string
+        detectorConfigurationId:
+          type: string
+        arrayConfigurationId:
+          type: string
+        mode:
+          type: string
+          enum: [offline, live]
+    AnalysisSession:
+      allOf:
+        - $ref: "#/components/schemas/AnalysisSessionCreate"
+        - type: object
+          required: [id, status]
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+              enum: [created, starting, running, reconnecting, draining, complete, stopped, failed]
+            engineVersion:
+              type: string
+            currentSample:
+              type: integer
+              format: int64
+    DetectionEvent:
+      type: object
+      required: [type, sessionId, startSample]
+      properties:
+        type:
+          type: string
+          enum: [click, click-feature, click-classification, click-localisation, click-bearing, click-track, click-track-localisation, click-track-bearing, whistle-peak, whistle-contour, background-measurement]
+        sessionId:
+          type: string
+        sourceId:
+          type:
+            - string
+            - "null"
+        ownerId:
+          type:
+            - string
+            - "null"
+        tenantId:
+          type:
+            - string
+            - "null"
+        startSample:
+          type: integer
+          format: int64
+        endSample:
+          type: integer
+          format: int64
+        recordStartSample:
+          type: integer
+          format: int64
+        relatedTrainIds:
+          type: array
+          items:
+            type: integer
+        channelGroup:
+          type: string
+        payload:
+          type: object

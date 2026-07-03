@@ -1,0 +1,25 @@
+services:
+  pamguard-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.engine
+    ports:
+      - "8080:8080"
+    environment:
+      PAMGUARD_HTTP_THREADS: "32"
+      PAMGUARD_MAX_SESSIONS: "64"
+      PAMGUARD_MAX_PCM_BODY_BYTES: "8388608"
+      PAMGUARD_MAX_ARCHIVE_QUERY_RECORDS: "10000"
+      PAMGUARD_CORS_ORIGIN: "*"
+      PAMGUARD_SESSION_CONFIG_DIR: "/data/sessions"
+      PAMGUARD_RESULT_ARCHIVE_DIR: "/data/results"
+      PAMGUARD_WEB_UI_FILE: "/app/web-ui/index.html"
+      PAMGUARD_OPENAPI_FILE: "/app/openapi.yaml"
+      # PAMGUARD_REQUIRE_SESSION_METADATA: "1"
+      # PAMGUARD_INGEST_STATUS_FILE: "/data/ingest-supervisor-status.json"
+      # PAMGUARD_AUDIT_LOG_FILE: "/data/audit.ndjson"
+    volumes:
+      - pamguard-engine-data:/data
+
+volumes:
+  pamguard-engine-data:

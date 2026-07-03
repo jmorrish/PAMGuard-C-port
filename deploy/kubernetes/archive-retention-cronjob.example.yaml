@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pamguard-archive-retention
+spec:
+  schedule: "17 3 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: retention
+              image: pamguard-engine:local
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - /app/ops/archive_retention.py
+                - --archive-dir
+                - /data/results
+                - --max-age-days
+                - "30"
+                - --apply
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: 128Mi
+                limits:
+                  cpu: "500m"
+                  memory: 512Mi
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: pamguard-engine-data

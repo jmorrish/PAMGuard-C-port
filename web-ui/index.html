@@ -1,0 +1,1556 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PAMGuard Web Engine Console</title>
+  <style>
+    :root {
+      --ink: #14211f;
+      --paper: #f2ead7;
+      --card: rgba(255, 250, 237, 0.82);
+      --teal: #0f766e;
+      --teal-dark: #0b4f4a;
+      --ochre: #b7791f;
+      --line: rgba(20, 33, 31, 0.18);
+      --shadow: 0 24px 80px rgba(20, 33, 31, 0.18);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "Aptos Display", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(15, 118, 110, 0.26), transparent 30rem),
+        radial-gradient(circle at 80% 8%, rgba(183, 121, 31, 0.24), transparent 24rem),
+        linear-gradient(135deg, #efe0bd 0%, #f6f0df 48%, #d6eadf 100%);
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 34px 0 48px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 22px;
+      align-items: end;
+      margin-bottom: 24px;
+      animation: rise 520ms ease-out both;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 760px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(2.7rem, 8vw, 6.8rem);
+      line-height: 0.9;
+      letter-spacing: -0.07em;
+    }
+
+    .lede {
+      margin: 0;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(255, 250, 237, 0.54);
+      backdrop-filter: blur(14px);
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      overflow: hidden;
+      animation: rise 620ms ease-out both;
+    }
+
+    .card:nth-child(2) {
+      animation-delay: 80ms;
+    }
+
+    .card h2 {
+      margin: 0;
+      padding: 20px 22px;
+      border-bottom: 1px solid var(--line);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.45rem;
+      letter-spacing: -0.03em;
+    }
+
+    .panel {
+      padding: 20px 22px 22px;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--teal-dark);
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 13px;
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.62);
+      font: inherit;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(15, 118, 110, 0.68);
+      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.14);
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      font: 0.82rem/1.45 "Cascadia Mono", "Consolas", monospace;
+    }
+
+    .section-title {
+      margin: 20px 0 4px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.08rem;
+      letter-spacing: -0.02em;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .wide {
+      grid-column: 1 / -1;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 16px;
+      padding: 13px 14px;
+      color: #fffaf0;
+      background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(15, 118, 110, 0.25);
+      transition: transform 160ms ease, box-shadow 160ms ease;
+    }
+
+    button.secondary {
+      background: linear-gradient(135deg, var(--ochre), #7c4d12);
+      box-shadow: 0 12px 30px rgba(183, 121, 31, 0.24);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 38px rgba(20, 33, 31, 0.22);
+    }
+
+    button:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.45);
+    }
+
+    .metric strong {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 2rem;
+      line-height: 1;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 6px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--teal-dark);
+    }
+
+    pre {
+      min-height: 360px;
+      margin: 0;
+      padding: 18px;
+      border-radius: 20px;
+      overflow: auto;
+      color: #eaf8f4;
+      background: #112421;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      font: 0.9rem/1.55 "Cascadia Mono", "Consolas", monospace;
+    }
+
+    .spectrogram-panel {
+      margin-bottom: 16px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(17, 36, 33, 0.94);
+      color: #eaf8f4;
+    }
+
+    .spectrogram-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: rgba(234, 248, 244, 0.78);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 240px;
+      border-radius: 16px;
+      background: #071514;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    .contour-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+      max-height: 240px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .contour-card {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+      border: 1px solid rgba(15, 118, 110, 0.24);
+      border-radius: 16px;
+      background:
+        linear-gradient(135deg, rgba(255, 250, 237, 0.86), rgba(214, 234, 223, 0.66));
+    }
+
+    .contour-card strong {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+
+    .contour-card span {
+      font-size: 0.8rem;
+      color: rgba(20, 33, 31, 0.82);
+    }
+
+    .archive-panel {
+      margin-bottom: 16px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.45);
+    }
+
+    .session-panel {
+      margin-top: 16px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.38);
+    }
+
+    .archive-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--teal-dark);
+    }
+
+    .session-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--teal-dark);
+    }
+
+    .archive-actions {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 12px 0;
+    }
+
+    .session-list {
+      display: grid;
+      gap: 10px;
+      max-height: 220px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .event-list {
+      display: grid;
+      gap: 10px;
+      max-height: 260px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .event-card {
+      padding: 12px;
+      border: 1px solid rgba(15, 118, 110, 0.22);
+      border-radius: 16px;
+      background: rgba(255, 250, 237, 0.7);
+    }
+
+    .event-card strong {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+
+    .event-card span {
+      display: inline-block;
+      margin: 6px 10px 0 0;
+      font-size: 0.8rem;
+      font-weight: 800;
+      color: var(--teal-dark);
+    }
+
+    .event-card code {
+      display: block;
+      margin-top: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: rgba(20, 33, 31, 0.78);
+      font: 0.78rem/1.45 "Cascadia Mono", "Consolas", monospace;
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(14px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 860px) {
+      header,
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      .status-strip {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .archive-actions {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <h1>PAMGuard web engine console</h1>
+      <p class="lede">Create an isolated C++ analysis session, send a synthetic PCM block, and inspect detector counts from the browser. This is a proof console for the service API, not the final analyst UI.</p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>Session control</h2>
+        <div class="panel">
+          <label for="apiBase">API base</label>
+          <input id="apiBase" value="http://localhost:8080">
+
+          <label for="apiKey">API key</label>
+          <input id="apiKey" type="password" placeholder="Optional PAMGUARD_API_KEY">
+
+          <label for="sessionId">Session ID</label>
+          <input id="sessionId" value="demo">
+
+          <div class="grid">
+            <div>
+              <label for="ownerId">Owner ID</label>
+              <input id="ownerId" placeholder="Optional user/web owner">
+            </div>
+            <div>
+              <label for="tenantId">Tenant ID</label>
+              <input id="tenantId" placeholder="Optional project/tenant">
+            </div>
+          </div>
+
+          <div class="grid">
+            <div>
+              <label for="sampleRate">Sample rate</label>
+              <input id="sampleRate" type="number" value="48000">
+            </div>
+            <div>
+              <label for="channels">Channels</label>
+              <input id="channels" type="number" value="2" min="1" max="32">
+            </div>
+          </div>
+
+          <div class="grid">
+            <div>
+              <label for="fftLength">FFT length</label>
+              <input id="fftLength" type="number" value="1024">
+            </div>
+            <div>
+              <label for="fftHop">FFT hop</label>
+              <input id="fftHop" type="number" value="512">
+            </div>
+            <div>
+              <label for="fftWindowType">FFT window</label>
+              <select id="fftWindowType">
+                <option value="Hann" selected>Hann</option>
+                <option value="Hamming">Hamming</option>
+                <option value="Rectangular">Rectangular</option>
+                <option value="Bartlett">Bartlett</option>
+                <option value="Blackman">Blackman</option>
+                <option value="Blackman-Harris">Blackman-Harris</option>
+              </select>
+            </div>
+          </div>
+
+          <h3 class="section-title">Array geometry</h3>
+          <div class="grid">
+            <div>
+              <label for="hydrophoneSpacingM">Spacing metres</label>
+              <input id="hydrophoneSpacingM" type="number" value="1.0" min="0" step="0.01">
+            </div>
+            <div>
+              <label for="speedOfSoundMps">Sound speed m/s</label>
+              <input id="speedOfSoundMps" type="number" value="1500" min="1" step="0.1">
+            </div>
+          </div>
+          <label for="arrayGeometryJson">Advanced hydrophone JSON</label>
+          <textarea id="arrayGeometryJson" placeholder='Optional. Paste either [{"channel":0,"xM":0,"yM":0,"zM":0,"sensitivityDb":0}] or {"id":"array-1","speedOfSoundMps":1500,"hydrophones":[...]}.'></textarea>
+
+          <div class="grid">
+            <div>
+              <label for="chunkFrames">Test frames</label>
+              <input id="chunkFrames" type="number" value="4096">
+            </div>
+            <div>
+              <label for="toneHz">Test tone Hz</label>
+              <input id="toneHz" type="number" value="1200">
+            </div>
+          </div>
+
+          <div class="grid">
+            <div>
+              <label for="previewBins">Preview bins</label>
+              <input id="previewBins" type="number" value="96" min="1">
+            </div>
+            <div>
+              <label for="binStride">Bin stride</label>
+              <input id="binStride" type="number" value="1" min="1">
+            </div>
+            <div>
+              <label for="includeClickWaveforms">Click waveforms</label>
+              <select id="includeClickWaveforms">
+                <option value="false" selected>Counts only</option>
+                <option value="true">Include samples</option>
+              </select>
+            </div>
+            <div>
+              <label for="includeClickSpectra">Click spectra</label>
+              <select id="includeClickSpectra">
+                <option value="false" selected>Summaries only</option>
+                <option value="true">Include spectra</option>
+              </select>
+            </div>
+          </div>
+
+          <h3 class="section-title">Click detector</h3>
+          <div class="grid">
+            <div>
+              <label for="clickThresholdDb">Threshold dB</label>
+              <input id="clickThresholdDb" type="number" value="10" step="0.1">
+            </div>
+            <div>
+              <label for="minTriggerChannels">Min triggers</label>
+              <input id="minTriggerChannels" type="number" value="1" min="1">
+            </div>
+            <div>
+              <label for="clickChannelBitmap">Channel bitmap</label>
+              <input id="clickChannelBitmap" type="number" placeholder="Default all channels" min="0">
+            </div>
+            <div>
+              <label for="clickTriggerBitmap">Trigger bitmap</label>
+              <input id="clickTriggerBitmap" type="number" placeholder="Default channel bitmap" min="0">
+            </div>
+            <div>
+              <label for="shortFilter">Short filter</label>
+              <input id="shortFilter" type="number" value="0.1" step="0.00001">
+            </div>
+            <div>
+              <label for="longFilter">Long filter</label>
+              <input id="longFilter" type="number" value="0.00001" step="0.000001">
+            </div>
+            <div>
+              <label for="preSample">Pre samples</label>
+              <input id="preSample" type="number" value="40" min="0">
+            </div>
+            <div>
+              <label for="postSample">Post samples</label>
+              <input id="postSample" type="number" value="40" min="0">
+            </div>
+            <div>
+              <label for="minSep">Min separation</label>
+              <input id="minSep" type="number" value="100" min="0">
+            </div>
+            <div>
+              <label for="maxLength">Max length</label>
+              <input id="maxLength" type="number" value="1024" min="1">
+            </div>
+            <div>
+              <label for="featuresEnabled">Features</label>
+              <select id="featuresEnabled">
+                <option value="true" selected>Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div>
+              <label for="classifierPreset">Classifier</label>
+              <select id="classifierPreset">
+                <option value="none">Disabled</option>
+                <option value="beakedWhale">Beaked whale</option>
+                <option value="porpoise">Porpoise</option>
+                <option value="both" selected>Both presets</option>
+              </select>
+            </div>
+            <div class="wide">
+              <label for="classifierTypesJson">Classifier type JSON override</label>
+              <textarea id="classifierTypesJson" placeholder='Optional JSON array. Example: [{"standard":"beakedWhale","speciesCode":11,"discard":false},{"standard":"porpoise","speciesCode":22,"whichSelections":127}]'></textarea>
+            </div>
+            <div>
+              <label for="trainEnabled">Click trains</label>
+              <select id="trainEnabled">
+                <option value="true" selected>Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div>
+              <label for="maxIciSeconds">Max ICI seconds</label>
+              <input id="maxIciSeconds" type="number" value="0.5" min="0" step="0.01">
+            </div>
+            <div>
+              <label for="trainMinClicks">Train min clicks</label>
+              <input id="trainMinClicks" type="number" value="3" min="1">
+            </div>
+          </div>
+
+          <h3 class="section-title">Click features</h3>
+          <div class="grid">
+            <div>
+              <label for="clickFeatureFftLength">Feature FFT length</label>
+              <input id="clickFeatureFftLength" type="number" placeholder="Use session FFT" min="0">
+            </div>
+            <div>
+              <label for="energyBand1Low">Band 1 low Hz</label>
+              <input id="energyBand1Low" type="number" value="1000" min="0">
+            </div>
+            <div>
+              <label for="energyBand1High">Band 1 high Hz</label>
+              <input id="energyBand1High" type="number" value="6000" min="0">
+            </div>
+            <div>
+              <label for="energyBand2Low">Band 2 low Hz</label>
+              <input id="energyBand2Low" type="number" value="6000" min="0">
+            </div>
+            <div>
+              <label for="energyBand2High">Band 2 high Hz</label>
+              <input id="energyBand2High" type="number" value="14000" min="0">
+            </div>
+            <div>
+              <label for="peakSearchLow">Peak search low Hz</label>
+              <input id="peakSearchLow" type="number" value="500" min="0">
+            </div>
+            <div>
+              <label for="peakSearchHigh">Peak search high Hz</label>
+              <input id="peakSearchHigh" type="number" value="20000" min="0">
+            </div>
+            <div>
+              <label for="meanRangeLow">Mean range low Hz</label>
+              <input id="meanRangeLow" type="number" value="500" min="0">
+            </div>
+            <div>
+              <label for="meanRangeHigh">Mean range high Hz</label>
+              <input id="meanRangeHigh" type="number" value="20000" min="0">
+            </div>
+            <div>
+              <label for="lengthEnergyFraction">Length energy %</label>
+              <input id="lengthEnergyFraction" type="number" value="90" min="0" max="100" step="0.1">
+            </div>
+            <div>
+              <label for="widthEnergyFraction">Width energy %</label>
+              <input id="widthEnergyFraction" type="number" value="90" min="0" max="100" step="0.1">
+            </div>
+          </div>
+
+          <h3 class="section-title">Whistle/moan peaks</h3>
+          <div class="grid">
+            <div>
+              <label for="whistleThresholdDb">Threshold dB</label>
+              <input id="whistleThresholdDb" type="number" value="6" step="0.1">
+            </div>
+            <div>
+              <label for="whistleMaxPercent">Max % over threshold</label>
+              <input id="whistleMaxPercent" type="number" value="50" min="0" max="100" step="0.1">
+            </div>
+            <div>
+              <label for="peakTimeConstant0">Peak TC 0</label>
+              <input id="peakTimeConstant0" type="number" value="10" min="0" step="0.1">
+            </div>
+            <div>
+              <label for="peakTimeConstant1">Peak TC 1</label>
+              <input id="peakTimeConstant1" type="number" value="100" min="0" step="0.1">
+            </div>
+            <div>
+              <label for="minPeakWidth">Min peak width</label>
+              <input id="minPeakWidth" type="number" value="3" min="1">
+            </div>
+            <div>
+              <label for="maxPeakWidth">Max peak width</label>
+              <input id="maxPeakWidth" type="number" value="20" min="1">
+            </div>
+            <div>
+              <label for="searchBin0">Search bin 0</label>
+              <input id="searchBin0" type="number" value="1" min="0">
+            </div>
+            <div>
+              <label for="searchBin1">Search bin 1</label>
+              <input id="searchBin1" type="number" value="0" min="0">
+            </div>
+            <div>
+              <label for="warmupSlices">Warmup slices</label>
+              <input id="warmupSlices" type="number" value="100" min="0">
+            </div>
+          </div>
+
+          <h3 class="section-title">Whistle/moan contours</h3>
+          <div class="grid">
+            <div>
+              <label for="fragmentationMethod">Fragmentation</label>
+              <select id="fragmentationMethod">
+                <option value="3" selected>3 re-link branches</option>
+                <option value="2">2 separate branches</option>
+                <option value="1">1 discard branches</option>
+                <option value="0">0 leave intact</option>
+              </select>
+            </div>
+            <div>
+              <label for="connectType">Connectivity</label>
+              <select id="connectType">
+                <option value="8" selected>8-connect</option>
+                <option value="4">4-connect</option>
+              </select>
+            </div>
+            <div>
+              <label for="whistleMinPixels">Min pixels</label>
+              <input id="whistleMinPixels" type="number" value="20" min="1">
+            </div>
+            <div>
+              <label for="whistleMinLength">Min length</label>
+              <input id="whistleMinLength" type="number" value="10" min="1">
+            </div>
+            <div>
+              <label for="keepShapeStubs">Shape stubs</label>
+              <select id="keepShapeStubs">
+                <option value="false" selected>Remove small stubs</option>
+                <option value="true">Keep stubs</option>
+              </select>
+            </div>
+            <div>
+              <label for="maxCrossLength">Max cross length</label>
+              <input id="maxCrossLength" type="number" value="5" min="1">
+            </div>
+            <div>
+              <label for="rejectFirstQuarterSecond">Startup rejection</label>
+              <select id="rejectFirstQuarterSecond">
+                <option value="true" selected>Reject first 0.25s</option>
+                <option value="false">Keep from start</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="healthButton" class="secondary">Health</button>
+            <button id="ingestStatusButton" class="secondary">Ingest status</button>
+            <button id="listSessionsButton" class="secondary">List sessions</button>
+            <button id="createButton">Create session</button>
+            <button id="sendButton">Send PCM block</button>
+            <button id="flushButton">Flush session</button>
+            <button id="deleteButton" class="secondary">Delete session</button>
+          </div>
+
+          <div class="session-panel">
+            <div class="session-head">
+              <strong>Session operations</strong>
+              <span id="sessionListMeta">No session list yet</span>
+            </div>
+            <div id="sessionList" class="session-list">
+              <div class="event-card">
+                <strong>Waiting for sessions</strong>
+                <span>Use List sessions after creating or ingesting audio.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Engine response</h2>
+        <div class="panel">
+          <div class="status-strip">
+            <div class="metric"><strong id="mFrames">0</strong><span>Spectrogram</span></div>
+            <div class="metric"><strong id="mClicks">0</strong><span>Clicks</span></div>
+            <div class="metric"><strong id="mFeatures">0</strong><span>Features</span></div>
+            <div class="metric"><strong id="mClasses">0</strong><span>Classes</span></div>
+            <div class="metric"><strong id="mTrains">0</strong><span>Trains</span></div>
+            <div class="metric"><strong id="mTrainLocs">0</strong><span>Train delays</span></div>
+            <div class="metric"><strong id="mTrainBearings">0</strong><span>Train bearings</span></div>
+            <div class="metric"><strong id="mLocs">0</strong><span>Delay sets</span></div>
+            <div class="metric"><strong id="mBearings">0</strong><span>Bearings</span></div>
+            <div class="metric"><strong id="mPeaks">0</strong><span>Whistle peaks</span></div>
+            <div class="metric"><strong id="mRegions">0</strong><span>Contours</span></div>
+            <div class="metric"><strong id="mContinuity">n/a</strong><span>Continuity</span></div>
+          </div>
+          <div class="spectrogram-panel">
+            <div class="spectrogram-head">
+              <strong>Spectrogram preview</strong>
+              <span id="spectrogramMeta">Waiting for PCM</span>
+            </div>
+            <canvas id="spectrogramCanvas" width="900" height="240"></canvas>
+          </div>
+          <div class="archive-panel">
+            <div class="archive-head">
+              <strong>Whistle contour summaries</strong>
+              <span id="contourMeta">No contours yet</span>
+            </div>
+            <div id="contourSummaryList" class="contour-list">
+              <div class="contour-card">
+                <strong>Waiting for contours</strong>
+                <span>Enable whistle regions, send PCM, or flush a session to inspect contour timing and frequency summaries.</span>
+              </div>
+            </div>
+          </div>
+          <div class="archive-panel">
+            <div class="archive-head">
+              <strong>Detection archive</strong>
+              <span id="archiveMeta">No query yet</span>
+            </div>
+            <div class="grid">
+              <div>
+                <label for="archiveEventType">Event type</label>
+                <select id="archiveEventType">
+                  <option value="">All detector events</option>
+                  <option value="click">Click</option>
+                  <option value="click-feature">Click feature</option>
+                  <option value="click-classification">Click classification</option>
+                  <option value="click-localisation">Click localisation</option>
+                  <option value="click-bearing">Click bearing</option>
+                  <option value="click-track">Click track</option>
+                  <option value="click-track-localisation">Click track localisation</option>
+                  <option value="click-track-bearing">Click track bearing</option>
+                  <option value="whistle-peak">Whistle peak</option>
+                  <option value="whistle-contour">Whistle contour</option>
+                </select>
+              </div>
+              <div>
+                <label for="archiveEventLimit">Limit</label>
+                <input id="archiveEventLimit" type="number" value="25" min="0">
+              </div>
+              <div>
+                <label for="archiveStartFrom">Start sample from</label>
+                <input id="archiveStartFrom" type="number" min="0" placeholder="Optional">
+              </div>
+              <div>
+                <label for="archiveStartTo">Start sample to</label>
+                <input id="archiveStartTo" type="number" min="0" placeholder="Optional">
+              </div>
+              <div>
+                <label for="archiveOverlapFrom">Overlap sample from</label>
+                <input id="archiveOverlapFrom" type="number" min="0" placeholder="Optional">
+              </div>
+              <div>
+                <label for="archiveOverlapTo">Overlap sample to</label>
+                <input id="archiveOverlapTo" type="number" min="0" placeholder="Optional">
+              </div>
+              <div>
+                <label for="archiveCursor">Cursor</label>
+                <input id="archiveCursor" type="number" value="0" min="0">
+              </div>
+            </div>
+            <div class="archive-actions">
+              <button id="eventTailButton" class="secondary">Load tail</button>
+              <button id="eventCursorButton">Load cursor page</button>
+              <button id="eventNextButton" class="secondary" disabled>Load next</button>
+              <button id="eventCsvButton">Export CSV</button>
+            </div>
+            <div id="archiveEventList" class="event-list">
+              <div class="event-card">
+                <strong>Waiting for archive query</strong>
+                <span>Send PCM, then load detector events.</span>
+              </div>
+            </div>
+          </div>
+          <pre id="log">Ready. Start the C++ service, then create a session.</pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let nextStartSample = 0;
+    let nextArchiveCursor = null;
+
+    function api(path) {
+      return $("apiBase").value.replace(/\/$/, "") + path;
+    }
+
+    function log(value) {
+      $("log").textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    }
+
+    function formatNumber(value, digits = 2) {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        return "n/a";
+      }
+      return value.toFixed(digits);
+    }
+
+    function contourPointCount(region) {
+      return Array.isArray(region.contourPoints) ? region.contourPoints.length : 0;
+    }
+
+    function renderContourSummaries(regions) {
+      const contours = Array.isArray(regions) ? regions : [];
+      const list = $("contourSummaryList");
+      list.textContent = "";
+      $("contourMeta").textContent = contours.length
+        ? `${contours.length} contour${contours.length === 1 ? "" : "s"}`
+        : "No contours yet";
+
+      if (!contours.length) {
+        const empty = document.createElement("div");
+        empty.className = "contour-card";
+        const title = document.createElement("strong");
+        title.textContent = "Waiting for contours";
+        const hint = document.createElement("span");
+        hint.textContent = "Enable whistle regions, send PCM, or flush a session to inspect contour timing and frequency summaries.";
+        empty.append(title, hint);
+        list.append(empty);
+        return;
+      }
+
+      contours
+        .slice()
+        .sort((left, right) => {
+          const duration = (right.durationSamples || 0) - (left.durationSamples || 0);
+          return duration !== 0 ? duration : contourPointCount(right) - contourPointCount(left);
+        })
+        .slice(0, 6)
+        .forEach((region) => {
+          const card = document.createElement("div");
+          card.className = "contour-card";
+          const title = document.createElement("strong");
+          title.textContent = `Contour ${region.regionNumber ?? "?"}, ch ${region.channel ?? "?"}`;
+          const duration = document.createElement("span");
+          duration.textContent = `duration ${formatNumber((region.durationSeconds || 0) * 1000, 2)} ms, ${region.durationSamples ?? "n/a"} samples`;
+          const span = document.createElement("span");
+          span.textContent = `span ${formatNumber((region.timeSpanSeconds || 0) * 1000, 2)} ms, start ${region.startSample ?? "n/a"} to ${region.lastStartSample ?? "n/a"}`;
+          const frequency = document.createElement("span");
+          frequency.textContent = region.minFrequencyHz !== undefined && region.maxFrequencyHz !== undefined
+            ? `frequency ${formatNumber(region.minFrequencyHz, 1)}-${formatNumber(region.maxFrequencyHz, 1)} Hz`
+            : `frequency bins ${region.minFrequencyBin ?? "n/a"}-${region.maxFrequencyBin ?? "n/a"}`;
+          const peak = document.createElement("span");
+          peak.textContent = region.meanPeakHz !== undefined
+            ? `mean peak ${formatNumber(region.meanPeakHz, 1)} Hz`
+            : `mean peak bin ${formatNumber(region.meanPeakBin, 2)}`;
+          const sweep = document.createElement("span");
+          sweep.textContent = region.peakSweepRateHzPerSecond !== undefined
+            ? `sweep ${formatNumber(region.peakSweepRateHzPerSecond, 1)} Hz/s`
+            : `sweep ${formatNumber(region.peakSweepRateBinsPerSecond, 1)} bins/s`;
+          const points = document.createElement("span");
+          points.textContent = `${contourPointCount(region)} contour point${contourPointCount(region) === 1 ? "" : "s"}, ${region.totalPixels ?? "n/a"} pixels`;
+          card.append(title, duration, span, frequency, peak, sweep, points);
+          list.append(card);
+        });
+    }
+
+    function updateMetrics(result) {
+      $("mFrames").textContent = result.spectrogramFrames ?? 0;
+      $("mClicks").textContent = Array.isArray(result.clicks) ? result.clicks.length : 0;
+      $("mFeatures").textContent = Array.isArray(result.clickFeatures) ? result.clickFeatures.length : 0;
+      $("mClasses").textContent = Array.isArray(result.clickClassifications) ? result.clickClassifications.length : 0;
+      $("mTrains").textContent = Array.isArray(result.clickTrains) ? result.clickTrains.length : 0;
+      $("mTrainLocs").textContent = Array.isArray(result.clickTrainLocalisations) ? result.clickTrainLocalisations.length : 0;
+      $("mTrainBearings").textContent = Array.isArray(result.clickTrainBearings) ? result.clickTrainBearings.length : 0;
+      $("mLocs").textContent = Array.isArray(result.clickLocalisations) ? result.clickLocalisations.length : 0;
+      $("mBearings").textContent = Array.isArray(result.clickBearings) ? result.clickBearings.length : 0;
+      $("mPeaks").textContent = Array.isArray(result.whistlePeaks) ? result.whistlePeaks.length : 0;
+      $("mRegions").textContent = Array.isArray(result.whistleRegions) ? result.whistleRegions.length : 0;
+      $("mContinuity").textContent = result.sampleContinuity || "n/a";
+      renderContourSummaries(result.whistleRegions || []);
+      drawSpectrogram(result.spectrogram || [], result.whistleRegions || []);
+    }
+
+    function resizeCanvas(canvas) {
+      const ratio = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.floor(canvas.clientWidth * ratio));
+      const height = Math.max(1, Math.floor(canvas.clientHeight * ratio));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      return ratio;
+    }
+
+    function heatColor(unit) {
+      const t = Math.max(0, Math.min(1, unit));
+      const r = Math.round(8 + 237 * Math.pow(t, 1.7));
+      const g = Math.round(27 + 187 * Math.sin(t * Math.PI * 0.72));
+      const b = Math.round(25 + 78 * (1 - t));
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function drawSpectrogram(frames, regions = []) {
+      const canvas = $("spectrogramCanvas");
+      const ctx = canvas.getContext("2d");
+      resizeCanvas(canvas);
+      ctx.fillStyle = "#071514";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (!Array.isArray(frames) || frames.length === 0) {
+        $("spectrogramMeta").textContent = "No frame data requested yet";
+        ctx.fillStyle = "rgba(234, 248, 244, 0.66)";
+        ctx.font = `${Math.max(13, canvas.width / 70)}px Cascadia Mono, Consolas, monospace`;
+        ctx.fillText("Send a PCM block to render FFT magnitudes", 18, 34);
+        return;
+      }
+
+      const channel = frames[0].channel;
+      const channelFrames = frames.filter((frame) => frame.channel === channel && Array.isArray(frame.magnitudeSquared));
+      const bins = Math.max(...channelFrames.map((frame) => frame.magnitudeSquared.length));
+      if (!channelFrames.length || !Number.isFinite(bins) || bins <= 0) {
+        $("spectrogramMeta").textContent = "No magnitude bins";
+        return;
+      }
+
+      let maxDb = -Infinity;
+      const dbFrames = channelFrames.map((frame) => frame.magnitudeSquared.map((value) => {
+        const db = 10 * Math.log10(Math.max(value, 1e-18));
+        maxDb = Math.max(maxDb, db);
+        return db;
+      }));
+      const minDb = maxDb - 72;
+      const columnWidth = canvas.width / channelFrames.length;
+      const rowHeight = canvas.height / bins;
+
+      dbFrames.forEach((frameBins, x) => {
+        frameBins.forEach((db, y) => {
+          const unit = (db - minDb) / (maxDb - minDb || 1);
+          ctx.fillStyle = heatColor(unit);
+          ctx.fillRect(
+            Math.floor(x * columnWidth),
+            Math.floor(canvas.height - (y + 1) * rowHeight),
+            Math.ceil(columnWidth),
+            Math.ceil(rowHeight)
+          );
+        });
+      });
+
+      ctx.save();
+      ctx.lineWidth = Math.max(2, canvas.width / 450);
+      ctx.strokeStyle = "rgba(255, 250, 237, 0.95)";
+      ctx.fillStyle = "rgba(11, 79, 74, 0.95)";
+      const sliceToX = new Map();
+      channelFrames.forEach((frame, index) => sliceToX.set(frame.slice, index));
+      regions
+        .filter((region) => region.channel === channel && Array.isArray(region.contourPoints))
+        .forEach((region) => {
+          let started = false;
+          ctx.beginPath();
+          region.contourPoints.forEach((point) => {
+            if (!sliceToX.has(point.slice)) {
+              return;
+            }
+            const x = (sliceToX.get(point.slice) + 0.5) * columnWidth;
+            const yBin = point.peakBin / (channelFrames[0].binStride || 1);
+            if (yBin < 0 || yBin >= bins) {
+              return;
+            }
+            const y = canvas.height - (yBin + 0.5) * rowHeight;
+            if (!started) {
+              ctx.moveTo(x, y);
+              started = true;
+            } else {
+              ctx.lineTo(x, y);
+            }
+            ctx.fillRect(x - 2, y - 2, 4, 4);
+          });
+          if (started) {
+            ctx.stroke();
+          }
+        });
+      ctx.restore();
+
+      $("spectrogramMeta").textContent = `channel ${channel}, ${channelFrames.length} frames, ${bins} bins`;
+    }
+
+    function linearHydrophones(channels, spacingM) {
+      return Array.from({ length: channels }, (_, i) => ({
+        channel: i,
+        xM: i * spacingM,
+        yM: 0,
+        zM: 0,
+        sensitivityDb: 0
+      }));
+    }
+
+    function arrayGeometry(channels, spacingM) {
+      const speedOfSoundMps = Number($("speedOfSoundMps").value);
+      const rawGeometry = $("arrayGeometryJson").value.trim();
+      if (!rawGeometry) {
+        return {
+          id: "browser-linear-array",
+          speedOfSoundMps,
+          hydrophones: linearHydrophones(channels, spacingM)
+        };
+      }
+
+      const parsed = JSON.parse(rawGeometry);
+      if (Array.isArray(parsed)) {
+        return {
+          id: "browser-custom-array",
+          speedOfSoundMps,
+          hydrophones: parsed
+        };
+      }
+      if (!parsed || !Array.isArray(parsed.hydrophones)) {
+        throw new Error("Advanced hydrophone JSON must be an array or an object with a hydrophones array");
+      }
+      return {
+        id: parsed.id || "browser-custom-array",
+        speedOfSoundMps: Number(parsed.speedOfSoundMps ?? speedOfSoundMps),
+        hydrophones: parsed.hydrophones
+      };
+    }
+
+    function sessionBody() {
+      const channels = Number($("channels").value);
+      const spacingM = Number($("hydrophoneSpacingM").value);
+      const defaultChannelBitmap = Math.pow(2, channels) - 1;
+      const clickChannelBitmap = $("clickChannelBitmap").value ? Number($("clickChannelBitmap").value) : defaultChannelBitmap;
+      const clickTriggerBitmap = $("clickTriggerBitmap").value ? Number($("clickTriggerBitmap").value) : clickChannelBitmap;
+      const clickFeatureFftLength = $("clickFeatureFftLength").value
+        ? Number($("clickFeatureFftLength").value)
+        : Number($("fftLength").value);
+      const classifierPreset = $("classifierPreset").value;
+      let standardTypes = classifierPreset === "both"
+        ? ["beakedWhale", "porpoise"]
+        : classifierPreset === "none" ? [] : [classifierPreset];
+      const classifierTypesJson = $("classifierTypesJson").value.trim();
+      if (classifierTypesJson) {
+        standardTypes = JSON.parse(classifierTypesJson);
+        if (!Array.isArray(standardTypes)) {
+          throw new Error("Classifier type JSON override must be an array");
+        }
+      }
+      return {
+        sessionId: $("sessionId").value,
+        sourceId: "browser-synthetic",
+        ownerId: $("ownerId").value.trim() || undefined,
+        tenantId: $("tenantId").value.trim() || undefined,
+        sampleRateHz: Number($("sampleRate").value),
+        channelCount: channels,
+        fft: {
+          length: Number($("fftLength").value),
+          hop: Number($("fftHop").value),
+          windowType: $("fftWindowType").value,
+          channels: Array.from({ length: channels }, (_, i) => i)
+        },
+        array: arrayGeometry(channels, spacingM),
+        click: {
+          enabled: true,
+          localisation: true,
+          channelBitmap: clickChannelBitmap,
+          triggerBitmap: clickTriggerBitmap,
+          thresholdDb: Number($("clickThresholdDb").value),
+          minTriggerChannels: Number($("minTriggerChannels").value),
+          shortFilter: Number($("shortFilter").value),
+          longFilter: Number($("longFilter").value),
+          preSample: Number($("preSample").value),
+          postSample: Number($("postSample").value),
+          minSep: Number($("minSep").value),
+          maxLength: Number($("maxLength").value),
+          featuresEnabled: $("featuresEnabled").value === "true",
+          features: {
+            fftLength: clickFeatureFftLength,
+            lengthEnergyFraction: Number($("lengthEnergyFraction").value),
+            widthEnergyFraction: Number($("widthEnergyFraction").value),
+            energyBandsHz: [
+              [Number($("energyBand1Low").value), Number($("energyBand1High").value)],
+              [Number($("energyBand2Low").value), Number($("energyBand2High").value)]
+            ],
+            peakFrequencySearchHz: [Number($("peakSearchLow").value), Number($("peakSearchHigh").value)],
+            meanFrequencyRangeHz: [Number($("meanRangeLow").value), Number($("meanRangeHigh").value)]
+          },
+          basicClassifier: {
+            enabled: standardTypes.length > 0,
+            standardTypes
+          },
+          train: {
+            enabled: $("trainEnabled").value === "true",
+            maxIciSeconds: Number($("maxIciSeconds").value),
+            minClicks: Number($("trainMinClicks").value)
+          }
+        },
+        whistle: {
+          enabled: true,
+          regionEnabled: true,
+          detectionThresholdDb: Number($("whistleThresholdDb").value),
+          peakTimeConstant0: Number($("peakTimeConstant0").value),
+          peakTimeConstant1: Number($("peakTimeConstant1").value),
+          maxPercentOverThreshold: Number($("whistleMaxPercent").value),
+          minPeakWidth: Number($("minPeakWidth").value),
+          maxPeakWidth: Number($("maxPeakWidth").value),
+          searchBin0: Number($("searchBin0").value),
+          searchBin1: Number($("searchBin1").value),
+          warmupSlices: Number($("warmupSlices").value),
+          minPixels: Number($("whistleMinPixels").value),
+          minLength: Number($("whistleMinLength").value),
+          connectType: Number($("connectType").value),
+          keepShapeStubs: $("keepShapeStubs").value === "true",
+          fragmentationMethod: Number($("fragmentationMethod").value),
+          maxCrossLength: Number($("maxCrossLength").value),
+          rejectFirstQuarterSecond: $("rejectFirstQuarterSecond").value === "true"
+        }
+      };
+    }
+
+    function syntheticPcm() {
+      const sampleRate = Number($("sampleRate").value);
+      const channels = Number($("channels").value);
+      const frames = Number($("chunkFrames").value);
+      const toneHz = Number($("toneHz").value);
+      const pcm = new Float32Array(frames * channels);
+      for (let frame = 0; frame < frames; frame++) {
+        const tone = Math.sin((2 * Math.PI * toneHz * frame) / sampleRate) * 0.22;
+        const click = frame >= 800 && frame < 810 ? (frame % 2 === 0 ? 0.95 : -0.95) : 0;
+        for (let channel = 0; channel < channels; channel++) {
+          const scale = channel === 0 ? 1 : 0.84;
+          pcm[frame * channels + channel] = tone * scale + click * scale;
+        }
+      }
+      return pcm;
+    }
+
+    async function requestJson(url, options = {}) {
+      const apiKey = $("apiKey").value.trim();
+      if (apiKey) {
+        options.headers = {
+          ...(options.headers || {}),
+          "X-API-Key": apiKey
+        };
+      }
+      const response = await fetch(url, options);
+      const text = await response.text();
+      const body = text ? JSON.parse(text) : {};
+      if (!response.ok) {
+        throw new Error(body.error || response.statusText);
+      }
+      return body;
+    }
+
+    async function requestText(url, options = {}) {
+      const apiKey = $("apiKey").value.trim();
+      if (apiKey) {
+        options.headers = {
+          ...(options.headers || {}),
+          "X-API-Key": apiKey
+        };
+      }
+      const response = await fetch(url, options);
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text || response.statusText);
+      }
+      return text;
+    }
+
+    function downloadText(filename, text, contentType) {
+      const blob = new Blob([text], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function archiveEventParams({ cursor = null } = {}) {
+      const params = new URLSearchParams();
+      const type = $("archiveEventType").value;
+      if (type) {
+        params.set("type", type);
+      }
+      if ($("ownerId").value.trim()) {
+        params.set("ownerId", $("ownerId").value.trim());
+      }
+      if ($("tenantId").value.trim()) {
+        params.set("tenantId", $("tenantId").value.trim());
+      }
+      params.set("limit", $("archiveEventLimit").value || "25");
+      if ($("archiveStartFrom").value) {
+        params.set("startSampleFrom", $("archiveStartFrom").value);
+      }
+      if ($("archiveStartTo").value) {
+        params.set("startSampleTo", $("archiveStartTo").value);
+      }
+      if ($("archiveOverlapFrom").value) {
+        params.set("overlapStartSample", $("archiveOverlapFrom").value);
+      }
+      if ($("archiveOverlapTo").value) {
+        params.set("overlapEndSample", $("archiveOverlapTo").value);
+      }
+      if (cursor !== null) {
+        params.set("cursor", String(cursor));
+      }
+      return params;
+    }
+
+    function formatMs(value) {
+      if (value === null || value === undefined) {
+        return "n/a";
+      }
+      if (value < 1000) {
+        return `${Math.round(value)} ms`;
+      }
+      return `${(value / 1000).toFixed(1)} s`;
+    }
+
+    function renderSessionList(result) {
+      const sessions = Array.isArray(result.sessions) ? result.sessions : [];
+      const list = $("sessionList");
+      list.textContent = "";
+      $("sessionListMeta").textContent = `${sessions.length} session${sessions.length === 1 ? "" : "s"}`;
+
+      if (!sessions.length) {
+        const empty = document.createElement("div");
+        empty.className = "event-card";
+        const title = document.createElement("strong");
+        title.textContent = "No active sessions";
+        const hint = document.createElement("span");
+        hint.textContent = "Create a session or start an ingest worker.";
+        empty.append(title, hint);
+        list.append(empty);
+        return;
+      }
+
+      sessions.forEach((session) => {
+        const status = session.status || {};
+        const card = document.createElement("div");
+        card.className = "event-card";
+        const title = document.createElement("strong");
+        title.textContent = session.sessionId || "session";
+
+        const source = document.createElement("span");
+        source.textContent = `source ${session.sourceId || "n/a"}`;
+        const owner = document.createElement("span");
+        owner.textContent = `owner ${session.ownerId || "n/a"}`;
+        const tenant = document.createElement("span");
+        tenant.textContent = `tenant ${session.tenantId || "n/a"}`;
+        const state = document.createElement("span");
+        state.textContent = `state ${status.activityState || "unknown"}`;
+        const chunks = document.createElement("span");
+        chunks.textContent = `chunks ${status.chunksReceived ?? 0}`;
+        const idle = document.createElement("span");
+        idle.textContent = `idle ${formatMs(status.idleMs)}`;
+        const continuity = document.createElement("span");
+        continuity.textContent = `continuity ${status.lastSampleContinuity || "n/a"}`;
+        const outputs = document.createElement("span");
+        outputs.textContent = `outputs ${status.totalDetectorOutputs ?? 0}`;
+        const channels = document.createElement("span");
+        channels.textContent = `channels ${session.channelCount ?? "n/a"}`;
+        const readiness = session.array?.clickLocalisationReadiness || {};
+        const localisation = document.createElement("span");
+        const missingGeometry = Array.isArray(readiness.missingClickHydrophoneChannels) && readiness.missingClickHydrophoneChannels.length
+          ? `, missing hydrophones ${readiness.missingClickHydrophoneChannels.join(",")}`
+          : "";
+        localisation.textContent = `click localisation ${readiness.mode || "n/a"}${missingGeometry}`;
+        const detail = document.createElement("code");
+        detail.textContent = `nextSample=${status.nextExpectedStartSample ?? "n/a"} meanProcessMs=${typeof status.meanProcessMs === "number" ? status.meanProcessMs.toFixed(3) : "n/a"} timelineOk=${status.sampleTimelineOk ?? "n/a"}`;
+
+        card.append(title, source, owner, tenant, state, chunks, idle, continuity, outputs, channels, localisation, detail);
+        list.append(card);
+      });
+    }
+
+    function renderArchiveEvents(result) {
+      const events = Array.isArray(result.events) ? result.events : [];
+      const list = $("archiveEventList");
+      list.textContent = "";
+      nextArchiveCursor = typeof result.nextCursor === "number" ? result.nextCursor : null;
+      $("eventNextButton").disabled = nextArchiveCursor === null;
+      if (nextArchiveCursor !== null) {
+        $("archiveCursor").value = String(nextArchiveCursor);
+      }
+      const owner = result.ownerId ? `, owner ${result.ownerId}` : "";
+      const tenant = result.tenantId ? `, tenant ${result.tenantId}` : "";
+      $("archiveMeta").textContent = `${events.length} events${result.type ? `, ${result.type}` : ""}${owner}${tenant}`;
+
+      if (!events.length) {
+        const empty = document.createElement("div");
+        empty.className = "event-card";
+        const title = document.createElement("strong");
+        title.textContent = "No matching detector events";
+        const hint = document.createElement("span");
+        hint.textContent = "Try sending PCM, flushing, or widening the sample range.";
+        empty.append(title, hint);
+        list.append(empty);
+        return;
+      }
+
+      events.forEach((event) => {
+        const card = document.createElement("div");
+        card.className = "event-card";
+        const title = document.createElement("strong");
+        title.textContent = event.type || "event";
+        const start = document.createElement("span");
+        start.textContent = `start ${event.startSample ?? "n/a"}`;
+        const end = document.createElement("span");
+        end.textContent = event.endSample === undefined ? "instant" : `end ${event.endSample}`;
+        const group = document.createElement("span");
+        group.textContent = event.channelGroup || "channel n/a";
+        const trains = document.createElement("span");
+        trains.textContent = Array.isArray(event.relatedTrainIds) && event.relatedTrainIds.length
+          ? `trains ${event.relatedTrainIds.join(",")}`
+          : "trains n/a";
+        const payload = document.createElement("code");
+        payload.textContent = JSON.stringify(event.payload || {});
+        card.append(title, start, end, group, trains, payload);
+        list.append(card);
+      });
+    }
+
+    async function loadArchiveEvents(cursor = null) {
+      const sessionId = encodeURIComponent($("sessionId").value);
+      const params = archiveEventParams({ cursor });
+      const result = await requestJson(api(`/sessions/${sessionId}/archive/detections?${params}`));
+      renderArchiveEvents(result);
+      log(result);
+    }
+
+    $("healthButton").addEventListener("click", async () => {
+      try {
+        log(await requestJson(api("/health")));
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("ingestStatusButton").addEventListener("click", async () => {
+      try {
+        log(await requestJson(api("/ingest/status")));
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("listSessionsButton").addEventListener("click", async () => {
+      try {
+        const params = new URLSearchParams();
+        if ($("ownerId").value.trim()) {
+          params.set("ownerId", $("ownerId").value.trim());
+        }
+        if ($("tenantId").value.trim()) {
+          params.set("tenantId", $("tenantId").value.trim());
+        }
+        const query = params.toString();
+        const result = await requestJson(api(query ? `/sessions?${query}` : "/sessions"));
+        renderSessionList(result);
+        log(result);
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("createButton").addEventListener("click", async () => {
+      try {
+        const result = await requestJson(api("/sessions"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sessionBody())
+        });
+        nextStartSample = 0;
+        nextArchiveCursor = null;
+        $("eventNextButton").disabled = true;
+        log(result);
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("sendButton").addEventListener("click", async () => {
+      try {
+        const pcm = syntheticPcm();
+        const params = new URLSearchParams({
+          startSample: String(nextStartSample),
+          includeSpectrogram: "true",
+          includeClickWaveforms: $("includeClickWaveforms").value,
+          includeClickSpectra: $("includeClickSpectra").value,
+          spectrogramMaxBins: $("previewBins").value,
+          spectrogramBinStride: $("binStride").value
+        });
+        const result = await requestJson(api(`/sessions/${encodeURIComponent($("sessionId").value)}/pcm-f32le?${params}`), {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: pcm.buffer
+        });
+        if (typeof result.nextExpectedStartSample === "number") {
+          nextStartSample = result.nextExpectedStartSample;
+        }
+        updateMetrics(result);
+        log(result);
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("flushButton").addEventListener("click", async () => {
+      try {
+        const result = await requestJson(api(`/sessions/${encodeURIComponent($("sessionId").value)}/flush`), {
+          method: "POST"
+        });
+        updateMetrics(result);
+        log(result);
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("deleteButton").addEventListener("click", async () => {
+      try {
+        const result = await requestJson(api(`/sessions/${encodeURIComponent($("sessionId").value)}`), { method: "DELETE" });
+        nextStartSample = 0;
+        nextArchiveCursor = null;
+        $("eventNextButton").disabled = true;
+        log(result);
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("eventTailButton").addEventListener("click", async () => {
+      try {
+        await loadArchiveEvents(null);
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("eventCursorButton").addEventListener("click", async () => {
+      try {
+        await loadArchiveEvents(Number($("archiveCursor").value || 0));
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("eventNextButton").addEventListener("click", async () => {
+      if (nextArchiveCursor === null) {
+        return;
+      }
+      try {
+        await loadArchiveEvents(nextArchiveCursor);
+      } catch (error) {
+        log(String(error));
+      }
+    });
+
+    $("eventCsvButton").addEventListener("click", async () => {
+      try {
+        const sessionId = encodeURIComponent($("sessionId").value);
+        const params = archiveEventParams();
+        const csv = await requestText(api(`/sessions/${sessionId}/archive/detections.csv?${params}`));
+        downloadText(`detections-${$("sessionId").value || "session"}.csv`, csv, "text/csv");
+        log(`Downloaded ${csv.split(/\r?\n/).filter(Boolean).length - 1} detection rows as CSV.`);
+      } catch (error) {
+        log(String(error));
+      }
+    });
+  </script>
+</body>
+</html>

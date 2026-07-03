@@ -1,0 +1,42 @@
+name: C++ engine
+
+on:
+  push:
+    paths:
+      - "cpp-engine/**"
+      - "platform/**"
+      - "web-ui/**"
+      - "ops/**"
+      - ".github/workflows/cpp-engine.yml"
+  pull_request:
+    paths:
+      - "cpp-engine/**"
+      - "platform/**"
+      - "web-ui/**"
+      - "ops/**"
+      - ".github/workflows/cpp-engine.yml"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S cpp-engine -B cpp-engine/build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build cpp-engine/build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir cpp-engine/build -C Release --output-on-failure
+
+      - name: Python ops syntax
+        run: |
+          python -m py_compile ops/ingest_supervisor.py
+          python -m py_compile ops/archive_retention.py
+          python -m py_compile ops/archive_retention_smoke.py
+          python -m py_compile ops/rebuild_archive_event_index.py
+          python -m py_compile ops/rebuild_archive_event_index_smoke.py

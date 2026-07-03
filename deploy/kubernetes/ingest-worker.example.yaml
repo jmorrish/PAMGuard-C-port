@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pamguard-ingest-station-001
+data:
+  SOURCE_URL: "http://station.example/live.mp3"
+  SOURCE_ID: "station-001"
+  SESSION_ID: "station-001"
+  OWNER_ID: "demo-user"
+  TENANT_ID: "demo-project"
+  SAMPLE_RATE_HZ: "48000"
+  CHANNELS: "2"
+  CHUNK_FRAMES: "4096"
+  AUDIO_FILTER: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pamguard-ingest-station-001
+  labels:
+    app: pamguard-ingest
+    source: station-001
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pamguard-ingest
+      source: station-001
+  template:
+    metadata:
+      labels:
+        app: pamguard-ingest
+        source: station-001
+    spec:
+      containers:
+        - name: ingest
+          image: pamguard-engine:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: pamguard-ingest-station-001
+          env:
+            - name: PAMGUARD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pamguard-engine-api-key
+                  key: api-key
+                  optional: true
+          command:
+            - /bin/sh
+            - -lc
+          args:
+            - >
+              exec /app/ffmpeg_stream_ingest
+              --source "$SOURCE_URL"
+              --engine "http://pamguard-engine:8080"
+              --session "$SESSION_ID"
+              --source-id "$SOURCE_ID"
+              --session-config "/app/station-session.example.json"
+              --owner-id "$OWNER_ID"
+              --tenant-id "$TENANT_ID"
+              --allow-existing-session
+              --resume-from-engine
+              --sample-rate "$SAMPLE_RATE_HZ"
+              --channels "$CHANNELS"
+              --chunk-frames "$CHUNK_FRAMES"
+              --api-key-env "PAMGUARD_API_KEY"
+              ${AUDIO_FILTER:+--audio-filter "$AUDIO_FILTER"}
+              --restart
+              --restart-delay-ms 5000
+              --realtime
+          resources:
+            requests:
+              cpu: "250m"
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

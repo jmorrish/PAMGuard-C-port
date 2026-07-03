@@ -1,0 +1,14 @@
+# Example disruption budget.
+# For a single-replica development deployment this can block voluntary evictions.
+# Use with two or more replicas, or adjust minAvailable/maxUnavailable for your maintenance policy.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pamguard-engine
+  labels:
+    app: pamguard-engine
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: pamguard-engine
