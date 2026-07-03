@@ -27,8 +27,9 @@ public final class ClickTriggerFixtureExporter {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 13) {
-            System.err.println("Usage: ClickTriggerFixtureExporter <channelBitmap> <triggerBitmap> <thresholdDb> <shortFilter> <longFilter> <preSample> <postSample> <minSep> <maxLength> <minTriggerChannels> <sampleRate> <chunkLength> <output.csv>");
+        if (args.length != 13 && args.length != 14) {
+            System.err.println("Usage: ClickTriggerFixtureExporter <channelBitmap> <triggerBitmap> <thresholdDb> <shortFilter> <longFilter> <preSample> <postSample> <minSep> <maxLength> <minTriggerChannels> <sampleRate> <chunkLength> <output.csv> [scenario]");
+            System.err.println("Scenarios: single-transient (default), double-transient, long-transient, single-channel-transient");
             System.exit(2);
         }
 
@@ -46,7 +47,8 @@ public final class ClickTriggerFixtureExporter {
         int minTriggerChannels = Integer.parseInt(args[arg++]);
         int sampleRate = Integer.parseInt(args[arg++]);
         int chunkLength = Integer.parseInt(args[arg++]);
-        File output = new File(args[arg]);
+        File output = new File(args[arg++]);
+        String scenario = args.length > arg ? args[arg] : "single-transient";
 
         List<Integer> channels = channelList(channelBitmap);
         TriggerFilter[] shortFilters = new TriggerFilter[channels.size()];
@@ -61,7 +63,7 @@ public final class ClickTriggerFixtureExporter {
         for (int iChan = 0; iChan < channels.size(); iChan++) {
             int channel = channels.get(iChan);
             for (int i = 0; i < chunkLength; i++) {
-                triggerData[iChan][i] = syntheticSample(channel, i);
+                triggerData[iChan][i] = syntheticSample(scenario, channel, i);
             }
         }
 
@@ -186,13 +188,30 @@ public final class ClickTriggerFixtureExporter {
         return bitmap & ~(1 << bitNumber);
     }
 
-    private static double syntheticSample(int channel, int sample) {
+    private static double syntheticSample(String scenario, int channel, int sample) {
         double background = 0.01 * Math.sin(sample * 0.13 + channel * 0.31);
-        if (sample >= 80 && sample <= 86) {
-            double sign = (sample & 1) == 0 ? 1.0 : -1.0;
-            double scale = channel == 0 ? 1.0 : 0.82;
-            return background + sign * scale;
+        switch (scenario) {
+            case "single-transient":
+                return background + transientSample(sample, 80, 86, channel == 0 ? 1.0 : 0.82);
+            case "double-transient":
+                if (sample >= 60 && sample <= 66) {
+                    return background + transientSample(sample, 60, 66, channel == 0 ? 1.0 : 0.82);
+                }
+                return background + transientSample(sample, 90, 96, channel == 0 ? 1.0 : 0.82);
+            case "long-transient":
+                return background + transientSample(sample, 60, 140, channel == 0 ? 1.0 : 0.82);
+            case "single-channel-transient":
+                return background + transientSample(sample, 80, 86, channel == 0 ? 1.0 : 0.0);
+            default:
+                throw new IllegalArgumentException("unknown scenario: " + scenario);
         }
-        return background;
+    }
+
+    private static double transientSample(int sample, int startSample, int endSample, double scale) {
+        if (sample < startSample || sample > endSample || scale == 0.0) {
+            return 0.0;
+        }
+        double sign = (sample & 1) == 0 ? 1.0 : -1.0;
+        return sign * scale;
     }
 }

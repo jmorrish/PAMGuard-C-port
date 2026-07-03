@@ -21,14 +21,32 @@ struct ClickRow {
     std::int64_t time_ms = 0;
 };
 
-double synthetic_sample(std::size_t channel, std::size_t sample) {
-    const double background = 0.01 * std::sin(static_cast<double>(sample) * 0.13 + static_cast<double>(channel) * 0.31);
-    if (sample >= 80 && sample <= 86) {
-        const double sign = (sample & 1u) == 0 ? 1.0 : -1.0;
-        const double scale = channel == 0 ? 1.0 : 0.82;
-        return background + sign * scale;
+double transient_sample(std::size_t sample, std::size_t start_sample, std::size_t end_sample, double scale) {
+    if (sample < start_sample || sample > end_sample || scale == 0.0) {
+        return 0.0;
     }
-    return background;
+    const double sign = (sample & 1u) == 0 ? 1.0 : -1.0;
+    return sign * scale;
+}
+
+double synthetic_sample(const std::string& scenario, std::size_t channel, std::size_t sample) {
+    const double background = 0.01 * std::sin(static_cast<double>(sample) * 0.13 + static_cast<double>(channel) * 0.31);
+    if (scenario == "single-transient") {
+        return background + transient_sample(sample, 80, 86, channel == 0 ? 1.0 : 0.82);
+    }
+    if (scenario == "double-transient") {
+        if (sample >= 60 && sample <= 66) {
+            return background + transient_sample(sample, 60, 66, channel == 0 ? 1.0 : 0.82);
+        }
+        return background + transient_sample(sample, 90, 96, channel == 0 ? 1.0 : 0.82);
+    }
+    if (scenario == "long-transient") {
+        return background + transient_sample(sample, 60, 140, channel == 0 ? 1.0 : 0.82);
+    }
+    if (scenario == "single-channel-transient") {
+        return background + transient_sample(sample, 80, 86, channel == 0 ? 1.0 : 0.0);
+    }
+    throw std::invalid_argument("unknown scenario: " + scenario);
 }
 
 std::vector<ClickRow> read_fixture(const std::string& path) {
@@ -88,8 +106,11 @@ std::vector<ClickRow> to_rows(const std::vector<pamguard::detectors::ClickDetect
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cerr << "Usage: click_trigger_fixture_check <fixture.csv>\n";
+    if (argc != 2 && argc != 15 && argc != 16) {
+        std::cerr << "Usage: click_trigger_fixture_check <fixture.csv>"
+                  << " [<channelBitmap> <triggerBitmap> <thresholdDb> <shortFilter> <longFilter>"
+                  << " <preSample> <postSample> <minSep> <maxLength> <minTriggerChannels>"
+                  << " <sampleRate> <chunkLength> <scenario> [expectedDetections]]\n";
         return 2;
     }
 
@@ -107,6 +128,42 @@ int main(int argc, char** argv) {
         config.min_sep = 8;
         config.max_length = 128;
         config.min_trigger_channels = 1;
+
+        std::uint32_t sample_rate = 48000;
+        std::size_t chunk_length = 256;
+        std::string scenario = "single-transient";
+        std::int64_t expected_detections = -1;
+        if (argc >= 15) {
+            int arg = 2;
+            config.channel_bitmap = static_cast<std::uint32_t>(std::stoul(argv[arg++], nullptr, 0));
+            config.trigger_bitmap = static_cast<std::uint32_t>(std::stoul(argv[arg++], nullptr, 0));
+            config.threshold_db = std::stod(argv[arg++]);
+            config.short_filter = std::stod(argv[arg++]);
+            config.long_filter = std::stod(argv[arg++]);
+            config.pre_sample = static_cast<std::size_t>(std::stoull(argv[arg++]));
+            config.post_sample = static_cast<std::size_t>(std::stoull(argv[arg++]));
+            config.min_sep = static_cast<std::size_t>(std::stoull(argv[arg++]));
+            config.max_length = static_cast<std::size_t>(std::stoull(argv[arg++]));
+            config.min_trigger_channels = static_cast<std::size_t>(std::stoull(argv[arg++]));
+            sample_rate = static_cast<std::uint32_t>(std::stoul(argv[arg++]));
+            chunk_length = static_cast<std::size_t>(std::stoull(argv[arg++]));
+            scenario = argv[arg++];
+            if (argc == 16) {
+                expected_detections = std::stoll(argv[arg]);
+            }
+        }
+
+        if (expected_detections >= 0 && fixture.size() != static_cast<std::size_t>(expected_detections)) {
+            std::cerr << "Fixture does not encode the expected scenario behaviour: expected "
+                      << expected_detections << " detections, fixture has " << fixture.size() << "\n";
+            return 1;
+        }
+        for (const auto& row : fixture) {
+            if (row.duration > config.max_length) {
+                std::cerr << "Fixture violates max_length invariant at detection " << row.index << "\n";
+                return 1;
+            }
+        }
 
         bool rejected_empty_bitmap = false;
         try {
@@ -156,12 +213,12 @@ int main(int argc, char** argv) {
         pamguard::core::AudioChunk chunk;
         chunk.start_sample = 0;
         chunk.time_unix_ms = 0;
-        chunk.sample_rate_hz = 48000;
+        chunk.sample_rate_hz = sample_rate;
         chunk.channel_count = 2;
-        chunk.interleaved_pcm.resize(256 * chunk.channel_count);
-        for (std::size_t sample = 0; sample < 256; ++sample) {
+        chunk.interleaved_pcm.resize(chunk_length * chunk.channel_count);
+        for (std::size_t sample = 0; sample < chunk_length; ++sample) {
             for (std::size_t channel = 0; channel < chunk.channel_count; ++channel) {
-                chunk.interleaved_pcm[sample * chunk.channel_count + channel] = synthetic_sample(channel, sample);
+                chunk.interleaved_pcm[sample * chunk.channel_count + channel] = synthetic_sample(scenario, channel, sample);
             }
         }
 
@@ -264,6 +321,7 @@ int main(int argc, char** argv) {
         }
 
         std::cout << "Click trigger parity passed\n";
+        std::cout << "scenario=" << scenario << " detections=" << actual.size() << "\n";
         std::cout << "max_abs_error=" << max_abs_error << "\n";
         return 0;
     }

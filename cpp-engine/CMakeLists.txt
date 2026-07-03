@@ -266,6 +266,42 @@ add_test(
 )
 
 add_test(
+    NAME click_trigger_double_split_minsep8_parity
+    COMMAND click_trigger_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-trigger/double-split-minsep8.csv
+        0x3 0x3 10.0 0.1 0.00001 10 12 8 128 1 48000 256 double-transient 2
+)
+
+add_test(
+    NAME click_trigger_double_merge_minsep16_parity
+    COMMAND click_trigger_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-trigger/double-merge-minsep16.csv
+        0x3 0x3 10.0 0.1 0.00001 10 12 16 128 1 48000 256 double-transient 1
+)
+
+add_test(
+    NAME click_trigger_long_maxlen64_parity
+    COMMAND click_trigger_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-trigger/long-maxlen64.csv
+        0x3 0x3 10.0 0.1 0.00001 10 12 8 64 1 48000 1024 long-transient 1
+)
+
+add_test(
+    NAME click_trigger_single_channel_min1_parity
+    COMMAND click_trigger_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-trigger/single-channel-min1.csv
+        0x3 0x3 10.0 0.1 0.00001 10 12 8 128 1 48000 256 single-channel-transient 1
+)
+
+add_test(
+    NAME click_trigger_single_channel_min2_suppressed_parity
+    COMMAND click_trigger_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-trigger/single-channel-min2-suppressed.csv
+        0x3 0x3 10.0 0.1 0.00001 10 12 8 128 2 48000 256 single-channel-transient 0
+)
+
+add_test(
+    NAME click_trigger_threshold6_parity
+    COMMAND click_trigger_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-trigger/single-threshold6.csv
+        0x3 0x3 6.0 0.2 0.0001 10 12 8 128 1 48000 256 single-transient 1
+)
+
+add_test(
     NAME click_feature_basic_parity
     COMMAND click_feature_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-feature/basic-features.csv
 )

@@ -1,6 +1,6 @@
 # PAMGuard parity ledger
 
-Date: 2026-07-01
+Date: 2026-07-03
 
 ## Purpose
 
@@ -22,7 +22,7 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 | Window functions | Fixture parity | CTest parity fixtures | Used by FFT/spectrogram path. |
 | Real FFT | Fixture parity | CTest parity fixtures | Core spectral primitive. |
 | Spectrogram chunking | Fixture parity | CTest parity fixtures | Browser preview and downstream whistle/click features use this foundation. |
-| Click trigger foundation | Fixture parity | Click trigger fixtures and edge coverage | Needs continued Java fixture expansion for all PAMGuard trigger parameter combinations. |
+| Click trigger foundation | Fixture parity | Seven Java fixtures: basic, min-sep split/merge, max-length truncation, min-trigger-channel gating/suppression, alternate threshold/filter constants (`docs/154-click-trigger-edge-fixture-sweep.md`) | Cross-chunk filter initialisation and the dual-alpha long-filter path remain outside fixture coverage. |
 | Click feature extraction | Fixture parity | Feature fixtures and edge coverage | Basic feature set covered; broader PAMGuard feature/config combinations still need fixtures. |
 | Basic click classifier | Foundation | Preset constants and edge coverage | Needs more PAMGuard classifier fixture cases before full equivalence. |
 | Click train tracker | Foundation | Active/completed/flush/channel/gap/min-click tests | Not a full PAMGuard click train/localisation module clone yet. |
@@ -58,7 +58,7 @@ It is not safe to say:
 
 ## Next parity priorities
 
-- Export more Java fixtures for click trigger edge cases and classifier settings.
+- Export more Java fixtures for click classifier settings.
 - Export more Java fixtures for click train creation and train classification/localisation behavior.
 - Pin down PAMGuard bearing localiser semantics for common array geometries.
 - Add whistle/moan localisation fixtures before implementing that path in C++.
