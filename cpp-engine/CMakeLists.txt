@@ -133,6 +133,12 @@ add_executable(click_train_tracker_check
 
 target_link_libraries(click_train_tracker_check PRIVATE pamguard_engine)
 
+add_executable(click_train_idi_fixture_check
+    tools/click_train_idi_fixture_check.cpp
+)
+
+target_link_libraries(click_train_idi_fixture_check PRIVATE pamguard_engine)
+
 add_executable(click_train_bearing_summary_check
     tools/click_train_bearing_summary_check.cpp
 )
@@ -314,6 +320,11 @@ add_test(
 add_test(
     NAME click_train_tracker_foundation
     COMMAND click_train_tracker_check
+)
+
+add_test(
+    NAME click_train_idi_stats_parity
+    COMMAND click_train_idi_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-train/idi-stats.csv
 )
 
 add_test(
