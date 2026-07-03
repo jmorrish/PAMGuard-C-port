@@ -1,2 +1,12 @@
-clickType,discard
-42,true
+case,clickType,discard
+all-pass,42,true
+band1-range-fail,0,false
+band-diff-fail,0,false
+peak-pos-only-pass,11,false
+peak-pos-only-fail,0,false
+peak-width-only-fail,0,false
+mean-freq-only-pass,12,false
+length-only-fail,0,false
+length-zero-max-pass,13,false
+order-first-wins,21,false
+no-selections-pass,30,false

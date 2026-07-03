@@ -43,6 +43,16 @@ public final class ClickBasicClassifierFixtureExporter {
     private ClickBasicClassifierFixtureExporter() {
     }
 
+    private static final class ClassifierCase {
+        String name;
+        ClickType[] clickTypes;
+
+        ClassifierCase(String name, ClickType... clickTypes) {
+            this.name = name;
+            this.clickTypes = clickTypes;
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length != 1) {
             System.err.println("Usage: ClickBasicClassifierFixtureExporter <output.csv>");
@@ -52,14 +62,77 @@ public final class ClickBasicClassifierFixtureExporter {
         Locale.setDefault(Locale.ROOT);
         File output = new File(args[0]);
         double[][] waveform = syntheticWaveform();
-        ClickType[] clickTypes = {failingType(), passingType()};
-        ClickId clickId = identify(waveform, clickTypes);
 
         output.getParentFile().mkdirs();
         try (PrintWriter writer = new PrintWriter(output)) {
-            writer.println("clickType,discard");
-            writer.printf(Locale.ROOT, "%d,%s%n", clickId.clickType, Boolean.toString(clickId.discard));
+            writer.println("case,clickType,discard");
+            for (ClassifierCase classifierCase : caseCatalogue()) {
+                ClickId clickId = identify(waveform, classifierCase.clickTypes);
+                writer.printf(Locale.ROOT, "%s,%d,%s%n",
+                        classifierCase.name, clickId.clickType, Boolean.toString(clickId.discard));
+            }
         }
+    }
+
+    /**
+     * Case catalogue shared by name with the C++ fixture check
+     * (cpp-engine/tools/click_basic_classifier_fixture_check.cpp).
+     * Both sides must build identical type lists per case.
+     */
+    private static ClassifierCase[] caseCatalogue() {
+        return new ClassifierCase[]{
+                new ClassifierCase("all-pass", failingType(), passingType()),
+                new ClassifierCase("band1-range-fail", failingType()),
+                new ClassifierCase("band-diff-fail", bandDiffFailType()),
+                new ClassifierCase("peak-pos-only-pass", selectionOnlyType(11, ENABLE_PEAKFREQPOS)),
+                new ClassifierCase("peak-pos-only-fail", peakPosFailType()),
+                new ClassifierCase("peak-width-only-fail", peakWidthFailType()),
+                new ClassifierCase("mean-freq-only-pass", selectionOnlyType(12, ENABLE_MEANFREQUENCY)),
+                new ClassifierCase("length-only-fail", lengthFailType()),
+                new ClassifierCase("length-zero-max-pass", lengthZeroMaxType()),
+                new ClassifierCase("order-first-wins",
+                        selectionOnlyType(21, ENABLE_MEANFREQUENCY),
+                        selectionOnlyType(22, ENABLE_PEAKFREQPOS)),
+                new ClassifierCase("no-selections-pass", selectionOnlyType(30, 0)),
+        };
+    }
+
+    private static ClickType selectionOnlyType(int speciesCode, int whichSelections) {
+        ClickType type = passingType();
+        type.speciesCode = speciesCode;
+        type.discard = false;
+        type.whichSelections = whichSelections;
+        return type;
+    }
+
+    private static ClickType bandDiffFailType() {
+        ClickType type = selectionOnlyType(8, ENABLE_ENERGYBAND);
+        type.bandEnergyDifference = 15.0;
+        return type;
+    }
+
+    private static ClickType peakPosFailType() {
+        ClickType type = selectionOnlyType(11, ENABLE_PEAKFREQPOS);
+        type.peakFrequencyRange = new double[]{11000.0, 12000.0};
+        return type;
+    }
+
+    private static ClickType peakWidthFailType() {
+        ClickType type = selectionOnlyType(14, ENABLE_PEAKFREQWIDTH);
+        type.peakWidth = new double[]{100.0, 500.0};
+        return type;
+    }
+
+    private static ClickType lengthFailType() {
+        ClickType type = selectionOnlyType(15, ENABLE_CLICKLENGTH);
+        type.clickLength = new double[]{0.05, 0.10};
+        return type;
+    }
+
+    private static ClickType lengthZeroMaxType() {
+        ClickType type = selectionOnlyType(13, ENABLE_CLICKLENGTH);
+        type.clickLength = new double[]{0.05, 0.0};
+        return type;
     }
 
     private static ClickId identify(double[][] waveform, ClickType[] clickTypes) {

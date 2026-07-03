@@ -24,7 +24,7 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 | Spectrogram chunking | Fixture parity | CTest parity fixtures | Browser preview and downstream whistle/click features use this foundation. |
 | Click trigger foundation | Fixture parity | Seven Java fixtures: basic, min-sep split/merge, max-length truncation, min-trigger-channel gating/suppression, alternate threshold/filter constants (`docs/154-click-trigger-edge-fixture-sweep.md`) | Cross-chunk filter initialisation and the dual-alpha long-filter path remain outside fixture coverage. |
 | Click feature extraction | Fixture parity | Feature fixtures and edge coverage | Basic feature set covered; broader PAMGuard feature/config combinations still need fixtures. |
-| Basic click classifier | Foundation | Preset constants and edge coverage | Needs more PAMGuard classifier fixture cases before full equivalence. |
+| Basic click classifier | Fixture parity | Eleven-case Java decision fixture covering every criterion, ordering, discard, zero-max-length skip, and no-selection semantics (`docs/155-click-classifier-case-fixture-sweep.md`), plus preset constants and edge coverage | Exporter mirrors the PAMGuard decision loop with PAMGuard transform classes; real PAMGuard project/config import is still a gap. |
 | Click train tracker | Foundation | Active/completed/flush/channel/gap/min-click tests | Not a full PAMGuard click train/localisation module clone yet. |
 | Correlation delay estimator | Fixture parity | Java fixture parity plus edge coverage | Silent/no-peak behavior now guarded to avoid false max-delay outputs. |
 | Delay group estimator | Fixture parity | 3-channel Java fixture plus edge coverage | Pairwise delay order and max-delay validation covered. |
@@ -58,7 +58,6 @@ It is not safe to say:
 
 ## Next parity priorities
 
-- Export more Java fixtures for click classifier settings.
 - Export more Java fixtures for click train creation and train classification/localisation behavior.
 - Pin down PAMGuard bearing localiser semantics for common array geometries.
 - Add whistle/moan localisation fixtures before implementing that path in C++.

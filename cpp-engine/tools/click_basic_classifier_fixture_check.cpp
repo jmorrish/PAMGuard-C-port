@@ -11,7 +11,8 @@
 
 namespace {
 
-struct ClassifierFixture {
+struct ClassifierFixtureRow {
+    std::string case_name;
     int click_type = 0;
     bool discard = false;
 };
@@ -34,31 +35,37 @@ std::vector<std::vector<double>> synthetic_waveform() {
     return waveform;
 }
 
-ClassifierFixture read_fixture(const std::string& path) {
+std::vector<ClassifierFixtureRow> read_fixture(const std::string& path) {
     std::ifstream input(path);
     if (!input) {
         throw std::runtime_error("could not open fixture: " + path);
     }
 
-    std::string header;
+    std::vector<ClassifierFixtureRow> rows;
     std::string line;
-    std::getline(input, header);
-    std::getline(input, line);
-    if (line.empty()) {
-        throw std::runtime_error("fixture did not contain a data row");
-    }
+    while (std::getline(input, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+            line.pop_back();
+        }
+        if (line.empty() || line == "case,clickType,discard") {
+            continue;
+        }
 
-    std::stringstream stream(line);
-    std::string cell;
-    std::vector<std::string> cells;
-    while (std::getline(stream, cell, ',')) {
-        cells.push_back(cell);
+        std::stringstream stream(line);
+        std::string cell;
+        std::vector<std::string> cells;
+        while (std::getline(stream, cell, ',')) {
+            cells.push_back(cell);
+        }
+        if (cells.size() != 3) {
+            throw std::runtime_error("fixture row must have case, clickType, and discard columns: " + line);
+        }
+        rows.push_back(ClassifierFixtureRow{cells[0], std::stoi(cells[1]), cells[2] == "true"});
     }
-    if (cells.size() != 2) {
-        throw std::runtime_error("fixture row must have clickType and discard columns");
+    if (rows.empty()) {
+        throw std::runtime_error("fixture did not contain any case rows");
     }
-
-    return ClassifierFixture{std::stoi(cells[0]), cells[1] == "true"};
+    return rows;
 }
 
 pamguard::detectors::BasicClickTypeConfig passing_type() {
@@ -93,6 +100,70 @@ pamguard::detectors::BasicClickTypeConfig failing_type() {
     type.discard = false;
     type.band1_energy_db = pamguard::detectors::FrequencyRange{210.0, 220.0};
     return type;
+}
+
+pamguard::detectors::BasicClickTypeConfig selection_only_type(int species_code, std::uint32_t which_selections) {
+    auto type = passing_type();
+    type.species_code = species_code;
+    type.discard = false;
+    type.which_selections = which_selections;
+    return type;
+}
+
+pamguard::detectors::BasicClickTypeConfig band_diff_fail_type() {
+    auto type = selection_only_type(8, pamguard::detectors::EnableEnergyBand);
+    type.band_energy_difference_db = 15.0;
+    return type;
+}
+
+pamguard::detectors::BasicClickTypeConfig peak_pos_fail_type() {
+    auto type = selection_only_type(11, pamguard::detectors::EnablePeakFreqPos);
+    type.peak_frequency_range_hz = pamguard::detectors::FrequencyRange{11000.0, 12000.0};
+    return type;
+}
+
+pamguard::detectors::BasicClickTypeConfig peak_width_fail_type() {
+    auto type = selection_only_type(14, pamguard::detectors::EnablePeakFreqWidth);
+    type.peak_width_hz = pamguard::detectors::FrequencyRange{100.0, 500.0};
+    return type;
+}
+
+pamguard::detectors::BasicClickTypeConfig length_fail_type() {
+    auto type = selection_only_type(15, pamguard::detectors::EnableClickLength);
+    type.click_length_ms = pamguard::detectors::FrequencyRange{0.05, 0.10};
+    return type;
+}
+
+pamguard::detectors::BasicClickTypeConfig length_zero_max_type() {
+    auto type = selection_only_type(13, pamguard::detectors::EnableClickLength);
+    type.click_length_ms = pamguard::detectors::FrequencyRange{0.05, 0.0};
+    return type;
+}
+
+struct ClassifierCase {
+    std::string name;
+    std::vector<pamguard::detectors::BasicClickTypeConfig> click_types;
+};
+
+// Case catalogue shared by name with the PAMGuard Java fixture exporter
+// (reference-tools/.../ClickBasicClassifierFixtureExporter.java).
+// Both sides must build identical type lists per case.
+std::vector<ClassifierCase> case_catalogue() {
+    using pamguard::detectors::EnableMeanFrequency;
+    using pamguard::detectors::EnablePeakFreqPos;
+    return {
+        {"all-pass", {failing_type(), passing_type()}},
+        {"band1-range-fail", {failing_type()}},
+        {"band-diff-fail", {band_diff_fail_type()}},
+        {"peak-pos-only-pass", {selection_only_type(11, EnablePeakFreqPos)}},
+        {"peak-pos-only-fail", {peak_pos_fail_type()}},
+        {"peak-width-only-fail", {peak_width_fail_type()}},
+        {"mean-freq-only-pass", {selection_only_type(12, EnableMeanFrequency)}},
+        {"length-only-fail", {length_fail_type()}},
+        {"length-zero-max-pass", {length_zero_max_type()}},
+        {"order-first-wins", {selection_only_type(21, EnableMeanFrequency), selection_only_type(22, EnablePeakFreqPos)}},
+        {"no-selections-pass", {selection_only_type(30, 0)}},
+    };
 }
 
 bool standard_presets_match_pamguard_source() {
@@ -162,30 +233,38 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        pamguard::detectors::BasicClickClassifierConfig failing_config;
-        failing_config.sample_rate_hz = sample_rate_hz;
-        failing_config.click_types = {failing_type()};
-        pamguard::detectors::BasicClickClassifier failing_classifier(failing_config);
-        const auto failing_result = failing_classifier.identify(click);
-        if (failing_result.click_type != 0 || failing_result.discard) {
-            std::cerr << "Non-matching basic click classifier should return default no-type result\n";
+        const auto catalogue = case_catalogue();
+        if (fixture.size() != catalogue.size()) {
+            std::cerr << "Fixture case count mismatch: fixture=" << fixture.size()
+                      << " catalogue=" << catalogue.size() << "\n";
             return 1;
         }
 
-        pamguard::detectors::BasicClickClassifierConfig config;
-        config.sample_rate_hz = sample_rate_hz;
-        config.click_types = {failing_type(), passing_type()};
+        for (std::size_t i = 0; i < catalogue.size(); ++i) {
+            const auto& classifier_case = catalogue[i];
+            const auto& expected = fixture[i];
+            if (expected.case_name != classifier_case.name) {
+                std::cerr << "Fixture case order mismatch at row " << i << ": fixture=" << expected.case_name
+                          << " catalogue=" << classifier_case.name << "\n";
+                return 1;
+            }
 
-        pamguard::detectors::BasicClickClassifier classifier(config);
-        const auto actual = classifier.identify(click);
-        if (actual.click_type != fixture.click_type || actual.discard != fixture.discard) {
-            std::cerr << "Basic click classifier parity failed\n";
-            std::cerr << "expected clickType/discard=" << fixture.click_type << "/" << fixture.discard << "\n";
-            std::cerr << "actual   clickType/discard=" << actual.click_type << "/" << actual.discard << "\n";
-            return 1;
+            pamguard::detectors::BasicClickClassifierConfig config;
+            config.sample_rate_hz = sample_rate_hz;
+            config.click_types = classifier_case.click_types;
+
+            pamguard::detectors::BasicClickClassifier classifier(config);
+            const auto actual = classifier.identify(click);
+            if (actual.click_type != expected.click_type || actual.discard != expected.discard) {
+                std::cerr << "Basic click classifier parity failed for case " << classifier_case.name << "\n";
+                std::cerr << "expected clickType/discard=" << expected.click_type << "/" << expected.discard << "\n";
+                std::cerr << "actual   clickType/discard=" << actual.click_type << "/" << actual.discard << "\n";
+                return 1;
+            }
         }
 
         std::cout << "Basic click classifier parity passed\n";
+        std::cout << "cases=" << catalogue.size() << "\n";
         return 0;
     }
     catch (const std::exception& error) {
