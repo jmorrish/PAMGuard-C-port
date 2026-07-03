@@ -29,6 +29,7 @@ add_library(pamguard_engine
     src/localisation/CorrelationDelayEstimator.cpp
     src/localisation/DelayGroupEstimator.cpp
     src/localisation/FarFieldBearingLocaliser.cpp
+    src/localisation/PairBearingLocaliser.cpp
 )
 
 target_include_directories(pamguard_engine
@@ -174,6 +175,12 @@ add_executable(far_field_bearing_check
 )
 
 target_link_libraries(far_field_bearing_check PRIVATE pamguard_engine)
+
+add_executable(pair_bearing_fixture_check
+    tools/pair_bearing_fixture_check.cpp
+)
+
+target_link_libraries(pair_bearing_fixture_check PRIVATE pamguard_engine)
 
 add_executable(whistle_peak_fixture_check
     tools/whistle_peak_fixture_check.cpp
@@ -355,6 +362,11 @@ add_test(
 add_test(
     NAME far_field_bearing_foundation
     COMMAND far_field_bearing_check
+)
+
+add_test(
+    NAME pair_bearing_basic_parity
+    COMMAND pair_bearing_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/pair-bearing.csv
 )
 
 add_test(

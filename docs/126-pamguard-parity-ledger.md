@@ -29,6 +29,7 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 | Correlation delay estimator | Fixture parity | Java fixture parity plus edge coverage | Silent/no-peak behavior now guarded to avoid false max-delay outputs. |
 | Delay group estimator | Fixture parity | 3-channel Java fixture plus edge coverage | Pairwise delay order and max-delay validation covered. |
 | Far-field click bearing | Foundation | Geometry/config edge coverage and HTTP smoke | Needs deeper PAMGuard bearing localiser parity and array model semantics. |
+| Pair bearing localiser | Fixture parity | Seven-case Java fixture for angle/error including endfire clamp, negative spacing, and three-delay reduction (`docs/157-pair-bearing-localiser-port.md`) | `prepare()`-side array derivation is config-supplied; other PAMGuard bearing localisers (LSQ/MLGrid/simplex) unported; not yet exposed via the service. |
 | Click train localisation summaries | Foundation | Summary tests | Aggregation behavior implemented; needs reference behaviour pinned down for production science. |
 | Click train bearing summaries | Foundation | Summary tests | Same caveat as train localisation summaries. |
 | Whistle peak detector | Fixture parity | Better peak fixture and edge coverage | Needs broader fixture sweep across PAMGuard whistle settings. |
