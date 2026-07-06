@@ -29,7 +29,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 6;
+constexpr int kResultSchemaVersion = 7;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2063,6 +2063,11 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             if (pair.geometry_constrained) {
                 pair_item["maxDelaySamples"] = pair.max_delay_samples;
                 pair_item["hydrophoneDistanceM"] = pair.hydrophone_distance_m;
+            }
+            if (pair.pair_bearing_count > 0) {
+                pair_item["pairBearingCount"] = pair.pair_bearing_count;
+                pair_item["meanPairBearingRadians"] = pair.mean_pair_bearing_radians;
+                pair_item["meanPairBearingDegrees"] = pair.mean_pair_bearing_radians * 180.0 / 3.141592653589793238462643383279502884;
             }
             if (include_delay_seconds) {
                 const double mean_delay_seconds = pair.mean_delay_samples / static_cast<double>(options.sample_rate_hz);

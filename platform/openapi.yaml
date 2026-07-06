@@ -1064,7 +1064,7 @@ components:
       properties:
         schemaVersion:
           type: integer
-          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM.
+          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays.
         sessionId:
           type: string
         inputFrames:
@@ -1614,6 +1614,13 @@ components:
               maxDelaySeconds:
                 type: number
               hydrophoneDistanceM:
+                type: number
+              pairBearingCount:
+                type: integer
+                description: Number of contributing clicks with a valid PAMGuard pair bearing; the mean fields are present when positive.
+              meanPairBearingRadians:
+                type: number
+              meanPairBearingDegrees:
                 type: number
               delayCount:
                 type: integer

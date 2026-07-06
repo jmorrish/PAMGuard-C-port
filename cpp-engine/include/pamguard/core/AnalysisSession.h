@@ -65,6 +65,8 @@ struct ClickTrainPairDelaySummary {
     std::size_t delay_count = 0;
     double mean_delay_samples = 0.0;
     double mean_delay_score = 0.0;
+    std::size_t pair_bearing_count = 0;
+    double mean_pair_bearing_radians = 0.0;
 };
 
 struct ClickTrainLocalisationSummary {

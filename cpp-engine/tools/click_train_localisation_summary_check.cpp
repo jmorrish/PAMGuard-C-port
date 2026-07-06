@@ -21,7 +21,8 @@ pamguard::localisation::ChannelPairDelay delay(
     double max_delay_samples = 0.0,
     double hydrophone_distance_m = 0.0,
     std::size_t audio_channel_a = 0,
-    std::size_t audio_channel_b = 0) {
+    std::size_t audio_channel_b = 0,
+    double pair_bearing_radians = -1.0) {
     pamguard::localisation::ChannelPairDelay result;
     result.pair_index = pair_index;
     result.channel_a = channel_a;
@@ -33,6 +34,10 @@ pamguard::localisation::ChannelPairDelay delay(
     result.hydrophone_distance_m = hydrophone_distance_m;
     result.delay.delay_samples = delay_samples;
     result.delay.delay_score = score;
+    if (pair_bearing_radians >= 0.0) {
+        result.pair_bearing_valid = true;
+        result.pair_bearing_radians = pair_bearing_radians;
+    }
     return result;
 }
 
@@ -66,8 +71,8 @@ int main() {
         const auto summaries = pamguard::core::summarize_click_train_localisations(
             {train, unmatched_train},
             {
-                localisation(100, {delay(0, 0, 1, 2.0, 0.8, 33.0, 1.0, 10, 11), delay(1, 0, 2, -1.0, 0.7, 49.0, 1.5, 10, 12)}),
-                localisation(300, {delay(0, 0, 1, 4.0, 0.6, 33.0, 1.0, 10, 11), delay(1, 0, 2, -3.0, 0.5, 49.0, 1.5, 10, 12)}),
+                localisation(100, {delay(0, 0, 1, 2.0, 0.8, 33.0, 1.0, 10, 11, 1.2), delay(1, 0, 2, -1.0, 0.7, 49.0, 1.5, 10, 12)}),
+                localisation(300, {delay(0, 0, 1, 4.0, 0.6, 33.0, 1.0, 10, 11, 1.6), delay(1, 0, 2, -3.0, 0.5, 49.0, 1.5, 10, 12)}),
                 localisation(900, {delay(0, 0, 1, 100.0, 0.1, 0.0, 0.0, 10, 11)}),
             });
 
@@ -92,6 +97,16 @@ int main() {
             !close(summary.pair_delays[0].mean_delay_samples, 3.0) ||
             !close(summary.pair_delays[0].mean_delay_score, 0.7)) {
             std::cerr << "First pair delay summary mismatch\n";
+            return 1;
+        }
+        if (summary.pair_delays[0].pair_bearing_count != 2 ||
+            !close(summary.pair_delays[0].mean_pair_bearing_radians, 1.4)) {
+            std::cerr << "First pair delay bearing aggregation mismatch\n";
+            return 1;
+        }
+        if (summary.pair_delays[1].pair_bearing_count != 0 ||
+            !close(summary.pair_delays[1].mean_pair_bearing_radians, 0.0)) {
+            std::cerr << "Second pair delay should have no bearing aggregation\n";
             return 1;
         }
         if (summary.pair_delays[1].pair_index != 1 || summary.pair_delays[1].delay_count != 2 ||

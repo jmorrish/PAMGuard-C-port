@@ -275,6 +275,10 @@ std::vector<ClickTrainLocalisationSummary> summarize_click_train_localisations(
                     pair.delay_count = 1;
                     pair.mean_delay_samples = delay.delay.delay_samples;
                     pair.mean_delay_score = delay.delay.delay_score;
+                    if (delay.pair_bearing_valid && std::isfinite(delay.pair_bearing_radians)) {
+                        pair.pair_bearing_count = 1;
+                        pair.mean_pair_bearing_radians = delay.pair_bearing_radians;
+                    }
                     summary.pair_delays.push_back(pair);
                 }
                 else {
@@ -286,6 +290,10 @@ std::vector<ClickTrainLocalisationSummary> summarize_click_train_localisations(
                     found->delay_count += 1;
                     found->mean_delay_samples += delay.delay.delay_samples;
                     found->mean_delay_score += delay.delay.delay_score;
+                    if (delay.pair_bearing_valid && std::isfinite(delay.pair_bearing_radians)) {
+                        found->pair_bearing_count += 1;
+                        found->mean_pair_bearing_radians += delay.pair_bearing_radians;
+                    }
                 }
             }
         }
@@ -294,6 +302,9 @@ std::vector<ClickTrainLocalisationSummary> summarize_click_train_localisations(
             if (pair.delay_count > 0) {
                 pair.mean_delay_samples /= static_cast<double>(pair.delay_count);
                 pair.mean_delay_score /= static_cast<double>(pair.delay_count);
+            }
+            if (pair.pair_bearing_count > 0) {
+                pair.mean_pair_bearing_radians /= static_cast<double>(pair.pair_bearing_count);
             }
         }
         summary.valid = summary.localisation_count > 0 && !summary.pair_delays.empty();
