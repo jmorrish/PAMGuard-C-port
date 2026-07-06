@@ -195,6 +195,12 @@ add_executable(session_lsq_bearing_check
 
 target_link_libraries(session_lsq_bearing_check PRIVATE pamguard_engine)
 
+add_executable(pair_bearing_physical_check
+    tools/pair_bearing_physical_check.cpp
+)
+
+target_link_libraries(pair_bearing_physical_check PRIVATE pamguard_engine)
+
 add_executable(whistle_peak_fixture_check
     tools/whistle_peak_fixture_check.cpp
 )
@@ -390,6 +396,11 @@ add_test(
 add_test(
     NAME session_lsq_bearing_wiring
     COMMAND session_lsq_bearing_check
+)
+
+add_test(
+    NAME pair_bearing_physical_consistency
+    COMMAND pair_bearing_physical_check
 )
 
 add_test(

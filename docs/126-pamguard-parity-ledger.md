@@ -61,6 +61,6 @@ It is not safe to say:
 ## Next parity priorities
 
 - Export more Java fixtures for click train creation and train classification/localisation behavior.
-- Pin engine-vs-PAMGuard delay sign conventions with a controlled end-to-end localisation fixture (pair bearings now aggregate into train summaries at schema v7 as a derived output).
+- Build a Java-side end-to-end localisation fixture with a simulated source to pin PAMGuard's delay-measurement sign against the engine convention now pinned in `docs/162-pair-bearing-physical-convention.md`.
 - Add whistle/moan localisation fixtures before implementing that path in C++.
 - Keep every parity claim tied to a fixture, source trace, or focused regression test.
