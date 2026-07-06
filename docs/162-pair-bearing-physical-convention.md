@@ -30,6 +30,10 @@ So angle `0` points toward the first channel of the pair. PAMGuard's own `PairBe
 
 - `pair_bearing_physical_consistency` passes; full CTest suite passes `52/52`.
 
+## PAMGuard sign equivalence
+
+The existing correlation fixture already pins the Java sign for the same construction: `CorrelationDelayFixtureExporter` drives PAMGuard's real `Correlations.getDelay(channel0, channel1, ...)` with channel 1 arriving five samples later, and the fixture records `+5.003` — positive delay means the second channel is late, and the C++ estimator matches that fixture exactly. Chaining the two results: PAMGuard-positive delays and engine-positive delays mean the same physical lag, and both produce pair bearing `0` toward the first channel under positive spacing.
+
 ## Claim boundary
 
-This pins the engine's own end-to-end convention deterministically. Whether PAMGuard's delay-measurement sign for the same physical scene matches (given its own correlation and array-axis conventions) still needs a Java-side end-to-end fixture with a simulated source; until then, cross-implementation bearing comparisons should be made through delay values (already fixture-pinned) rather than assumed sign conventions.
+The engine end-to-end convention and the Correlations-level sign equivalence are both pinned. The remaining open convention question is PAMGuard's array-axis handling — `PairBearingLocaliser.prepare()` negates the spacing when the pair vector aligns with the array principal axis (`ArrayManager.getArrayDirections`), which reverses the reported angle's reference direction for some array configurations. Reproducing that flip needs array-shape semantics from `ArrayManager`, tracked as part of array model parity.

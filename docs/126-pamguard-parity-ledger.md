@@ -61,6 +61,6 @@ It is not safe to say:
 ## Next parity priorities
 
 - Export more Java fixtures for click train creation and train classification/localisation behavior.
-- Build a Java-side end-to-end localisation fixture with a simulated source to pin PAMGuard's delay-measurement sign against the engine convention now pinned in `docs/162-pair-bearing-physical-convention.md`.
+- Port PAMGuard `ArrayManager` array-shape semantics (principal axis detection and the pair spacing sign flip) so bearing reference directions match PAMGuard for all array configurations; delay-sign equivalence itself is pinned (`docs/162-pair-bearing-physical-convention.md`).
 - Add whistle/moan localisation fixtures before implementing that path in C++.
 - Keep every parity claim tied to a fixture, source trace, or focused regression test.
