@@ -32,6 +32,10 @@ struct ArrayConfiguration {
     std::string id;
     std::vector<ArrayHydrophone> hydrophones;
     double speed_of_sound_mps = 1500.0;
+    double speed_of_sound_error_mps = 0.0;
+    double timing_error_seconds = 0.0;
+    double spacing_error_m = 0.0;
+    double wobble_radians = 0.0;
 };
 
 struct FftConfig {

@@ -16,6 +16,9 @@ struct ChannelPairDelay {
     bool geometry_constrained = false;
     double max_delay_samples = 0.0;
     double hydrophone_distance_m = 0.0;
+    bool pair_bearing_valid = false;
+    double pair_bearing_radians = 0.0;
+    double pair_bearing_error_radians = 0.0;
     TimeDelayData delay;
 };
 

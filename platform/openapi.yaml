@@ -874,6 +874,22 @@ components:
             speedOfSoundMps:
               type: number
               exclusiveMinimum: 0
+            speedOfSoundErrorMps:
+              type: number
+              minimum: 0
+              description: Sound speed uncertainty used by the pair bearing error estimate.
+            timingErrorSeconds:
+              type: number
+              minimum: 0
+              description: Delay timing uncertainty used by the pair bearing error estimate.
+            spacingErrorM:
+              type: number
+              minimum: 0
+              description: Hydrophone spacing uncertainty used by the pair bearing error estimate.
+            wobbleRadians:
+              type: number
+              minimum: 0
+              description: Pair axis wobble term used by the pair bearing error estimate.
             hydrophones:
               type: array
               items:
@@ -1048,7 +1064,7 @@ components:
       properties:
         schemaVersion:
           type: integer
-          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs.
+          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields.
         sessionId:
           type: string
         inputFrames:
@@ -1134,6 +1150,14 @@ components:
                       type: number
                     hydrophoneDistanceM:
                       type: number
+                    pairBearingRadians:
+                      type: number
+                      description: PAMGuard PairBearingLocaliser angle from the pair axis, present for geometry-constrained delays.
+                    pairBearingDegrees:
+                      type: number
+                    pairBearingErrorRadians:
+                      type: number
+                      description: PAMGuard pair bearing error estimate; omitted when the reference formula yields a non-finite value (for example at the endfire clamp).
                     delayScore:
                       type: number
         clickTrainLocalisations:

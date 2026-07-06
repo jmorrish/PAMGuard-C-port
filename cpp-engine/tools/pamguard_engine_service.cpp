@@ -29,7 +29,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 4;
+constexpr int kResultSchemaVersion = 5;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -1798,6 +1798,16 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
     const auto array = body.value("array", json::object());
     config.array.id = array.value("id", config.array.id);
     config.array.speed_of_sound_mps = array.value("speedOfSoundMps", config.array.speed_of_sound_mps);
+    config.array.speed_of_sound_error_mps = array.value("speedOfSoundErrorMps", config.array.speed_of_sound_error_mps);
+    config.array.timing_error_seconds = array.value("timingErrorSeconds", config.array.timing_error_seconds);
+    config.array.spacing_error_m = array.value("spacingErrorM", config.array.spacing_error_m);
+    config.array.wobble_radians = array.value("wobbleRadians", config.array.wobble_radians);
+    if (config.array.speed_of_sound_error_mps < 0.0 || !std::isfinite(config.array.speed_of_sound_error_mps) ||
+        config.array.timing_error_seconds < 0.0 || !std::isfinite(config.array.timing_error_seconds) ||
+        config.array.spacing_error_m < 0.0 || !std::isfinite(config.array.spacing_error_m) ||
+        config.array.wobble_radians < 0.0 || !std::isfinite(config.array.wobble_radians)) {
+        throw std::invalid_argument("array.speedOfSoundErrorMps, timingErrorSeconds, spacingErrorM, and wobbleRadians must be non-negative and finite");
+    }
     if (array.contains("hydrophones")) {
         for (const auto& hydrophone : array.at("hydrophones")) {
             pamguard::core::ArrayHydrophone item;
@@ -1995,6 +2005,13 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 delay_item["hydrophoneDistanceM"] = delay.hydrophone_distance_m;
                 if (include_delay_seconds) {
                     delay_item["maxDelaySeconds"] = delay.max_delay_samples / static_cast<double>(options.sample_rate_hz);
+                }
+            }
+            if (delay.pair_bearing_valid && std::isfinite(delay.pair_bearing_radians)) {
+                delay_item["pairBearingRadians"] = delay.pair_bearing_radians;
+                delay_item["pairBearingDegrees"] = delay.pair_bearing_radians * 180.0 / 3.141592653589793238462643383279502884;
+                if (std::isfinite(delay.pair_bearing_error_radians)) {
+                    delay_item["pairBearingErrorRadians"] = delay.pair_bearing_error_radians;
                 }
             }
             loc["delays"].push_back(std::move(delay_item));
@@ -2310,6 +2327,10 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
     body["array"] = {
         {"id", config.array.id},
         {"speedOfSoundMps", config.array.speed_of_sound_mps},
+        {"speedOfSoundErrorMps", config.array.speed_of_sound_error_mps},
+        {"timingErrorSeconds", config.array.timing_error_seconds},
+        {"spacingErrorM", config.array.spacing_error_m},
+        {"wobbleRadians", config.array.wobble_radians},
         {"hydrophoneCount", config.array.hydrophones.size()},
         {"clickLocalisationReadiness", click_localisation_readiness_to_json(config)},
     };

@@ -5,6 +5,8 @@
 #include <complex>
 #include <utility>
 
+#include "pamguard/localisation/PairBearingLocaliser.h"
+
 namespace pamguard::core {
 
 namespace {
@@ -98,7 +100,7 @@ std::vector<double> max_delay_samples_from_geometry(const std::vector<ClickPairG
     return max_delays;
 }
 
-void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, const std::vector<ClickPairGeometry>& geometry) {
+void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, const std::vector<ClickPairGeometry>& geometry, const AnalysisConfig& config) {
     if (delays.size() != geometry.size()) {
         return;
     }
@@ -108,6 +110,22 @@ void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, c
         delays[i].geometry_constrained = geometry[i].constrained;
         delays[i].max_delay_samples = geometry[i].max_delay_samples;
         delays[i].hydrophone_distance_m = geometry[i].hydrophone_distance_m;
+        if (geometry[i].constrained && geometry[i].hydrophone_distance_m > 0.0 && config.sample_rate_hz != 0) {
+            localisation::PairBearingConfig pair_config;
+            pair_config.spacing_m = geometry[i].hydrophone_distance_m;
+            pair_config.spacing_error_m = config.array.spacing_error_m;
+            pair_config.speed_of_sound_mps = config.array.speed_of_sound_mps;
+            pair_config.speed_of_sound_error_mps = config.array.speed_of_sound_error_mps;
+            pair_config.timing_error_seconds = config.array.timing_error_seconds;
+            pair_config.wobble_radians = config.array.wobble_radians;
+            const localisation::PairBearingLocaliser pair_localiser(pair_config);
+            const double delay_seconds = delays[i].delay.delay_samples / static_cast<double>(config.sample_rate_hz);
+            if (const auto pair_bearing = pair_localiser.localise({delay_seconds})) {
+                delays[i].pair_bearing_valid = true;
+                delays[i].pair_bearing_radians = pair_bearing->angle_radians;
+                delays[i].pair_bearing_error_radians = pair_bearing->error_radians;
+            }
+        }
     }
 }
 
@@ -358,7 +376,7 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
             localisation.delays = click_delay_estimator_.estimate_delays(
                 click.waveform,
                 max_delay_samples_from_geometry(pair_geometry));
-            attach_pair_geometry(localisation.delays, pair_geometry);
+            attach_pair_geometry(localisation.delays, pair_geometry, config_);
             result.click_localisations.push_back(std::move(localisation));
             if (click_bearing_localiser_) {
                 ClickBearingResult bearing;
