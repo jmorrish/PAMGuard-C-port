@@ -29,7 +29,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 5;
+constexpr int kResultSchemaVersion = 6;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2015,6 +2015,22 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 }
             }
             loc["delays"].push_back(std::move(delay_item));
+        }
+        if (localisation.lsq_bearing.valid) {
+            json lsq_item = {
+                {"azimuthRadians", localisation.lsq_bearing.azimuth_radians},
+                {"azimuthDegrees", localisation.lsq_bearing.azimuth_radians * 180.0 / 3.141592653589793238462643383279502884},
+                {"elevationRadians", localisation.lsq_bearing.elevation_radians},
+                {"elevationDegrees", localisation.lsq_bearing.elevation_radians * 180.0 / 3.141592653589793238462643383279502884},
+                {"usedPairs", localisation.lsq_bearing.used_pairs},
+            };
+            if (std::isfinite(localisation.lsq_bearing.azimuth_error_radians)) {
+                lsq_item["azimuthErrorRadians"] = localisation.lsq_bearing.azimuth_error_radians;
+            }
+            if (std::isfinite(localisation.lsq_bearing.elevation_error_radians)) {
+                lsq_item["elevationErrorRadians"] = localisation.lsq_bearing.elevation_error_radians;
+            }
+            loc["lsqBearing"] = std::move(lsq_item);
         }
         attach_related_train_ids(loc, localisation.click_start_sample, train_ids_by_sample);
         out["clickLocalisations"].push_back(std::move(loc));

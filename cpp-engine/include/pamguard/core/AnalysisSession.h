@@ -15,10 +15,20 @@
 
 namespace pamguard::core {
 
+struct ClickLsqBearingResult {
+    bool valid = false;
+    double azimuth_radians = 0.0;
+    double elevation_radians = 0.0;
+    double azimuth_error_radians = 0.0;
+    double elevation_error_radians = 0.0;
+    std::size_t used_pairs = 0;
+};
+
 struct ClickLocalisationResult {
     std::size_t click_index = 0;
     std::int64_t click_start_sample = 0;
     std::vector<localisation::ChannelPairDelay> delays;
+    ClickLsqBearingResult lsq_bearing;
 };
 
 struct ClickBearingResult {

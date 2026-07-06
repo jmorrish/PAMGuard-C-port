@@ -4,7 +4,7 @@ All engine result JSON bodies now include:
 
 ```json
 {
-  "schemaVersion": 5
+  "schemaVersion": 6
 }
 ```
 
@@ -22,6 +22,7 @@ The HTTP service smoke asserts the health endpoint, live PCM result body, and ar
 
 ## Version history
 
+- `6`: Adds an `lsqBearing` object on click localisations (PAMGuard LSQ bearing localiser) for sessions with four or more fully-geometry hydrophones and positive `spacingErrorM`.
 - `5`: Adds PAMGuard pair bearing outputs (`pairBearingRadians`, `pairBearingDegrees`, `pairBearingErrorRadians`) on geometry-constrained click localisation delay pairs, plus array error/wobble session config fields.
 - `4`: Adds audio-channel mapping and geometry constraint metadata to click localisation and click train localisation pair-delay outputs.
 - `3`: Adds physical delay-unit fields to click localisation and click train localisation outputs.

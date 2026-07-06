@@ -1064,7 +1064,7 @@ components:
       properties:
         schemaVersion:
           type: integer
-          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields.
+          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM.
         sessionId:
           type: string
         inputFrames:
@@ -1160,6 +1160,26 @@ components:
                       description: PAMGuard pair bearing error estimate; omitted when the reference formula yields a non-finite value (for example at the endfire clamp).
                     delayScore:
                       type: number
+              lsqBearing:
+                type: object
+                description: PAMGuard LSQBearingLocaliser output, present for sessions with four or more hydrophones with full geometry and positive spacingErrorM.
+                properties:
+                  azimuthRadians:
+                    type: number
+                  azimuthDegrees:
+                    type: number
+                  elevationRadians:
+                    type: number
+                  elevationDegrees:
+                    type: number
+                  azimuthErrorRadians:
+                    type: number
+                    description: Curvature-based error estimate; omitted when non-finite.
+                  elevationErrorRadians:
+                    type: number
+                    description: Curvature-based error estimate; omitted when non-finite.
+                  usedPairs:
+                    type: integer
         clickTrainLocalisations:
           type: array
           items:

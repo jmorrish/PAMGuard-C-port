@@ -189,6 +189,12 @@ add_executable(lsq_bearing_fixture_check
 
 target_link_libraries(lsq_bearing_fixture_check PRIVATE pamguard_engine)
 
+add_executable(session_lsq_bearing_check
+    tools/session_lsq_bearing_check.cpp
+)
+
+target_link_libraries(session_lsq_bearing_check PRIVATE pamguard_engine)
+
 add_executable(whistle_peak_fixture_check
     tools/whistle_peak_fixture_check.cpp
 )
@@ -379,6 +385,11 @@ add_test(
 add_test(
     NAME lsq_bearing_basic_parity
     COMMAND lsq_bearing_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/lsq-bearing.csv
+)
+
+add_test(
+    NAME session_lsq_bearing_wiring
+    COMMAND session_lsq_bearing_check
 )
 
 add_test(

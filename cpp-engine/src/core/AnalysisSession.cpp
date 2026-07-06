@@ -5,6 +5,7 @@
 #include <complex>
 #include <utility>
 
+#include "pamguard/localisation/LsqBearingLocaliser.h"
 #include "pamguard/localisation/PairBearingLocaliser.h"
 
 namespace pamguard::core {
@@ -44,6 +45,9 @@ struct ClickPairGeometry {
     bool constrained = false;
     double max_delay_samples = 0.0;
     double hydrophone_distance_m = 0.0;
+    double baseline_x_m = 0.0;
+    double baseline_y_m = 0.0;
+    double baseline_z_m = 0.0;
 };
 
 bool can_constrain_click_geometry(const AnalysisConfig& config, const std::vector<std::size_t>& click_channels) {
@@ -80,6 +84,9 @@ std::vector<ClickPairGeometry> click_pair_geometry(const AnalysisConfig& config,
                     pair.constrained = true;
                     pair.max_delay_samples = std::ceil(seconds * static_cast<double>(config.sample_rate_hz)) + 1.0;
                     pair.hydrophone_distance_m = distance_m;
+                    pair.baseline_x_m = hydrophone_b->x_m - hydrophone_a->x_m;
+                    pair.baseline_y_m = hydrophone_b->y_m - hydrophone_a->y_m;
+                    pair.baseline_z_m = hydrophone_b->z_m - hydrophone_a->z_m;
                 }
             }
             geometry.push_back(pair);
@@ -126,6 +133,47 @@ void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, c
                 delays[i].pair_bearing_error_radians = pair_bearing->error_radians;
             }
         }
+    }
+}
+
+void attach_lsq_bearing(ClickLocalisationResult& localisation, const std::vector<ClickPairGeometry>& geometry,
+                        std::size_t click_channel_count, const AnalysisConfig& config) {
+    // PAMGuard's LSQ bearing localiser needs at least four hydrophones (any
+    // three-hydrophone pair set is rank deficient) and nonzero separation
+    // errors for its fit weights, so LSQ output requires spacingErrorM > 0.
+    if (click_channel_count < 4 || config.sample_rate_hz == 0 || config.array.spacing_error_m <= 0.0 ||
+        localisation.delays.size() != geometry.size() || geometry.empty()) {
+        return;
+    }
+
+    localisation::LsqBearingConfig lsq_config;
+    lsq_config.speed_of_sound_mps = config.array.speed_of_sound_mps;
+    lsq_config.speed_of_sound_error_mps = config.array.speed_of_sound_error_mps;
+    lsq_config.timing_error_seconds = config.array.timing_error_seconds;
+    std::vector<double> delays_seconds;
+    delays_seconds.reserve(geometry.size());
+    for (std::size_t i = 0; i < geometry.size(); ++i) {
+        const auto& pair = geometry[i];
+        if (!pair.constrained || pair.hydrophone_distance_m <= 0.0) {
+            return;
+        }
+        localisation::LsqPairGeometry lsq_pair;
+        lsq_pair.baseline_m = {pair.baseline_x_m, pair.baseline_y_m, pair.baseline_z_m};
+        const double error_scale = config.array.spacing_error_m / pair.hydrophone_distance_m;
+        lsq_pair.error_m = {pair.baseline_x_m * error_scale, pair.baseline_y_m * error_scale, pair.baseline_z_m * error_scale};
+        lsq_config.pairs.push_back(lsq_pair);
+        delays_seconds.push_back(localisation.delays[i].delay.delay_samples / static_cast<double>(config.sample_rate_hz));
+    }
+
+    const localisation::LsqBearingLocaliser lsq_localiser(std::move(lsq_config));
+    const auto lsq = lsq_localiser.localise(delays_seconds);
+    if (lsq.has_value() && std::isfinite(lsq->azimuth_radians) && std::isfinite(lsq->elevation_radians)) {
+        localisation.lsq_bearing.valid = true;
+        localisation.lsq_bearing.azimuth_radians = lsq->azimuth_radians;
+        localisation.lsq_bearing.elevation_radians = lsq->elevation_radians;
+        localisation.lsq_bearing.azimuth_error_radians = lsq->azimuth_error_radians;
+        localisation.lsq_bearing.elevation_error_radians = lsq->elevation_error_radians;
+        localisation.lsq_bearing.used_pairs = geometry.size();
     }
 }
 
@@ -377,6 +425,7 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                 click.waveform,
                 max_delay_samples_from_geometry(pair_geometry));
             attach_pair_geometry(localisation.delays, pair_geometry, config_);
+            attach_lsq_bearing(localisation, pair_geometry, click.channels.size(), config_);
             result.click_localisations.push_back(std::move(localisation));
             if (click_bearing_localiser_) {
                 ClickBearingResult bearing;

@@ -40,6 +40,7 @@ When click localisation is enabled:
 - Delay search windows are constrained from hydrophone spacing and speed of sound when array geometry is available.
 - Far-field bearing foundation estimates bearing vectors from pair delays and hydrophone geometry.
 - Geometry-constrained delay pairs additionally carry PAMGuard `PairBearingLocaliser` angle/error outputs (`pairBearingRadians`, `pairBearingDegrees`, `pairBearingErrorRadians`) from result schema version 5 (`docs/159-pair-bearing-service-output.md`).
+- Sessions with four or more fully-geometry hydrophones and positive `spacingErrorM` additionally receive a per-click PAMGuard `lsqBearing` object from result schema version 6 (`docs/160-lsq-bearing-service-output.md`).
 - Click train summaries aggregate per-click delay/bearing outputs into train-level summaries.
 
 ## API/archive outputs
@@ -83,7 +84,7 @@ It is not safe yet to claim full PAMGuard click localisation equivalence.
 
 Remaining work includes:
 
-- LSQ bearing localiser selection for four-plus hydrophone sessions (pair bearing is exposed; the ported LSQ localiser is engine-only so far).
+- PAMGuard-style array-shape-based bearing localiser selection (current selection is a channel-count rule) and train-level bearing aggregation.
 - More array geometry models.
 - Whistle/moan localisation.
 - Real multi-channel Icecast/BUTT soak tests.
