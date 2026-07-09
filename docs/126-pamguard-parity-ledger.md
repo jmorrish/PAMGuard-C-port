@@ -36,7 +36,7 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 | Click train bearing summaries | Foundation | Summary tests | Same caveat as train localisation summaries. |
 | Whistle peak detector | Fixture parity | Better peak fixture and edge coverage | Needs broader fixture sweep across PAMGuard whistle settings. |
 | Connected-region whistle/moan tracker | Fixture parity | Basic, flush, stub, discard, branch, rejoin, split/cross fixtures | Strong current fixture coverage for contour-building behaviour. |
-| Whistle/moan localisation | Gap | None yet | PAMGuard whistle TOAD/bearing localisation is not ported. |
+| Whistle/moan localisation | Foundation | Contour delay core (`WhistleDelays.DelayMeasure`) ported with five-case Java fixture parity via real FastFFT/Correlations (`docs/164-whistle-delay-foundation.md`) | FFT-block plumbing, max-delay derivation, bearing conversion, and complex-FFT retention in the whistle path remain unported. |
 | PAMGuard project/config import | Gap | None yet | Current config is explicit JSON, not PAMGuard project import. |
 | Archive detector events | Operational | HTTP smoke and indexed sidecar tests | Supports web/API workflows; not detector maths. |
 | Multi-session service operation | Operational | 50-session smoke | Functional isolation smoke, not a detector throughput benchmark. |
@@ -55,7 +55,7 @@ It is not safe to say:
 
 - The click detector module is a full PAMGuard clone.
 - The click train/localisation modules are fully equivalent to PAMGuard.
-- Whistle/moan localisation is implemented.
+- Whistle/moan localisation is implemented beyond the contour delay core.
 - PAMGuard project import/config equivalence is implemented.
 - The system has production throughput proof for 50+ real detector-heavy live streams.
 
@@ -63,5 +63,5 @@ It is not safe to say:
 
 - Export more Java fixtures for click train creation and train classification/localisation behavior.
 - Extend array-shape semantics to multi-streamer arrays and apply whole-array direction context where PAMGuard uses it beyond pair bearings (`docs/163-array-shape-semantics-port.md` covers shape/direction parity and the pair spacing sign flip).
-- Add whistle/moan localisation fixtures before implementing that path in C++.
+- Extend the whistle delay foundation with complex-FFT retention in the whistle path, PAMGuard max-delay derivation, and bearing conversion so whistle bearings reach the service (`docs/164-whistle-delay-foundation.md`).
 - Keep every parity claim tied to a fixture, source trace, or focused regression test.

@@ -23,6 +23,12 @@ public:
     [[nodiscard]] static double parabolic_correction(double y1, double y2, double y3) noexcept;
     [[nodiscard]] static double parabolic_height(double y1, double y2, double y3) noexcept;
 
+    /** PAMGuard Correlations.getInterpolatedPeak over an inverse-FFT correlation. */
+    [[nodiscard]] static TimeDelayData interpolated_peak(
+        const std::vector<double>& inverse_correlation,
+        double scale,
+        double max_delay_samples);
+
 private:
     dsp::RealFft fft_;
 
@@ -34,10 +40,6 @@ private:
         const dsp::ComplexSpectrum& spectrum_1,
         const dsp::ComplexSpectrum& spectrum_2,
         std::size_t fft_length);
-    [[nodiscard]] static TimeDelayData interpolated_peak(
-        const std::vector<double>& inverse_correlation,
-        double scale,
-        double max_delay_samples);
 };
 
 } // namespace pamguard::localisation
