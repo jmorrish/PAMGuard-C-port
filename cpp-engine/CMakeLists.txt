@@ -215,6 +215,12 @@ add_executable(whistle_delay_fixture_check
 
 target_link_libraries(whistle_delay_fixture_check PRIVATE pamguard_engine)
 
+add_executable(session_whistle_delay_check
+    tools/session_whistle_delay_check.cpp
+)
+
+target_link_libraries(session_whistle_delay_check PRIVATE pamguard_engine)
+
 add_executable(whistle_peak_fixture_check
     tools/whistle_peak_fixture_check.cpp
 )
@@ -425,6 +431,11 @@ add_test(
 add_test(
     NAME whistle_delay_basic_parity
     COMMAND whistle_delay_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/whistle/whistle-delay.csv
+)
+
+add_test(
+    NAME session_whistle_delay_wiring
+    COMMAND session_whistle_delay_check
 )
 
 add_test(

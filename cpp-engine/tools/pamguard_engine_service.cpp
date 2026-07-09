@@ -29,7 +29,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 8;
+constexpr int kResultSchemaVersion = 9;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2271,6 +2271,48 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             item["peakSweepRateHzPerSecond"] = bin_value_to_hz(region.peak_sweep_rate_bins_per_second);
         }
         out["whistleRegions"].push_back(std::move(item));
+    }
+
+    out["whistleDelays"] = json::array();
+    for (const auto& whistle_delay : result.whistle_delays) {
+        json item;
+        item["channel"] = whistle_delay.channel;
+        item["regionNumber"] = whistle_delay.region_number;
+        item["startSample"] = whistle_delay.start_sample;
+        item["delays"] = json::array();
+        for (const auto& delay : whistle_delay.delays) {
+            json delay_item = {
+                {"pairIndex", delay.pair_index},
+                {"audioChannelA", delay.audio_channel_a},
+                {"audioChannelB", delay.audio_channel_b},
+                {"delaySamples", delay.delay.delay_samples},
+                {"delayScore", delay.delay.delay_score},
+            };
+            if (include_delay_seconds) {
+                const double delay_seconds = delay.delay.delay_samples / static_cast<double>(options.sample_rate_hz);
+                delay_item["delaySeconds"] = delay_seconds;
+                if (include_path_difference_m) {
+                    delay_item["pathDifferenceM"] = delay_seconds * options.speed_of_sound_mps;
+                }
+            }
+            delay_item["geometryConstrained"] = delay.geometry_constrained;
+            if (delay.geometry_constrained) {
+                delay_item["maxDelaySamples"] = delay.max_delay_samples;
+                delay_item["hydrophoneDistanceM"] = delay.hydrophone_distance_m;
+                if (include_delay_seconds) {
+                    delay_item["maxDelaySeconds"] = delay.max_delay_samples / static_cast<double>(options.sample_rate_hz);
+                }
+            }
+            if (delay.pair_bearing_valid && std::isfinite(delay.pair_bearing_radians)) {
+                delay_item["pairBearingRadians"] = delay.pair_bearing_radians;
+                delay_item["pairBearingDegrees"] = delay.pair_bearing_radians * 180.0 / 3.141592653589793238462643383279502884;
+                if (std::isfinite(delay.pair_bearing_error_radians)) {
+                    delay_item["pairBearingErrorRadians"] = delay.pair_bearing_error_radians;
+                }
+            }
+            item["delays"].push_back(std::move(delay_item));
+        }
+        out["whistleDelays"].push_back(std::move(item));
     }
 
     return out;

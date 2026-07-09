@@ -1064,7 +1064,7 @@ components:
       properties:
         schemaVersion:
           type: integer
-          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
+          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard array-axis reference directions. Version 9 adds whistleDelays entries carrying per-region cross-channel contour delays with geometry and pair bearing metadata. Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
         sessionId:
           type: string
         inputFrames:
@@ -1196,6 +1196,52 @@ components:
           type: array
           items:
             type: object
+        whistleDelays:
+          type: array
+          description: Cross-channel contour delays per completed whistle region, present for multi-channel whistle sessions with hydrophone geometry.
+          items:
+            type: object
+            properties:
+              channel:
+                type: integer
+              regionNumber:
+                type: integer
+              startSample:
+                type: integer
+                format: int64
+              delays:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    pairIndex:
+                      type: integer
+                    audioChannelA:
+                      type: integer
+                    audioChannelB:
+                      type: integer
+                    delaySamples:
+                      type: number
+                    delaySeconds:
+                      type: number
+                    pathDifferenceM:
+                      type: number
+                    delayScore:
+                      type: number
+                    geometryConstrained:
+                      type: boolean
+                    maxDelaySamples:
+                      type: number
+                    maxDelaySeconds:
+                      type: number
+                    hydrophoneDistanceM:
+                      type: number
+                    pairBearingRadians:
+                      type: number
+                    pairBearingDegrees:
+                      type: number
+                    pairBearingErrorRadians:
+                      type: number
         whistleRegions:
           type: array
           items:

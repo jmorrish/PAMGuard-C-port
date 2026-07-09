@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -80,6 +81,13 @@ struct ClickTrainLocalisationSummary {
     std::vector<ClickTrainPairDelaySummary> pair_delays;
 };
 
+struct WhistleRegionDelayResult {
+    std::size_t channel = 0;
+    std::size_t region_number = 0;
+    std::int64_t start_sample = 0;
+    std::vector<localisation::ChannelPairDelay> delays;
+};
+
 struct AnalysisResult {
     std::vector<dsp::SpectrogramFrame> spectrogram_frames;
     std::vector<detectors::ClickDetectionResult> clicks;
@@ -92,6 +100,7 @@ struct AnalysisResult {
     std::vector<ClickTrainBearingSummary> click_train_bearings;
     std::vector<detectors::WhistlePeak> whistle_peaks;
     std::vector<detectors::ConnectedRegionResult> whistle_regions;
+    std::vector<WhistleRegionDelayResult> whistle_delays;
 };
 
 [[nodiscard]] std::vector<ClickTrainBearingSummary> summarize_click_train_bearings(
@@ -123,6 +132,11 @@ private:
     std::optional<localisation::FarFieldBearingLocaliser> click_bearing_localiser_;
     std::unordered_map<std::size_t, detectors::WhistlePeakDetector> whistle_peak_detectors_;
     std::unordered_map<std::size_t, detectors::ConnectedRegionTracker> whistle_region_trackers_;
+    std::unordered_map<std::size_t, std::deque<dsp::SpectrogramFrame>> whistle_fft_history_;
+
+    [[nodiscard]] bool whistle_delays_enabled() const;
+    void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);
+    void compute_whistle_delays(AnalysisResult& result);
 };
 
 } // namespace pamguard::core

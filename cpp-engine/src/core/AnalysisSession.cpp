@@ -8,6 +8,7 @@
 #include "pamguard/localisation/ArrayShape.h"
 #include "pamguard/localisation/LsqBearingLocaliser.h"
 #include "pamguard/localisation/PairBearingLocaliser.h"
+#include "pamguard/localisation/WhistleDelayEstimator.h"
 
 namespace pamguard::core {
 
@@ -482,6 +483,7 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     }
     if (!whistle_peak_detectors_.empty() || !whistle_region_trackers_.empty()) {
         for (const auto& frame : result.spectrogram_frames) {
+            retain_whistle_fft_frame(frame);
             const auto magnitude_squared = pamguard_packed_magnitude_squared(frame.bins);
             std::vector<detectors::WhistlePeak> frame_peaks;
 
@@ -517,6 +519,7 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
             }
         }
     }
+    compute_whistle_delays(result);
     return result;
 }
 
@@ -529,7 +532,123 @@ AnalysisResult AnalysisSession::flush() {
         auto regions = tracker.flush();
         result.whistle_regions.insert(result.whistle_regions.end(), regions.begin(), regions.end());
     }
+    compute_whistle_delays(result);
     return result;
+}
+
+bool AnalysisSession::whistle_delays_enabled() const {
+    return whistle_region_trackers_.size() >= 2 && config_.array.hydrophones.size() >= 2 &&
+        config_.array.speed_of_sound_mps > 0.0 && config_.sample_rate_hz != 0 &&
+        config_.detector.fft.fft_length >= 4;
+}
+
+void AnalysisSession::retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame) {
+    if (!whistle_delays_enabled()) {
+        return;
+    }
+    // PAMGuard searches backwards through the retained FFT data block and
+    // accepts partial coverage when older slices have been discarded; the
+    // engine keeps a bounded per-channel history with the same effect.
+    constexpr std::size_t max_history_slices = 512;
+    auto& history = whistle_fft_history_[frame.channel];
+    history.push_back(frame);
+    while (history.size() > max_history_slices) {
+        history.pop_front();
+    }
+}
+
+void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
+    if (!whistle_delays_enabled() || result.whistle_regions.empty()) {
+        return;
+    }
+
+    std::vector<std::size_t> whistle_channels;
+    whistle_channels.reserve(whistle_region_trackers_.size());
+    for (const auto& [channel, _] : whistle_region_trackers_) {
+        whistle_channels.push_back(channel);
+    }
+    std::sort(whistle_channels.begin(), whistle_channels.end());
+
+    const auto fft_length = config_.detector.fft.fft_length;
+    for (const auto& region : result.whistle_regions) {
+        WhistleRegionDelayResult delay_result;
+        delay_result.channel = region.channel;
+        delay_result.region_number = region.region_number;
+        delay_result.start_sample = region.start_sample;
+
+        for (const auto other_channel : whistle_channels) {
+            if (other_channel == region.channel) {
+                continue;
+            }
+            const auto channel_a = std::min(region.channel, other_channel);
+            const auto channel_b = std::max(region.channel, other_channel);
+            auto pair_geometry = click_pair_geometry(config_, {channel_a, channel_b});
+            if (pair_geometry.size() != 1 || !pair_geometry[0].constrained ||
+                pair_geometry[0].hydrophone_distance_m <= 0.0) {
+                continue;
+            }
+
+            const auto history_a = whistle_fft_history_.find(channel_a);
+            const auto history_b = whistle_fft_history_.find(channel_b);
+            if (history_a == whistle_fft_history_.end() || history_b == whistle_fft_history_.end()) {
+                continue;
+            }
+
+            localisation::WhistleDelayEstimator estimator(fft_length);
+            bool accumulated = false;
+            for (const auto& slice : region.slices) {
+                const dsp::SpectrogramFrame* frame_a = nullptr;
+                const dsp::SpectrogramFrame* frame_b = nullptr;
+                for (auto it = history_a->second.rbegin(); it != history_a->second.rend(); ++it) {
+                    if (it->fft_slice == slice.slice_number) {
+                        frame_a = &*it;
+                        break;
+                    }
+                }
+                for (auto it = history_b->second.rbegin(); it != history_b->second.rend(); ++it) {
+                    if (it->fft_slice == slice.slice_number) {
+                        frame_b = &*it;
+                        break;
+                    }
+                }
+                if (frame_a == nullptr || frame_b == nullptr) {
+                    continue;
+                }
+                for (const auto& peak : slice.peak_info) {
+                    if (peak.size() < 3) {
+                        continue;
+                    }
+                    for (int bin = peak[0]; bin <= peak[2]; ++bin) {
+                        if (bin < 0 || static_cast<std::size_t>(bin) >= fft_length / 2 ||
+                            static_cast<std::size_t>(bin) >= frame_a->bins.size() ||
+                            static_cast<std::size_t>(bin) >= frame_b->bins.size()) {
+                            continue;
+                        }
+                        estimator.add_fft_data(frame_a->bins[static_cast<std::size_t>(bin)],
+                                               frame_b->bins[static_cast<std::size_t>(bin)],
+                                               static_cast<std::size_t>(bin));
+                        accumulated = true;
+                    }
+                }
+            }
+            if (!accumulated) {
+                continue;
+            }
+
+            std::vector<localisation::ChannelPairDelay> pair_delays(1);
+            pair_delays[0].pair_index = delay_result.delays.size();
+            pair_delays[0].channel_a = 0;
+            pair_delays[0].channel_b = 1;
+            pair_delays[0].delay = estimator.get_delay(pair_geometry[0].max_delay_samples);
+            attach_pair_geometry(pair_delays, pair_geometry, config_);
+            pair_delays[0].pair_index = delay_result.delays.size();
+            delay_result.delays.push_back(std::move(pair_delays[0]));
+        }
+
+        if (!delay_result.delays.empty()) {
+            result.whistle_delays.push_back(std::move(delay_result));
+        }
+    }
 }
 
 std::vector<dsp::SpectrogramFrame> AnalysisSession::process_audio(const AudioChunk& chunk) {
