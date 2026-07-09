@@ -29,7 +29,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 7;
+constexpr int kResultSchemaVersion = 8;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;

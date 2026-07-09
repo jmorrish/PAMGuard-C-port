@@ -1064,7 +1064,7 @@ components:
       properties:
         schemaVersion:
           type: integer
-          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays.
+          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
         sessionId:
           type: string
         inputFrames:

@@ -26,6 +26,7 @@ add_library(pamguard_engine
     src/dsp/SpectrogramEngine.cpp
     src/dsp/WindowFunction.cpp
     src/io/WavReader.cpp
+    src/localisation/ArrayShape.cpp
     src/localisation/CorrelationDelayEstimator.cpp
     src/localisation/DelayGroupEstimator.cpp
     src/localisation/FarFieldBearingLocaliser.cpp
@@ -200,6 +201,12 @@ add_executable(pair_bearing_physical_check
 )
 
 target_link_libraries(pair_bearing_physical_check PRIVATE pamguard_engine)
+
+add_executable(array_shape_fixture_check
+    tools/array_shape_fixture_check.cpp
+)
+
+target_link_libraries(array_shape_fixture_check PRIVATE pamguard_engine)
 
 add_executable(whistle_peak_fixture_check
     tools/whistle_peak_fixture_check.cpp
@@ -401,6 +408,11 @@ add_test(
 add_test(
     NAME pair_bearing_physical_consistency
     COMMAND pair_bearing_physical_check
+)
+
+add_test(
+    NAME array_shape_basic_parity
+    COMMAND array_shape_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/array-shape.csv
 )
 
 add_test(

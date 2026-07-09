@@ -5,6 +5,7 @@
 #include <complex>
 #include <utility>
 
+#include "pamguard/localisation/ArrayShape.h"
 #include "pamguard/localisation/LsqBearingLocaliser.h"
 #include "pamguard/localisation/PairBearingLocaliser.h"
 
@@ -118,8 +119,28 @@ void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, c
         delays[i].max_delay_samples = geometry[i].max_delay_samples;
         delays[i].hydrophone_distance_m = geometry[i].hydrophone_distance_m;
         if (geometry[i].constrained && geometry[i].hydrophone_distance_m > 0.0 && config.sample_rate_hz != 0) {
+            // PAMGuard PairBearingLocaliser.prepare() negates the spacing when
+            // the pair vector points along the pair's principal array axis
+            // (ArrayManager.getArrayDirections over the pair's two phones).
+            double spacing_m = geometry[i].hydrophone_distance_m;
+            const auto* hydrophone_a = find_hydrophone(config.array, geometry[i].audio_channel_a);
+            const auto* hydrophone_b = find_hydrophone(config.array, geometry[i].audio_channel_b);
+            if (hydrophone_a != nullptr && hydrophone_b != nullptr) {
+                const auto directions = localisation::array_directions({
+                    {hydrophone_a->x_m, hydrophone_a->y_m, hydrophone_a->z_m},
+                    {hydrophone_b->x_m, hydrophone_b->y_m, hydrophone_b->z_m},
+                });
+                if (!directions.empty()) {
+                    const double axis_dot = geometry[i].baseline_x_m * directions[0][0] +
+                        geometry[i].baseline_y_m * directions[0][1] +
+                        geometry[i].baseline_z_m * directions[0][2];
+                    if (axis_dot > 0.0) {
+                        spacing_m = -spacing_m;
+                    }
+                }
+            }
             localisation::PairBearingConfig pair_config;
-            pair_config.spacing_m = geometry[i].hydrophone_distance_m;
+            pair_config.spacing_m = spacing_m;
             pair_config.spacing_error_m = config.array.spacing_error_m;
             pair_config.speed_of_sound_mps = config.array.speed_of_sound_mps;
             pair_config.speed_of_sound_error_mps = config.array.speed_of_sound_error_mps;
