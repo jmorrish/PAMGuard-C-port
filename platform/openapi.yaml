@@ -1020,6 +1020,19 @@ components:
                             type: integer
             train:
               type: object
+              properties:
+                enabled:
+                  type: boolean
+                algorithm:
+                  type: string
+                  enum:
+                    - ici
+                    - mht
+                  description: Click train former. "ici" is the max-ICI/min-clicks tracker; "mht" is the ported PAMGuard MHT stack (kernel plus StandardMHTChi2 with IDI/amplitude/length variables).
+                maxIciSeconds:
+                  type: number
+                minClicks:
+                  type: integer
         whistle:
           type: object
           properties:
@@ -1064,7 +1077,7 @@ components:
       properties:
         schemaVersion:
           type: integer
-          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard array-axis reference directions. Version 9 adds whistleDelays entries carrying per-region cross-channel contour delays with geometry and pair bearing metadata. Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
+          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard array-axis reference directions. Version 9 adds whistleDelays entries carrying per-region cross-channel contour delays with geometry and pair bearing metadata. Version 10 adds mhtClickTrains output when click.train.algorithm is "mht" (the ported PAMGuard MHT stack as an alternative click train former). Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
         sessionId:
           type: string
         inputFrames:
@@ -1196,6 +1209,36 @@ components:
           type: array
           items:
             type: object
+        mhtClickTrains:
+          type: array
+          description: Confirmed MHT click trains, present when click.train.algorithm is "mht". chi2 follows PAMGuard StandardMHTChi2 semantics (lower is better).
+          items:
+            type: object
+            properties:
+              trainId:
+                type: integer
+              channelBitmap:
+                type: integer
+              chi2:
+                type: number
+              clickCount:
+                type: integer
+              firstStartSample:
+                type: integer
+                format: int64
+              lastStartSample:
+                type: integer
+                format: int64
+              clickStartSamples:
+                type: array
+                items:
+                  type: integer
+                  format: int64
+              clickTimeMs:
+                type: array
+                items:
+                  type: integer
+                  format: int64
         whistleDelays:
           type: array
           description: Cross-channel contour delays per completed whistle region, present for multi-channel whistle sessions with hydrophone geometry.

@@ -29,7 +29,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 9;
+constexpr int kResultSchemaVersion = 10;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -912,6 +912,7 @@ json detection_events_from_archive_record(const json& record, const ArchiveQuery
     append_sampled_items(events, record, "clickLocalisations", "click-localisation", "clickStartSample", nullptr, session_id, options, type_filter, has_record_start_sample, record_start_sample, &train_ids_by_sample);
     append_sampled_items(events, record, "clickBearings", "click-bearing", "clickStartSample", nullptr, session_id, options, type_filter, has_record_start_sample, record_start_sample, &train_ids_by_sample);
     append_ranged_items(events, record, "clickTrains", "click-track", session_id, options, type_filter, has_record_start_sample, record_start_sample);
+    append_ranged_items(events, record, "mhtClickTrains", "mht-click-track", session_id, options, type_filter, has_record_start_sample, record_start_sample);
     append_ranged_items(events, record, "clickTrainLocalisations", "click-track-localisation", session_id, options, type_filter, has_record_start_sample, record_start_sample);
     append_ranged_items(events, record, "clickTrainBearings", "click-track-bearing", session_id, options, type_filter, has_record_start_sample, record_start_sample);
     append_sampled_items(events, record, "whistlePeaks", "whistle-peak", "startSample", nullptr, session_id, options, type_filter, has_record_start_sample, record_start_sample, nullptr);
@@ -1888,6 +1889,13 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         if (config.detector.click_train_tracker_enabled) {
             config.detector.click_train.max_ici_seconds = click_train.value("maxIciSeconds", config.detector.click_train.max_ici_seconds);
             config.detector.click_train.min_clicks = click_train.value("minClicks", config.detector.click_train.min_clicks);
+            const auto algorithm = click_train.value("algorithm", std::string("ici"));
+            if (algorithm == "mht") {
+                config.detector.click_train_mht = true;
+            }
+            else if (algorithm != "ici") {
+                throw std::invalid_argument("click.train.algorithm must be \"ici\" or \"mht\"");
+            }
         }
     }
 
@@ -2187,6 +2195,20 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
         });
     }
 
+    out["mhtClickTrains"] = json::array();
+    for (const auto& train : result.mht_click_trains) {
+        out["mhtClickTrains"].push_back({
+            {"trainId", train.train_id},
+            {"channelBitmap", train.channel_bitmap},
+            {"chi2", train.chi2},
+            {"clickCount", train.click_count},
+            {"firstStartSample", train.first_start_sample},
+            {"lastStartSample", train.last_start_sample},
+            {"clickStartSamples", train.click_start_samples},
+            {"clickTimeMs", train.click_time_ms},
+        });
+    }
+
     out["whistlePeaks"] = json::array();
     for (const auto& peak : result.whistle_peaks) {
         json item = {
@@ -2353,6 +2375,7 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"basicClassifierEnabled", config.detector.click_basic_classifier_enabled},
         {"basicClassifierTypeCount", config.detector.click_basic_classifier.click_types.size()},
         {"trainEnabled", config.detector.click_train_tracker_enabled},
+        {"trainAlgorithm", config.detector.click_train_mht ? "mht" : "ici"},
         {"trainMaxIciSeconds", config.detector.click_train.max_ici_seconds},
         {"trainMinClicks", config.detector.click_train.min_clicks},
     };

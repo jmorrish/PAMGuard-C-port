@@ -59,6 +59,8 @@ struct DetectorConfig {
     bool click_basic_classifier_enabled = false;
     detectors::BasicClickClassifierConfig click_basic_classifier;
     bool click_train_tracker_enabled = false;
+    /** False: PAMGuard-offline-style max-ICI tracker. True: the ported MHT stack. */
+    bool click_train_mht = false;
     detectors::ClickTrainConfig click_train;
     bool whistle_peak_detector_enabled = false;
     detectors::WhistlePeakConfig whistle_peak;

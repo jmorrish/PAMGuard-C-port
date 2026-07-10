@@ -248,6 +248,12 @@ add_executable(session_whistle_delay_check
 
 target_link_libraries(session_whistle_delay_check PRIVATE pamguard_engine)
 
+add_executable(session_mht_train_check
+    tools/session_mht_train_check.cpp
+)
+
+target_link_libraries(session_mht_train_check PRIVATE pamguard_engine)
+
 add_executable(whistle_peak_fixture_check
     tools/whistle_peak_fixture_check.cpp
 )
@@ -483,6 +489,11 @@ add_test(
 add_test(
     NAME session_whistle_delay_wiring
     COMMAND session_whistle_delay_check
+)
+
+add_test(
+    NAME session_mht_train_wiring
+    COMMAND session_mht_train_check
 )
 
 add_test(

@@ -5,6 +5,7 @@
 #include <complex>
 #include <utility>
 
+#include "pamguard/detectors/StandardMhtChi2.h"
 #include "pamguard/localisation/ArrayShape.h"
 #include "pamguard/localisation/LsqBearingLocaliser.h"
 #include "pamguard/localisation/PairBearingLocaliser.h"
@@ -355,7 +356,8 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
         click_classifier_config.sample_rate_hz = config_.sample_rate_hz;
         click_basic_classifier_.emplace(std::move(click_classifier_config));
     }
-    if (config_.detector.click_detector_enabled && config_.detector.click_train_tracker_enabled) {
+    if (config_.detector.click_detector_enabled && config_.detector.click_train_tracker_enabled &&
+        !config_.detector.click_train_mht) {
         auto click_train_config = config_.detector.click_train;
         click_train_config.sample_rate_hz = config_.sample_rate_hz;
         click_train_tracker_.emplace(std::move(click_train_config));
@@ -444,6 +446,7 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     if (click_train_tracker_) {
         result.click_trains = click_train_tracker_->process(result.clicks);
     }
+    process_mht_click_trains(result);
     if (config_.detector.click_localisation_enabled) {
         for (std::size_t i = 0; i < result.clicks.size(); ++i) {
             const auto& click = result.clicks[i];
@@ -528,6 +531,10 @@ AnalysisResult AnalysisSession::flush() {
     if (click_train_tracker_) {
         result.click_trains = click_train_tracker_->flush();
     }
+    for (auto& [_, state] : mht_train_states_) {
+        state.kernel->confirm_remaining_tracks();
+    }
+    drain_confirmed_mht_trains(result);
     for (auto& [_, tracker] : whistle_region_trackers_) {
         auto regions = tracker.flush();
         result.whistle_regions.insert(result.whistle_regions.end(), regions.begin(), regions.end());
@@ -653,6 +660,79 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
 
 std::vector<dsp::SpectrogramFrame> AnalysisSession::process_audio(const AudioChunk& chunk) {
     return process(chunk).spectrogram_frames;
+}
+
+void AnalysisSession::process_mht_click_trains(AnalysisResult& result) {
+    if (!config_.detector.click_train_tracker_enabled || !config_.detector.click_train_mht ||
+        config_.sample_rate_hz == 0) {
+        return;
+    }
+
+    for (const auto& click : result.clicks) {
+        const auto key = click.channel_bitmap != 0 ? click.channel_bitmap : click.trigger_bitmap;
+        auto found = mht_train_states_.find(key);
+        if (found == mht_train_states_.end()) {
+            detectors::StandardMhtChi2Params chi2_params;
+            chi2_params.sample_rate_hz = static_cast<double>(config_.sample_rate_hz);
+            detectors::MhtKernelParams kernel_params;
+            MhtTrainState state;
+            state.kernel = std::make_unique<detectors::MhtKernel<detectors::MhtChi2Unit>>(
+                std::make_unique<detectors::StandardMhtChi2Provider>(chi2_params, kernel_params), kernel_params);
+            found = mht_train_states_.emplace(key, std::move(state)).first;
+        }
+
+        auto& state = found->second;
+        detectors::MhtChi2Unit unit;
+        unit.time_ns = static_cast<std::int64_t>(static_cast<double>(click.start_sample)
+            / static_cast<double>(config_.sample_rate_hz) * 1E9);
+        // Uncalibrated peak level: the MHT amplitude chi2 only scores dB
+        // differences, so a constant calibration offset cancels.
+        double peak = 0.0;
+        for (const auto& channel_waveform : click.waveform) {
+            for (const auto sample : channel_waveform) {
+                peak = std::max(peak, std::abs(sample));
+            }
+        }
+        unit.amplitude_db = 20.0 * std::log10(std::max(peak, 1e-12));
+        unit.duration_ms = static_cast<double>(click.duration_samples)
+            / static_cast<double>(config_.sample_rate_hz) * 1000.0;
+
+        state.kernel->add_detection(unit);
+        state.start_samples.push_back(click.start_sample);
+        state.time_ms.push_back(click.time_unix_ms);
+    }
+
+    drain_confirmed_mht_trains(result);
+}
+
+void AnalysisSession::drain_confirmed_mht_trains(AnalysisResult& result) {
+    for (auto& [key, state] : mht_train_states_) {
+        for (std::size_t i = state.consumed_confirmed; i < state.kernel->confirmed_track_count(); ++i) {
+            const auto& track = state.kernel->confirmed_track(i);
+            const auto click_count = track.bits.cardinality();
+            if (click_count < config_.detector.click_train.min_clicks) {
+                continue;
+            }
+
+            MhtClickTrainResult train;
+            train.train_id = next_mht_train_id_++;
+            train.channel_bitmap = key;
+            train.chi2 = track.get_chi2();
+            train.click_count = click_count;
+            for (std::size_t bit = 0; bit < state.start_samples.size(); ++bit) {
+                if (track.bits.get(bit)) {
+                    train.click_start_samples.push_back(state.start_samples[bit]);
+                    train.click_time_ms.push_back(state.time_ms[bit]);
+                }
+            }
+            if (!train.click_start_samples.empty()) {
+                train.first_start_sample = train.click_start_samples.front();
+                train.last_start_sample = train.click_start_samples.back();
+            }
+            result.mht_click_trains.push_back(std::move(train));
+        }
+        state.consumed_confirmed = state.kernel->confirmed_track_count();
+    }
 }
 
 } // namespace pamguard::core

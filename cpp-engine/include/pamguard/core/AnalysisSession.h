@@ -8,6 +8,8 @@
 #include "pamguard/core/AnalysisConfig.h"
 #include "pamguard/core/AudioFrame.h"
 #include "pamguard/detectors/ClickDetectorEngine.h"
+#include "pamguard/detectors/MhtKernel.h"
+#include "pamguard/detectors/MhtSimpleChi2Vars.h"
 #include "pamguard/detectors/ConnectedRegionTracker.h"
 #include "pamguard/detectors/WhistlePeakDetector.h"
 #include "pamguard/dsp/SpectrogramEngine.h"
@@ -88,6 +90,17 @@ struct WhistleRegionDelayResult {
     std::vector<localisation::ChannelPairDelay> delays;
 };
 
+struct MhtClickTrainResult {
+    std::size_t train_id = 0;
+    std::uint32_t channel_bitmap = 0;
+    double chi2 = 0.0;
+    std::size_t click_count = 0;
+    std::int64_t first_start_sample = 0;
+    std::int64_t last_start_sample = 0;
+    std::vector<std::int64_t> click_start_samples;
+    std::vector<std::int64_t> click_time_ms;
+};
+
 struct AnalysisResult {
     std::vector<dsp::SpectrogramFrame> spectrogram_frames;
     std::vector<detectors::ClickDetectionResult> clicks;
@@ -101,6 +114,7 @@ struct AnalysisResult {
     std::vector<detectors::WhistlePeak> whistle_peaks;
     std::vector<detectors::ConnectedRegionResult> whistle_regions;
     std::vector<WhistleRegionDelayResult> whistle_delays;
+    std::vector<MhtClickTrainResult> mht_click_trains;
 };
 
 [[nodiscard]] std::vector<ClickTrainBearingSummary> summarize_click_train_bearings(
@@ -134,9 +148,20 @@ private:
     std::unordered_map<std::size_t, detectors::ConnectedRegionTracker> whistle_region_trackers_;
     std::unordered_map<std::size_t, std::deque<dsp::SpectrogramFrame>> whistle_fft_history_;
 
+    struct MhtTrainState {
+        std::unique_ptr<detectors::MhtKernel<detectors::MhtChi2Unit>> kernel;
+        std::vector<std::int64_t> start_samples;
+        std::vector<std::int64_t> time_ms;
+        std::size_t consumed_confirmed = 0;
+    };
+    std::unordered_map<std::uint32_t, MhtTrainState> mht_train_states_;
+    std::size_t next_mht_train_id_ = 1;
+
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);
     void compute_whistle_delays(AnalysisResult& result);
+    void process_mht_click_trains(AnalysisResult& result);
+    void drain_confirmed_mht_trains(AnalysisResult& result);
 };
 
 } // namespace pamguard::core
