@@ -22,6 +22,7 @@ add_library(pamguard_engine
     src/detectors/ClickTrainTracker.cpp
     src/detectors/MhtIdiChi2.cpp
     src/detectors/MhtSimpleChi2Vars.cpp
+    src/detectors/StandardMhtChi2.cpp
     src/detectors/ConnectedRegionTracker.cpp
     src/detectors/WhistlePeakDetector.cpp
     src/dsp/RealFft.cpp
@@ -162,6 +163,12 @@ add_executable(mht_kernel_fixture_check
 )
 
 target_link_libraries(mht_kernel_fixture_check PRIVATE pamguard_engine)
+
+add_executable(standard_mht_chi2_fixture_check
+    tools/standard_mht_chi2_fixture_check.cpp
+)
+
+target_link_libraries(standard_mht_chi2_fixture_check PRIVATE pamguard_engine)
 
 add_executable(click_train_bearing_summary_check
     tools/click_train_bearing_summary_check.cpp
@@ -406,6 +413,11 @@ add_test(
 add_test(
     NAME mht_kernel_parity
     COMMAND mht_kernel_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-train/mht-kernel.csv
+)
+
+add_test(
+    NAME standard_mht_chi2_stack_parity
+    COMMAND standard_mht_chi2_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-train/standard-mht-chi2.csv
 )
 
 add_test(
