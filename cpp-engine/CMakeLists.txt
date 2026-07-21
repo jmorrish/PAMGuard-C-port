@@ -170,6 +170,12 @@ add_executable(ct_chi2_classifier_check
 
 target_link_libraries(ct_chi2_classifier_check PRIVATE pamguard_engine)
 
+add_executable(ct_classifiers_check
+    tools/ct_classifiers_check.cpp
+)
+
+target_link_libraries(ct_classifiers_check PRIVATE pamguard_engine)
+
 add_executable(mht_time_delay_chi2_fixture_check
     tools/mht_time_delay_chi2_fixture_check.cpp
 )
@@ -442,6 +448,11 @@ add_test(
 add_test(
     NAME ct_chi2_classifier_branches
     COMMAND ct_chi2_classifier_check
+)
+
+add_test(
+    NAME ct_idi_bearing_classifier_branches
+    COMMAND ct_classifiers_check
 )
 
 add_test(
