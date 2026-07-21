@@ -65,6 +65,118 @@ double MhtLengthChi2::update_chi2(const MhtChi2Unit& unit, bool in_track, std::s
     return chi2_ / static_cast<double>(bitcount);
 }
 
+MhtPeakFrequencyChi2::MhtPeakFrequencyChi2(MhtPeakFrequencyChi2Config config)
+    : config_(std::move(config)) {
+    if (config_.sample_rate_hz <= 0.0 || config_.error <= 0.0 || config_.min_error <= 0.0) {
+        throw std::invalid_argument("mht peak frequency chi2 config values must be positive");
+    }
+}
+
+void MhtPeakFrequencyChi2::clear() {
+    chi2_ = 0.0;
+    has_last_unit_ = false;
+}
+
+double MhtPeakFrequencyChi2::pair_chi2(const MhtChi2Unit& unit_0, const MhtChi2Unit& unit_1) const {
+    const double diff = unit_0.peak_frequency_hz - unit_1.peak_frequency_hz;
+    const double idi = mht_calc_time_seconds(unit_0, unit_1, config_.sample_rate_hz);
+    return std::pow(diff, 2.0) / std::pow(std::max(config_.min_error, idi * config_.error), 2.0);
+}
+
+double MhtPeakFrequencyChi2::calc_chi2(const std::vector<MhtChi2Unit>& units) const {
+    double chi2 = 0.0;
+    for (std::size_t i = 1; i < units.size(); ++i) {
+        chi2 += pair_chi2(units[i - 1], units[i]);
+    }
+    return chi2 / static_cast<double>(units.size() - 1);
+}
+
+double MhtPeakFrequencyChi2::update_chi2(const MhtChi2Unit& unit, bool in_track, std::size_t bitcount, std::size_t kcount) {
+    if (std::isnan(chi2_)) {
+        chi2_ = 0.0;
+    }
+    if (!in_track) {
+        return chi2_ / static_cast<double>(bitcount);
+    }
+    if (!has_last_unit_ || kcount <= 1 || bitcount < 2) {
+        has_last_unit_ = true;
+        last_unit_ = unit;
+        chi2_ = 0.0;
+        return chi2_;
+    }
+    chi2_ += pair_chi2(last_unit_, unit);
+    last_unit_ = unit;
+    return chi2_ / static_cast<double>(bitcount);
+}
+
+MhtBearingChi2Delta::MhtBearingChi2Delta(MhtBearingChi2Config config)
+    : config_(std::move(config)) {
+    if (config_.sample_rate_hz <= 0.0 || config_.error_radians <= 0.0 || config_.min_error_radians <= 0.0) {
+        throw std::invalid_argument("mht bearing chi2 config values must be positive");
+    }
+}
+
+double MhtBearingChi2Delta::bearing_difference(double a1, double a2) {
+    constexpr double two_pi = 2.0 * 3.141592653589793238462643383279502884;
+    const double forward = (a1 - a2) < 0.0 ? a1 - a2 + two_pi : a1 - a2;
+    const double reverse = (a2 - a1) < 0.0 ? a2 - a1 + two_pi : a2 - a1;
+    return std::min(forward, reverse);
+}
+
+void MhtBearingChi2Delta::clear() {
+    chi2_ = 0.0;
+    last_delta_ = -1.0;
+    has_last_unit_ = false;
+}
+
+double MhtBearingChi2Delta::update_chi2(const MhtChi2Unit& unit, bool in_track, std::size_t bitcount, std::size_t kcount) {
+    if (std::isnan(chi2_)) {
+        chi2_ = 0.0;
+    }
+    if (!in_track) {
+        return chi2_ / static_cast<double>(bitcount);
+    }
+    if (!has_last_unit_ || kcount <= 1 || bitcount < 2) {
+        has_last_unit_ = true;
+        last_unit_ = unit;
+        chi2_ = 0.0;
+        return chi2_;
+    }
+
+    const double new_delta = bearing_difference(last_unit_.bearing_radians, unit.bearing_radians);
+    if (last_delta_ == -1.0) {
+        last_unit_ = unit;
+        last_delta_ = new_delta;
+        return chi2_ / static_cast<double>(bitcount);
+    }
+
+    const double time_diff = mht_calc_time_seconds(last_unit_, unit, config_.sample_rate_hz);
+    double delta_chi2 = std::pow(last_delta_ - new_delta, 2.0) /
+        std::pow(std::max(time_diff * config_.error_radians, config_.min_error_radians), 2.0);
+    if (config_.bearing_jump_enable) {
+        // The penalty keys off the current absolute difference, matching
+        // BearingChi2Delta.calcDeltaChi2's use of its lastDiff field.
+        double delta = new_delta;
+        switch (config_.jump_direction) {
+        case MhtBearingJumpDirection::Both:
+            delta = std::abs(new_delta);
+            break;
+        case MhtBearingJumpDirection::Negative:
+            delta = -new_delta;
+            break;
+        case MhtBearingJumpDirection::Positive:
+            break;
+        }
+        if (delta > config_.max_bearing_jump_radians) {
+            delta_chi2 += config_.junk_track_penalty;
+        }
+    }
+    chi2_ += delta_chi2;
+    last_unit_ = unit;
+    last_delta_ = new_delta;
+    return chi2_ / static_cast<double>(bitcount);
+}
+
 MhtAmplitudeChi2::MhtAmplitudeChi2(MhtAmplitudeChi2Config config)
     : config_(std::move(config)) {
     if (config_.sample_rate_hz <= 0.0 || config_.error <= 0.0 || config_.min_error <= 0.0) {
