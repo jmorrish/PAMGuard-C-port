@@ -177,6 +177,40 @@ double MhtBearingChi2Delta::update_chi2(const MhtChi2Unit& unit, bool in_track, 
     return chi2_ / static_cast<double>(bitcount);
 }
 
+MhtCorrelationChi2::MhtCorrelationChi2(MhtCorrelationChi2Config config)
+    : config_(std::move(config)) {
+    if (config_.sample_rate_hz <= 0.0 || config_.error <= 0.0 || config_.min_error <= 0.0) {
+        throw std::invalid_argument("mht correlation chi2 config values must be positive");
+    }
+}
+
+void MhtCorrelationChi2::clear() {
+    chi2_ = 0.0;
+    has_last_unit_ = false;
+}
+
+double MhtCorrelationChi2::update_chi2(const MhtChi2Unit& unit, double correlation, bool in_track,
+                                       std::size_t bitcount, std::size_t kcount) {
+    if (std::isnan(chi2_)) {
+        chi2_ = 0.0;
+    }
+    if (!in_track) {
+        return chi2_ / static_cast<double>(bitcount);
+    }
+    if (!has_last_unit_ || kcount <= 1 || bitcount < 2) {
+        has_last_unit_ = true;
+        last_unit_ = unit;
+        chi2_ = 0.0;
+        return chi2_;
+    }
+
+    const double idi = mht_calc_time_seconds(last_unit_, unit, config_.sample_rate_hz);
+    chi2_ += std::pow(std::log(1.0 / correlation), 2.0) /
+        std::pow(std::max(config_.min_error, idi * config_.error), 2.0);
+    last_unit_ = unit;
+    return chi2_ / static_cast<double>(bitcount);
+}
+
 MhtTimeDelayChi2Delta::MhtTimeDelayChi2Delta(MhtTimeDelayChi2Config config)
     : config_(std::move(config)) {
     if (config_.sample_rate_hz <= 0.0 || config_.error <= 0.0 || config_.min_error <= 0.0) {

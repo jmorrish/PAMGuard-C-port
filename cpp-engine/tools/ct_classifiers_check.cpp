@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "pamguard/detectors/CtClassifiers.h"
+#include "pamguard/detectors/MhtSimpleChi2Vars.h"
 
 namespace {
 
@@ -148,6 +149,46 @@ bool check_bearing_classifier() {
     return true;
 }
 
+bool check_correlation_chi2() {
+    // CorrelationChi2: log(1/corr)^2 over the squared time-scaled error.
+    // With 100 ms spacing and default error 1, the divisor is 0.1^2, so a
+    // correlation of 1 scores zero and lower correlations grow as log^2.
+    pamguard::detectors::MhtCorrelationChi2 chi2_var{pamguard::detectors::MhtCorrelationChi2Config{}};
+    pamguard::detectors::MhtChi2Unit unit;
+    unit.time_ns = 1'000'000'000;
+    (void)chi2_var.update_chi2(unit, 1.0, true, 1, 1);
+
+    unit.time_ns = 1'100'000'000;
+    const double after_perfect = chi2_var.update_chi2(unit, 1.0, true, 2, 2);
+    if (std::abs(after_perfect) > 1e-12) {
+        std::cerr << "Perfect correlation should contribute zero chi2, got " << after_perfect << "\n";
+        return false;
+    }
+
+    unit.time_ns = 1'200'000'000;
+    const double after_half = chi2_var.update_chi2(unit, 0.5, true, 3, 3);
+    const double expected_raw = std::pow(std::log(1.0 / 0.5), 2.0) / std::pow(0.1, 2.0);
+    if (std::abs(after_half - expected_raw / 3.0) > 1e-9) {
+        std::cerr << "Correlation chi2 mismatch: expected " << expected_raw / 3.0
+                  << " got " << after_half << "\n";
+        return false;
+    }
+
+    // Lower correlation must score strictly worse.
+    pamguard::detectors::MhtCorrelationChi2 poor{pamguard::detectors::MhtCorrelationChi2Config{}};
+    pamguard::detectors::MhtChi2Unit poor_unit;
+    poor_unit.time_ns = 1'000'000'000;
+    (void)poor.update_chi2(poor_unit, 1.0, true, 1, 1);
+    poor_unit.time_ns = 1'100'000'000;
+    (void)poor.update_chi2(poor_unit, 1.0, true, 2, 2);
+    poor_unit.time_ns = 1'200'000'000;
+    if (!(poor.update_chi2(poor_unit, 0.1, true, 3, 3) > after_half)) {
+        std::cerr << "Weaker correlation should score worse than stronger correlation\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -158,7 +199,11 @@ int main() {
         if (!check_bearing_classifier()) {
             return 1;
         }
+        if (!check_correlation_chi2()) {
+            return 1;
+        }
         std::cout << "CT IDI and bearing classifier branch coverage passed\n";
+        std::cout << "MHT correlation chi2 behaviour passed\n";
         return 0;
     }
     catch (const std::exception& error) {

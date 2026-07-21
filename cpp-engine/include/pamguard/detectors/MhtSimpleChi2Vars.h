@@ -172,6 +172,44 @@ private:
     MhtChi2Unit last_unit_;
 };
 
+struct MhtCorrelationChi2Config {
+    /** CorrelationChi2 defaults. */
+    double error = 1.0;
+    double min_error = 0.01;
+    double sample_rate_hz = 48000.0;
+};
+
+/**
+ * Port of PAMGuard's CorrelationChi2 over the SimpleChi2Var base path. The
+ * per-pair term is `log(1/corr)^2` scaled by the time-based error, so
+ * strongly similar waveforms (correlation near one) score near zero and
+ * dissimilar ones grow logarithmically.
+ *
+ * The correlation value between consecutive in-track clicks is supplied by
+ * the caller — PAMGuard derives it lazily through its CorrelationManager
+ * (optionally filtered), whereas the engine has its own fixture-pinned
+ * correlation estimator whose delay score is the same quantity.
+ */
+class MhtCorrelationChi2 {
+public:
+    MhtCorrelationChi2() = default;
+    explicit MhtCorrelationChi2(MhtCorrelationChi2Config config);
+
+    /** `correlation` is the value between the previous in-track click and this one. */
+    double update_chi2(const MhtChi2Unit& unit, double correlation, bool in_track,
+                       std::size_t bitcount, std::size_t kcount);
+    void clear();
+
+    [[nodiscard]] double raw_chi2() const noexcept { return chi2_; }
+    [[nodiscard]] double error() const noexcept { return config_.error; }
+
+private:
+    MhtCorrelationChi2Config config_;
+    double chi2_ = 0.0;
+    bool has_last_unit_ = false;
+    MhtChi2Unit last_unit_;
+};
+
 struct MhtTimeDelayChi2Config {
     /** TimeDelayChi2Delta defaults: 1 microsecond error, 1 nanosecond cut. */
     double error = 1.0 / 1E6;
