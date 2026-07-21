@@ -1818,6 +1818,12 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
             item.y_m = streamer.value("yM", 0.0);
             item.z_m = streamer.value("zM", 0.0);
             item.heading_degrees = streamer.value("headingDegrees", 0.0);
+            item.pitch_degrees = streamer.value("pitchDegrees", 0.0);
+            item.roll_degrees = streamer.value("rollDegrees", 0.0);
+            if (!std::isfinite(item.heading_degrees) || !std::isfinite(item.pitch_degrees) ||
+                !std::isfinite(item.roll_degrees)) {
+                throw std::invalid_argument("array.streamers headingDegrees, pitchDegrees, and rollDegrees must be finite");
+            }
             config.array.streamers.push_back(item);
         }
     }

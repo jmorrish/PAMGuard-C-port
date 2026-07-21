@@ -35,9 +35,11 @@ struct ArrayHydrophone {
 
 /**
  * A towed or moored streamer carrying hydrophones. PAMGuard's
- * PamArray.getAbsHydrophoneVector adds the streamer's coordinate vector to
- * the hydrophone's own coordinates — a translation only. `heading_degrees`
- * is carried as metadata because that method does not rotate by it.
+ * HydrophoneLocator.getPhoneLatLong rotates a hydrophone's coordinates by
+ * its streamer's heading/pitch/roll quaternion and then offsets by the
+ * streamer position; PamArray.getAbsHydrophoneVector performs only the
+ * translation half of that. Angles are degrees, and all-zero angles give the
+ * translation-only behaviour.
  */
 struct ArrayStreamer {
     int id = 0;
@@ -45,6 +47,8 @@ struct ArrayStreamer {
     double y_m = 0.0;
     double z_m = 0.0;
     double heading_degrees = 0.0;
+    double pitch_degrees = 0.0;
+    double roll_degrees = 0.0;
 };
 
 struct ArrayConfiguration {

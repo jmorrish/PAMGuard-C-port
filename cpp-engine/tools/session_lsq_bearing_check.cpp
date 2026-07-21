@@ -1,8 +1,10 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <numbers>
 
 #include "pamguard/core/AnalysisSession.h"
+#include "pamguard/localisation/StreamerOrientation.h"
 
 namespace {
 
@@ -69,9 +71,9 @@ pamguard::core::AudioChunk synthetic_chunk(std::size_t channel_count) {
 int main() {
     try {
         {
-            // Streamer offsets translate hydrophone coordinates, so a
-            // streamer-relative layout must localise identically to the same
-            // array expressed in absolute coordinates.
+            // With no streamer rotation the locator reduces to a translation
+            // of hydrophone coordinates, so a streamer-relative layout must
+            // localise identically to the same array in absolute coordinates.
             auto absolute = base_config(4);
             add_tetrahedron_hydrophones(absolute);
             for (auto& hydrophone : absolute.array.hydrophones) {
@@ -83,7 +85,7 @@ int main() {
 
             auto streamed = base_config(4);
             add_tetrahedron_hydrophones(streamed);
-            streamed.array.streamers = {{7, 100.0, 25.0, 0.0, 33.0}};
+            streamed.array.streamers = {{7, 100.0, 25.0, 0.0, 0.0, 0.0, 0.0}};
             for (auto& hydrophone : streamed.array.hydrophones) {
                 hydrophone.streamer_id = 7;
             }
@@ -100,6 +102,52 @@ int main() {
                 std::abs(absolute_lsq.azimuth_radians - streamed_lsq.azimuth_radians) > 1e-12 ||
                 std::abs(absolute_lsq.elevation_radians - streamed_lsq.elevation_radians) > 1e-12) {
                 std::cerr << "Streamer-relative layout should localise identically to absolute coordinates\n";
+                return 1;
+            }
+        }
+
+        {
+            // A streamer's heading/pitch/roll rotate hydrophone coordinates
+            // before the position offset is added, as getPhoneLatLong does.
+            // Pre-applying the same rotation and offset by hand must give the
+            // same geometry, which also pins the rotate-then-translate order:
+            // translating first would move the array off the rotation centre.
+            constexpr double kDegreesToRadians = std::numbers::pi / 180.0;
+            const double heading = 40.0 * kDegreesToRadians;
+            const double pitch = -15.0 * kDegreesToRadians;
+            const double roll = 8.0 * kDegreesToRadians;
+
+            auto oriented = base_config(4);
+            add_tetrahedron_hydrophones(oriented);
+            oriented.array.streamers = {{3, 60.0, -10.0, 5.0, 40.0, -15.0, 8.0}};
+            for (auto& hydrophone : oriented.array.hydrophones) {
+                hydrophone.streamer_id = 3;
+            }
+            pamguard::core::AnalysisSession oriented_session(oriented);
+            const auto oriented_result = oriented_session.process(synthetic_chunk(4));
+
+            auto manual = base_config(4);
+            add_tetrahedron_hydrophones(manual);
+            for (auto& hydrophone : manual.array.hydrophones) {
+                const auto rotated = pamguard::localisation::rotate_by_streamer_orientation(
+                    {hydrophone.x_m, hydrophone.y_m, hydrophone.z_m}, heading, pitch, roll);
+                hydrophone.x_m = rotated[0] + 60.0;
+                hydrophone.y_m = rotated[1] - 10.0;
+                hydrophone.z_m = rotated[2] + 5.0;
+            }
+            pamguard::core::AnalysisSession manual_session(manual);
+            const auto manual_result = manual_session.process(synthetic_chunk(4));
+
+            if (oriented_result.click_localisations.empty() || manual_result.click_localisations.empty()) {
+                std::cerr << "Streamer orientation comparison produced no localisations\n";
+                return 1;
+            }
+            const auto& oriented_lsq = oriented_result.click_localisations.front().lsq_bearing;
+            const auto& manual_lsq = manual_result.click_localisations.front().lsq_bearing;
+            if (oriented_lsq.valid != manual_lsq.valid ||
+                std::abs(oriented_lsq.azimuth_radians - manual_lsq.azimuth_radians) > 1e-12 ||
+                std::abs(oriented_lsq.elevation_radians - manual_lsq.elevation_radians) > 1e-12) {
+                std::cerr << "Streamer orientation should rotate hydrophone coordinates before the position offset\n";
                 return 1;
             }
         }

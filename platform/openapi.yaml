@@ -908,7 +908,17 @@ components:
                     type: number
                   headingDegrees:
                     type: number
-                    description: Carried as metadata; PAMGuard's absolute hydrophone vector does not rotate by it.
+                    description: >-
+                      Streamer heading in degrees. Hydrophone coordinates are rotated by the
+                      streamer's heading/pitch/roll quaternion before the streamer position is
+                      added, as PAMGuard's HydrophoneLocator.getPhoneLatLong does. Positive
+                      heading turns clockwise. Defaults to 0.
+                  pitchDegrees:
+                    type: number
+                    description: Streamer pitch in degrees, applied with headingDegrees and rollDegrees. Defaults to 0.
+                  rollDegrees:
+                    type: number
+                    description: Streamer roll in degrees, applied with headingDegrees and pitchDegrees. Defaults to 0.
             hydrophones:
               type: array
               items:

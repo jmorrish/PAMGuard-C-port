@@ -22,4 +22,6 @@ Streamer offsets are resolved **once at session construction**, folding each str
 
 ## Claim boundary
 
-Translation only. Streamer heading, pitch, and roll are not applied, matching `getAbsHydrophoneVector`; PAMGuard applies orientation elsewhere through its hydrophone locators, which are unported. Streamer positions are static per session — PAMGuard's time-varying streamer data units (GPS-tracked towed arrays whose geometry changes through a tow) are not modelled, so a session describes one snapshot of the array.
+Translation only. Streamer positions are static per session — PAMGuard's time-varying streamer data units (GPS-tracked towed arrays whose geometry changes through a tow) are not modelled, so a session describes one snapshot of the array.
+
+**Superseded in part**: streamer heading, pitch, and roll *are* now applied, as `docs/193-streamer-orientation.md` describes. This slice matched `getAbsHydrophoneVector`, which performs only the translation; the rotation lives in `HydrophoneLocator.getPhoneLatLong`, which the follow-up slice ported. With all-zero angles the behaviour is exactly what this document describes.

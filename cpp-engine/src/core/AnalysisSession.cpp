@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <numbers>
 #include <utility>
 
 #include "pamguard/detectors/CtTrainSpectrum.h"
@@ -11,6 +12,7 @@
 #include "pamguard/localisation/ArrayShape.h"
 #include "pamguard/localisation/LsqBearingLocaliser.h"
 #include "pamguard/localisation/PairBearingLocaliser.h"
+#include "pamguard/localisation/StreamerOrientation.h"
 #include "pamguard/localisation/WhistleDelayEstimator.h"
 
 namespace pamguard::core {
@@ -342,24 +344,32 @@ std::vector<ClickTrainLocalisationSummary> summarize_click_train_localisations(
 namespace {
 
 /**
- * PamArray.getAbsHydrophoneVector: a hydrophone's absolute position is its
- * own coordinates plus its streamer's coordinate vector — a translation
- * only, since that method does not rotate by streamer heading. Resolving
- * once here means every downstream consumer (delay limits, bearings, array
- * shape) sees absolute positions without needing streamer awareness.
+ * HydrophoneLocator.getPhoneLatLong: a hydrophone's absolute position is its
+ * own coordinates rotated by its streamer's heading/pitch/roll quaternion and
+ * then offset by the streamer position. With all-zero angles this reduces to
+ * PamArray.getAbsHydrophoneVector, which performs the translation alone.
+ * Resolving once here means every downstream consumer (delay limits,
+ * bearings, array shape) sees absolute positions without needing streamer
+ * awareness.
  */
 void resolve_streamer_offsets(ArrayConfiguration& array) {
     if (array.streamers.empty()) {
         return;
     }
+    constexpr double kDegreesToRadians = std::numbers::pi / 180.0;
     for (auto& hydrophone : array.hydrophones) {
         for (const auto& streamer : array.streamers) {
             if (streamer.id != hydrophone.streamer_id) {
                 continue;
             }
-            hydrophone.x_m += streamer.x_m;
-            hydrophone.y_m += streamer.y_m;
-            hydrophone.z_m += streamer.z_m;
+            const auto rotated = localisation::rotate_by_streamer_orientation(
+                {hydrophone.x_m, hydrophone.y_m, hydrophone.z_m},
+                streamer.heading_degrees * kDegreesToRadians,
+                streamer.pitch_degrees * kDegreesToRadians,
+                streamer.roll_degrees * kDegreesToRadians);
+            hydrophone.x_m = rotated[0] + streamer.x_m;
+            hydrophone.y_m = rotated[1] + streamer.y_m;
+            hydrophone.z_m = rotated[2] + streamer.z_m;
             break;
         }
     }
