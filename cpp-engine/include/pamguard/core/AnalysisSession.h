@@ -18,7 +18,8 @@
 
 namespace pamguard::core {
 
-struct ClickLsqBearingResult {
+/** LSQ bearing summary, shared by click and whistle localisation outputs. */
+struct LsqBearingResult {
     bool valid = false;
     double azimuth_radians = 0.0;
     double elevation_radians = 0.0;
@@ -31,7 +32,7 @@ struct ClickLocalisationResult {
     std::size_t click_index = 0;
     std::int64_t click_start_sample = 0;
     std::vector<localisation::ChannelPairDelay> delays;
-    ClickLsqBearingResult lsq_bearing;
+    LsqBearingResult lsq_bearing;
 };
 
 struct ClickBearingResult {
@@ -88,6 +89,17 @@ struct WhistleRegionDelayResult {
     std::size_t region_number = 0;
     std::int64_t start_sample = 0;
     std::vector<localisation::ChannelPairDelay> delays;
+    /**
+     * Region-level bearing, mirroring PAMGuard's WhistleBearingInfo: the
+     * angle set produced by the channel group's bearing localiser, with the
+     * ambiguity flag set when that localiser yields a single angle (the pair
+     * localiser's cone angle) rather than an azimuth/elevation pair.
+     */
+    bool bearing_valid = false;
+    double bearing_radians = 0.0;
+    double bearing_error_radians = 0.0;
+    bool bearing_ambiguity = false;
+    std::size_t bearing_pair_count = 0;
 };
 
 struct MhtClickTrainResult {

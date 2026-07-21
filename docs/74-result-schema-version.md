@@ -4,7 +4,7 @@ All engine result JSON bodies now include:
 
 ```json
 {
-  "schemaVersion": 10
+  "schemaVersion": 11
 }
 ```
 
@@ -22,6 +22,7 @@ The HTTP service smoke asserts the health endpoint, live PCM result body, and ar
 
 ## Version history
 
+- `11`: Adds a region-level `bearing` object on `whistleDelays` entries (PAMGuard `WhistleBearingInfo` equivalent, including the ambiguity flag).
 - `10`: Adds `mhtClickTrains` output when `click.train.algorithm` is `"mht"` — the ported PAMGuard MHT stack as an alternative click train former — plus the `trainAlgorithm` config echo field.
 - `9`: Adds `whistleDelays` entries carrying per-region cross-channel whistle contour delays with geometry, physical units, and pair bearing metadata.
 - `8`: Pair bearing angles now follow PAMGuard's array-axis reference direction (spacing negated when the pair vector aligns with the pair's principal array axis). Field shapes are unchanged; angle values flip for axis-aligned pairs.

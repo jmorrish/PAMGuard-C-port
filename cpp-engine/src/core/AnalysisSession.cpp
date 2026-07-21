@@ -655,6 +655,20 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
         }
 
         if (!delay_result.delays.empty()) {
+            // WhistleBearingInfo equivalent: the group's bearing localiser
+            // result for the region. With a two-element group PAMGuard uses
+            // the pair localiser, whose single cone angle carries the
+            // left/right ambiguity flag.
+            for (const auto& delay : delay_result.delays) {
+                if (delay.pair_bearing_valid && std::isfinite(delay.pair_bearing_radians)) {
+                    delay_result.bearing_valid = true;
+                    delay_result.bearing_radians = delay.pair_bearing_radians;
+                    delay_result.bearing_error_radians = delay.pair_bearing_error_radians;
+                    delay_result.bearing_ambiguity = true;
+                    delay_result.bearing_pair_count = delay_result.delays.size();
+                    break;
+                }
+            }
             result.whistle_delays.push_back(std::move(delay_result));
         }
     }

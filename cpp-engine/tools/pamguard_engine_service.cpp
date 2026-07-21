@@ -29,7 +29,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 10;
+constexpr int kResultSchemaVersion = 11;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2370,6 +2370,18 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 }
             }
             item["delays"].push_back(std::move(delay_item));
+        }
+        if (whistle_delay.bearing_valid) {
+            json bearing_item = {
+                {"bearingRadians", whistle_delay.bearing_radians},
+                {"bearingDegrees", whistle_delay.bearing_radians * 180.0 / 3.141592653589793238462643383279502884},
+                {"bearingAmbiguity", whistle_delay.bearing_ambiguity},
+                {"pairCount", whistle_delay.bearing_pair_count},
+            };
+            if (std::isfinite(whistle_delay.bearing_error_radians)) {
+                bearing_item["bearingErrorRadians"] = whistle_delay.bearing_error_radians;
+            }
+            item["bearing"] = std::move(bearing_item);
         }
         out["whistleDelays"].push_back(std::move(item));
     }

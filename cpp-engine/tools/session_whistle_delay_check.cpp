@@ -109,6 +109,12 @@ int main() {
                     std::cerr << "Whistle delay pair missing pair bearing output\n";
                     return 1;
                 }
+                if (!whistle_delay.bearing_valid || !whistle_delay.bearing_ambiguity ||
+                    whistle_delay.bearing_pair_count != whistle_delay.delays.size() ||
+                    whistle_delay.bearing_radians != delay.pair_bearing_radians) {
+                    std::cerr << "Whistle region bearing summary missing or inconsistent\n";
+                    return 1;
+                }
                 if (whistle_delay.channel < 2 && delay.delay.delay_score > best_score[whistle_delay.channel]) {
                     best_score[whistle_delay.channel] = delay.delay.delay_score;
                     best_delay[whistle_delay.channel] = delay.delay.delay_samples;
