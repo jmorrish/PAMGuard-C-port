@@ -71,6 +71,8 @@ struct DetectorConfig {
     detectors::CtChi2ClassifierConfig click_train_pre_classifier;
     bool click_train_idi_classifier_enabled = false;
     detectors::CtIdiClassifierConfig click_train_idi_classifier;
+    bool click_train_bearing_classifier_enabled = false;
+    detectors::CtBearingClassifierConfig click_train_bearing_classifier;
     bool click_train_template_classifier_enabled = false;
     detectors::CtTemplateClassifierConfig click_train_template_classifier;
     /** FFT length for the train average spectrum the template classifier reads. */

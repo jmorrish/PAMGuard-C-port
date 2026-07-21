@@ -1,4 +1,4 @@
-#include <cstdint>
+﻿#include <cstdint>
 #include <cstring>
 #include <cctype>
 #include <algorithm>
@@ -30,7 +30,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 13;
+constexpr int kResultSchemaVersion = 14;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -1922,6 +1922,29 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 idi.max_std_idi = idi_json.value("maxStdIdi", idi.max_std_idi);
                 idi.species_flag = idi_json.value("speciesFlag", idi.species_flag);
 
+                const auto bearing_json = classifier.value("bearing", json::object());
+                config.detector.click_train_bearing_classifier_enabled = bearing_json.value("enabled", false);
+                if (config.detector.click_train_bearing_classifier_enabled) {
+                    auto& bearing = config.detector.click_train_bearing_classifier;
+                    constexpr double deg = 3.141592653589793238462643383279502884 / 180.0;
+                    // Angles are configured in degrees; PAMGuard stores radians.
+                    bearing.bearing_lim_min = bearing_json.value("bearingLimMinDegrees", 85.0) * deg;
+                    bearing.bearing_lim_max = bearing_json.value("bearingLimMaxDegrees", 95.0) * deg;
+                    bearing.use_mean = bearing_json.value("useMean", bearing.use_mean);
+                    bearing.min_mean_bearing_derivative = bearing_json.value("minMeanBearingDerivativeDegrees", -0.005) * deg;
+                    bearing.max_mean_bearing_derivative = bearing_json.value("maxMeanBearingDerivativeDegrees", 0.005) * deg;
+                    bearing.use_median = bearing_json.value("useMedian", bearing.use_median);
+                    bearing.min_median_bearing_derivative = bearing_json.value("minMedianBearingDerivativeDegrees", -0.005) * deg;
+                    bearing.max_median_bearing_derivative = bearing_json.value("maxMedianBearingDerivativeDegrees", 0.005) * deg;
+                    bearing.use_std = bearing_json.value("useStd", bearing.use_std);
+                    bearing.min_std_bearing_derivative = bearing_json.value("minStdBearingDerivativeDegrees", 0.0) * deg;
+                    bearing.max_std_bearing_derivative = bearing_json.value("maxStdBearingDerivativeDegrees", 1.5) * deg;
+                    bearing.species_flag = bearing_json.value("speciesFlag", bearing.species_flag);
+                    if (!config.detector.click_localisation_enabled) {
+                        throw std::invalid_argument("click.train.classifier.bearing requires click.localisation to be enabled");
+                    }
+                }
+
                 const auto template_json = classifier.value("template", json::object());
                 config.detector.click_train_template_classifier_enabled = template_json.value("enabled", false);
                 if (config.detector.click_train_template_classifier_enabled) {
@@ -2289,6 +2312,20 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             {"clickRateHz", train.click_rate_hz},
             {"completed", train.completed},
         });
+    }
+
+    out["clickTrainClassifications"] = json::array();
+    for (const auto& classification : result.click_train_classifications) {
+        json item = {
+            {"trainId", classification.train_id},
+            {"junkTrain", classification.junk_train},
+            {"speciesId", classification.species_id},
+            {"classifierSpeciesIds", classification.classifier_species_ids},
+        };
+        if (classification.template_correlation != 0.0) {
+            item["templateCorrelation"] = classification.template_correlation;
+        }
+        out["clickTrainClassifications"].push_back(std::move(item));
     }
 
     out["mhtClickTrains"] = json::array();

@@ -487,6 +487,7 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     // After localisation so per-click bearings and features are available to
     // the optional MHT bearing/peak-frequency chi2 variables.
     process_mht_click_trains(result);
+    classify_ici_click_trains(result);
     if (!whistle_peak_detectors_.empty() || !whistle_region_trackers_.empty()) {
         for (const auto& frame : result.spectrogram_frames) {
             retain_whistle_fft_frame(frame);
@@ -538,6 +539,7 @@ AnalysisResult AnalysisSession::flush() {
         state.kernel->confirm_remaining_tracks();
     }
     drain_confirmed_mht_trains(result);
+    classify_ici_click_trains(result);
     for (auto& [_, tracker] : whistle_region_trackers_) {
         auto regions = tracker.flush();
         result.whistle_regions.insert(result.whistle_regions.end(), regions.begin(), regions.end());
@@ -846,6 +848,92 @@ void AnalysisSession::process_mht_click_trains(AnalysisResult& result) {
     drain_confirmed_mht_trains(result);
 }
 
+std::vector<std::shared_ptr<const detectors::CtClassifier>> AnalysisSession::build_ct_classifiers() const {
+    std::vector<std::shared_ptr<const detectors::CtClassifier>> classifiers;
+    if (config_.detector.click_train_idi_classifier_enabled) {
+        classifiers.push_back(std::make_shared<const detectors::CtIdiClassifierAdapter>(
+            config_.detector.click_train_idi_classifier));
+    }
+    if (config_.detector.click_train_bearing_classifier_enabled) {
+        classifiers.push_back(std::make_shared<const detectors::CtBearingClassifierAdapter>(
+            config_.detector.click_train_bearing_classifier));
+    }
+    if (config_.detector.click_train_template_classifier_enabled) {
+        classifiers.push_back(std::make_shared<const detectors::CtTemplateClassifierAdapter>(
+            config_.detector.click_train_template_classifier));
+    }
+    return classifiers;
+}
+
+double AnalysisSession::template_correlation_for(const detectors::CtTrainSummary& summary) const {
+    if (!config_.detector.click_train_template_classifier_enabled) {
+        return 0.0;
+    }
+    const detectors::CtTemplateClassifier template_classifier(
+        config_.detector.click_train_template_classifier);
+    return template_classifier.classify_detailed(summary).correlation;
+}
+
+void AnalysisSession::classify_ici_click_trains(AnalysisResult& result) const {
+    if (!config_.detector.click_train_classifier_enabled || result.click_trains.empty() ||
+        config_.sample_rate_hz == 0) {
+        return;
+    }
+
+    for (const auto& train : result.click_trains) {
+        detectors::CtTrainSummary summary;
+        // The ICI tracker has no MHT chi2. Zero passes the pre-classifier's
+        // chi2 test (which only rejects when chi2 exceeds the threshold), so
+        // the pre-classifier still gates on click count and duration.
+        summary.chi2 = 0.0;
+        summary.click_count = train.click_count;
+        summary.duration_ms = train.duration_seconds * 1000.0;
+        // The tracker's ICI statistics already have bitwise Java parity.
+        summary.idi.median_idi = train.median_ici_seconds;
+        summary.idi.mean_idi = train.mean_ici_seconds;
+        summary.idi.std_idi = train.std_ici_seconds;
+
+        std::vector<std::vector<double>> member_waveforms;
+        for (const auto start_sample : train.click_start_samples) {
+            for (const auto& click : result.clicks) {
+                if (click.start_sample != start_sample) {
+                    continue;
+                }
+                if (!click.waveform.empty()) {
+                    member_waveforms.push_back(click.waveform.front());
+                }
+                break;
+            }
+            detectors::CtBearingClick bearing_click;
+            bearing_click.time_ms = start_sample * 1000 / static_cast<std::int64_t>(config_.sample_rate_hz);
+            for (const auto& bearing : result.click_bearings) {
+                if (bearing.click_start_sample == start_sample && bearing.bearing.valid) {
+                    bearing_click.bearing_radians =
+                        bearing.bearing.azimuth_degrees * 3.141592653589793238462643383279502884 / 180.0;
+                    break;
+                }
+            }
+            summary.bearing_clicks.push_back(bearing_click);
+        }
+        if (!member_waveforms.empty()) {
+            summary.average_spectrum = detectors::ct_train_average_spectrum(
+                member_waveforms, config_.detector.click_train_average_spectrum_fft_length);
+            summary.average_spectrum_sample_rate_hz = static_cast<double>(config_.sample_rate_hz);
+        }
+
+        const detectors::CtClassifierChain chain(config_.detector.click_train_pre_classifier,
+                                                 build_ct_classifiers());
+        const auto chain_result = chain.classify(summary);
+        ClickTrainClassificationResult classification;
+        classification.train_id = train.train_id;
+        classification.junk_train = chain_result.junk_train;
+        classification.species_id = chain_result.species_id;
+        classification.classifier_species_ids = chain_result.classifications;
+        classification.template_correlation = template_correlation_for(summary);
+        result.click_train_classifications.push_back(std::move(classification));
+    }
+}
+
 void AnalysisSession::classify_mht_train(MhtClickTrainResult& train, const MhtTrainState& state,
                                          const detectors::MhtBitset& track_bits) const {
     if (!config_.detector.click_train_classifier_enabled) {
@@ -889,21 +977,9 @@ void AnalysisSession::classify_mht_train(MhtClickTrainResult& train, const MhtTr
         summary.average_spectrum_sample_rate_hz = static_cast<double>(config_.sample_rate_hz);
     }
 
-    std::vector<std::shared_ptr<const detectors::CtClassifier>> classifiers;
-    if (config_.detector.click_train_idi_classifier_enabled) {
-        classifiers.push_back(std::make_shared<const detectors::CtIdiClassifierAdapter>(
-            config_.detector.click_train_idi_classifier));
-    }
-    if (config_.detector.click_train_template_classifier_enabled) {
-        classifiers.push_back(std::make_shared<const detectors::CtTemplateClassifierAdapter>(
-            config_.detector.click_train_template_classifier));
-        const detectors::CtTemplateClassifier template_classifier(
-            config_.detector.click_train_template_classifier);
-        train.template_correlation = template_classifier.classify_detailed(summary).correlation;
-    }
-
+    train.template_correlation = template_correlation_for(summary);
     const detectors::CtClassifierChain chain(config_.detector.click_train_pre_classifier,
-                                             std::move(classifiers));
+                                             build_ct_classifiers());
     const auto chain_result = chain.classify(summary);
     train.classified = true;
     train.junk_train = chain_result.junk_train;

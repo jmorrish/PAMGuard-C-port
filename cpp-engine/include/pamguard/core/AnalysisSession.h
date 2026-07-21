@@ -104,6 +104,15 @@ struct WhistleRegionDelayResult {
     LsqBearingResult lsq_bearing;
 };
 
+/** Classifier chain verdict for an ICI-tracker click train. */
+struct ClickTrainClassificationResult {
+    std::size_t train_id = 0;
+    bool junk_train = false;
+    int species_id = 0;
+    std::vector<int> classifier_species_ids;
+    double template_correlation = 0.0;
+};
+
 struct MhtClickTrainResult {
     std::size_t train_id = 0;
     std::uint32_t channel_bitmap = 0;
@@ -135,6 +144,7 @@ struct AnalysisResult {
     std::vector<detectors::ConnectedRegionResult> whistle_regions;
     std::vector<WhistleRegionDelayResult> whistle_delays;
     std::vector<MhtClickTrainResult> mht_click_trains;
+    std::vector<ClickTrainClassificationResult> click_train_classifications;
 };
 
 [[nodiscard]] std::vector<ClickTrainBearingSummary> summarize_click_train_bearings(
@@ -188,6 +198,9 @@ private:
     void drain_confirmed_mht_trains(AnalysisResult& result);
     void classify_mht_train(MhtClickTrainResult& train, const MhtTrainState& state,
                             const detectors::MhtBitset& track_bits) const;
+    void classify_ici_click_trains(AnalysisResult& result) const;
+    [[nodiscard]] std::vector<std::shared_ptr<const detectors::CtClassifier>> build_ct_classifiers() const;
+    [[nodiscard]] double template_correlation_for(const detectors::CtTrainSummary& summary) const;
 };
 
 } // namespace pamguard::core

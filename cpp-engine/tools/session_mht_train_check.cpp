@@ -234,6 +234,43 @@ int main() {
         }
 
         {
+            // The classifier chain also runs over ICI-tracker trains, whose
+            // ICI statistics already have bitwise Java parity.
+            auto config = base_config(false);
+            config.detector.click_train_classifier_enabled = true;
+            config.detector.click_train_pre_classifier.chi2_threshold = 1500.0;
+            config.detector.click_train_pre_classifier.min_clicks = 3;
+            config.detector.click_train_pre_classifier.species_flag = 1;
+            config.detector.click_train_idi_classifier_enabled = true;
+            config.detector.click_train_idi_classifier.min_median_idi = 0.05;
+            config.detector.click_train_idi_classifier.max_median_idi = 0.15;
+            config.detector.click_train_idi_classifier.species_flag = 42;
+
+            pamguard::core::AnalysisSession session(config);
+            auto result = session.process(click_train_chunk_at(0));
+            const auto flushed = session.flush();
+            result.click_trains.insert(result.click_trains.end(),
+                                       flushed.click_trains.begin(), flushed.click_trains.end());
+            result.click_train_classifications.insert(result.click_train_classifications.end(),
+                                                      flushed.click_train_classifications.begin(),
+                                                      flushed.click_train_classifications.end());
+            if (result.click_train_classifications.empty()) {
+                std::cerr << "ICI click trains should be classified when the chain is enabled\n";
+                return 1;
+            }
+            bool saw_species = false;
+            for (const auto& classification : result.click_train_classifications) {
+                if (classification.species_id == 42 && !classification.junk_train) {
+                    saw_species = true;
+                }
+            }
+            if (!saw_species) {
+                std::cerr << "The steady ICI train should classify by its median ICI\n";
+                return 1;
+            }
+        }
+
+        {
             pamguard::core::AnalysisSession session(base_config(false));
             auto result = session.process(click_train_chunk_at(0));
             const auto flushed = session.flush();
