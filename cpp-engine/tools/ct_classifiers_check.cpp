@@ -12,6 +12,7 @@ namespace {
 using pamguard::detectors::CtBearingClassifier;
 using pamguard::detectors::CtBearingClassifierConfig;
 using pamguard::detectors::CtBearingClick;
+using pamguard::detectors::CtChi2ClassifierConfig;
 using pamguard::detectors::CtIdiClassifier;
 using pamguard::detectors::CtIdiClassifierConfig;
 using pamguard::detectors::CtIdiSummary;
@@ -189,11 +190,132 @@ bool check_correlation_chi2() {
     return true;
 }
 
+CtIdiClassifierConfig passing_idi_config() {
+    CtIdiClassifierConfig config;
+    config.species_flag = kSpecies;
+    return config;
+}
+
+pamguard::detectors::CtTrainSummary good_train() {
+    pamguard::detectors::CtTrainSummary train;
+    train.chi2 = 500.0;
+    train.click_count = 10;
+    train.duration_ms = 2000.0;
+    train.idi = {0.5, 0.5, 0.01};
+    train.bearing_clicks = steady_train(90.0, 0.0, 6);
+    return train;
+}
+
+bool check_standard_classifier() {
+    using pamguard::detectors::CtBearingClassifierAdapter;
+    using pamguard::detectors::CtIdiClassifierAdapter;
+    using pamguard::detectors::CtStandardClassifier;
+
+    CtBearingClassifierConfig bearing_config;
+    bearing_config.species_flag = kSpecies;
+
+    auto passing_idi = std::make_shared<const CtIdiClassifierAdapter>(passing_idi_config());
+    auto passing_bearing = std::make_shared<const CtBearingClassifierAdapter>(bearing_config);
+
+    auto failing_idi_config = passing_idi_config();
+    failing_idi_config.max_median_idi = 0.1; // the train's median is 0.5
+    auto failing_idi = std::make_shared<const CtIdiClassifierAdapter>(failing_idi_config);
+
+    // All enabled and passing: the composite returns its own flag.
+    {
+        const CtStandardClassifier classifier({{passing_idi, true}, {passing_bearing, true}}, kSpecies);
+        if (classifier.classify(good_train()) != kSpecies) {
+            std::cerr << "Standard classifier should pass when every enabled sub-classifier passes\n";
+            return false;
+        }
+    }
+
+    // One enabled sub-classifier failing rejects the whole composite.
+    {
+        const CtStandardClassifier classifier({{failing_idi, true}, {passing_bearing, true}}, kSpecies);
+        if (classifier.classify(good_train()) != kCtNoSpecies) {
+            std::cerr << "Standard classifier should reject when an enabled sub-classifier fails\n";
+            return false;
+        }
+    }
+
+    // The same failure is ignored when that sub-classifier is disabled, and
+    // its verdict is still reported.
+    {
+        const CtStandardClassifier classifier({{failing_idi, false}, {passing_bearing, true}}, kSpecies);
+        const auto detailed = classifier.classify_detailed(good_train());
+        if (detailed.species_id != kSpecies || detailed.sub_species_ids.size() != 2 ||
+            detailed.sub_species_ids[0] != kCtNoSpecies) {
+            std::cerr << "Disabled sub-classifier should not veto but should still be reported\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool check_classifier_chain() {
+    using pamguard::detectors::CtClassifierChain;
+    using pamguard::detectors::CtIdiClassifierAdapter;
+
+    CtChi2ClassifierConfig pre;
+    pre.chi2_threshold = 1500.0;
+    pre.min_clicks = 5;
+    pre.species_flag = kSpecies;
+
+    auto failing_idi_config = passing_idi_config();
+    failing_idi_config.max_median_idi = 0.1;
+    std::vector<std::shared_ptr<const pamguard::detectors::CtClassifier>> classifiers{
+        std::make_shared<const CtIdiClassifierAdapter>(failing_idi_config),
+        std::make_shared<const CtIdiClassifierAdapter>(passing_idi_config()),
+    };
+
+    // Pre-classifier rejection flags junk and short-circuits.
+    {
+        const CtClassifierChain chain(pre, classifiers);
+        auto train = good_train();
+        train.chi2 = 9999.0;
+        const auto result = chain.classify(train);
+        if (!result.junk_train || !result.classifications.empty() ||
+            result.species_id != kCtNoSpecies) {
+            std::cerr << "Pre-classifier rejection should flag junk and skip classification\n";
+            return false;
+        }
+    }
+
+    // Otherwise every classifier runs and the FIRST match sets the index.
+    {
+        const CtClassifierChain chain(pre, classifiers);
+        const auto result = chain.classify(good_train());
+        if (result.junk_train || result.classifications.size() != 2 ||
+            result.classification_index != 1 || result.species_id != kSpecies) {
+            std::cerr << "Chain should retain all verdicts with the first match setting the index\n";
+            return false;
+        }
+    }
+
+    // Classifiers disabled: pre-classifier passes but nothing else runs.
+    {
+        const CtClassifierChain chain(pre, classifiers, false);
+        const auto result = chain.classify(good_train());
+        if (result.junk_train || !result.classifications.empty()) {
+            std::cerr << "Disabled classifier chain should run only the pre-classifier\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 int main() {
     try {
         if (!check_idi_classifier()) {
+            return 1;
+        }
+        if (!check_standard_classifier()) {
+            return 1;
+        }
+        if (!check_classifier_chain()) {
             return 1;
         }
         if (!check_bearing_classifier()) {
@@ -203,6 +325,7 @@ int main() {
             return 1;
         }
         std::cout << "CT IDI and bearing classifier branch coverage passed\n";
+        std::cout << "CT standard classifier and chain coverage passed\n";
         std::cout << "MHT correlation chi2 behaviour passed\n";
         return 0;
     }

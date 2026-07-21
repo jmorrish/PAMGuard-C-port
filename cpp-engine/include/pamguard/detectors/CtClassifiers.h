@@ -4,7 +4,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "pamguard/detectors/CtChi2Classifier.h"
@@ -204,6 +206,153 @@ public:
 
 private:
     CtBearingClassifierConfig config_;
+};
+
+/** Everything the ported click train classifiers read from a train. */
+struct CtTrainSummary {
+    double chi2 = 0.0;
+    std::size_t click_count = 0;
+    double duration_ms = 0.0;
+    CtIdiSummary idi;
+    std::vector<CtBearingClick> bearing_clicks;
+};
+
+/** Common interface so classifiers can be composed and chained. */
+class CtClassifier {
+public:
+    virtual ~CtClassifier() = default;
+    [[nodiscard]] virtual int classify(const CtTrainSummary& train) const = 0;
+};
+
+class CtChi2ClassifierAdapter final : public CtClassifier {
+public:
+    explicit CtChi2ClassifierAdapter(CtChi2ClassifierConfig config) : classifier_(config) {}
+    [[nodiscard]] int classify(const CtTrainSummary& train) const override {
+        return classifier_.classify(CtClassifierTrain{train.chi2, train.click_count, train.duration_ms}).species_id;
+    }
+
+private:
+    CtChi2Classifier classifier_;
+};
+
+class CtIdiClassifierAdapter final : public CtClassifier {
+public:
+    explicit CtIdiClassifierAdapter(CtIdiClassifierConfig config) : classifier_(config) {}
+    [[nodiscard]] int classify(const CtTrainSummary& train) const override {
+        return classifier_.classify(train.idi).species_id;
+    }
+
+private:
+    CtIdiClassifier classifier_;
+};
+
+class CtBearingClassifierAdapter final : public CtClassifier {
+public:
+    explicit CtBearingClassifierAdapter(CtBearingClassifierConfig config) : classifier_(config) {}
+    [[nodiscard]] int classify(const CtTrainSummary& train) const override {
+        return classifier_.classify(train.bearing_clicks).species_id;
+    }
+
+private:
+    CtBearingClassifier classifier_;
+};
+
+/**
+ * Port of PAMGuard's StandardClassifier: a composite AND gate. Every
+ * sub-classifier runs, and if any **enabled** one returns NOSPECIES or below
+ * the composite returns NOSPECIES; otherwise it returns its own species flag.
+ * Sub-results are retained for reporting, as the reference keeps them in its
+ * StandardClassification.
+ */
+class CtStandardClassifier final : public CtClassifier {
+public:
+    struct Entry {
+        std::shared_ptr<const CtClassifier> classifier;
+        bool enabled = true;
+    };
+
+    CtStandardClassifier(std::vector<Entry> entries, int species_flag)
+        : entries_(std::move(entries)), species_flag_(species_flag) {}
+
+    [[nodiscard]] int classify(const CtTrainSummary& train) const override {
+        return classify_detailed(train).species_id;
+    }
+
+    struct Result {
+        int species_id = kCtNoSpecies;
+        std::vector<int> sub_species_ids;
+    };
+
+    [[nodiscard]] Result classify_detailed(const CtTrainSummary& train) const {
+        Result result;
+        result.species_id = species_flag_;
+        result.sub_species_ids.reserve(entries_.size());
+        for (const auto& entry : entries_) {
+            const int sub = entry.classifier ? entry.classifier->classify(train) : kCtNoSpecies;
+            result.sub_species_ids.push_back(sub);
+            if (entry.enabled && sub <= kCtNoSpecies) {
+                result.species_id = kCtNoSpecies;
+            }
+        }
+        return result;
+    }
+
+private:
+    std::vector<Entry> entries_;
+    int species_flag_ = kCtNoSpecies;
+};
+
+struct CtClassifierChainResult {
+    /** True when the chi2 pre-classifier rejected the train outright. */
+    bool junk_train = false;
+    /** Index of the first classifier returning a species, or npos. */
+    std::size_t classification_index = static_cast<std::size_t>(-1);
+    int species_id = kCtNoSpecies;
+    /** Every classifier's verdict, retained as the reference does. */
+    std::vector<int> classifications;
+};
+
+/**
+ * Port of PAMGuard's CTClassifierManager.classify: the chi2 pre-classifier
+ * gates first — a rejection flags the train as junk, clears classifications,
+ * and short-circuits. Otherwise every classifier runs and all verdicts are
+ * kept, with the **first** classifier returning a species setting the
+ * classification index.
+ */
+class CtClassifierChain {
+public:
+    CtClassifierChain(CtChi2ClassifierConfig pre_classifier,
+                      std::vector<std::shared_ptr<const CtClassifier>> classifiers,
+                      bool run_classifiers = true)
+        : pre_classifier_(pre_classifier), classifiers_(std::move(classifiers)),
+          run_classifiers_(run_classifiers) {}
+
+    [[nodiscard]] CtClassifierChainResult classify(const CtTrainSummary& train) const {
+        CtClassifierChainResult result;
+        const CtChi2Classifier pre(pre_classifier_);
+        if (pre.classify(CtClassifierTrain{train.chi2, train.click_count, train.duration_ms}).species_id
+            == kCtNoSpecies) {
+            result.junk_train = true;
+            return result;
+        }
+        if (!run_classifiers_) {
+            return result;
+        }
+        for (std::size_t i = 0; i < classifiers_.size(); ++i) {
+            const int species = classifiers_[i] ? classifiers_[i]->classify(train) : kCtNoSpecies;
+            result.classifications.push_back(species);
+            if (species > kCtNoSpecies && result.classification_index == static_cast<std::size_t>(-1)) {
+                result.classification_index = i;
+                result.species_id = species;
+            }
+        }
+        return result;
+    }
+
+private:
+    CtChi2ClassifierConfig pre_classifier_;
+    std::vector<std::shared_ptr<const CtClassifier>> classifiers_;
+    bool run_classifiers_ = true;
 };
 
 } // namespace pamguard::detectors
