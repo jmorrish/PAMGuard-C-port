@@ -172,6 +172,46 @@ private:
     MhtChi2Unit last_unit_;
 };
 
+struct MhtTimeDelayChi2Config {
+    /** TimeDelayChi2Delta defaults: 1 microsecond error, 1 nanosecond cut. */
+    double error = 1.0 / 1E6;
+    double min_error = 1.0 / 1E9;
+    double sample_rate_hz = 48000.0;
+};
+
+/**
+ * Port of PAMGuard's TimeDelayChi2Delta: scores the change between
+ * successive per-pair time-delay difference vectors. Faithful quirk: the
+ * largest per-pair squared term is subtracted before scaling, so a single
+ * badly correlated pair is absorbed entirely (and a one-pair track always
+ * scores zero), while two bad pairs are not.
+ */
+class MhtTimeDelayChi2Delta {
+public:
+    MhtTimeDelayChi2Delta() = default;
+    explicit MhtTimeDelayChi2Delta(MhtTimeDelayChi2Config config);
+
+    /**
+     * Delays are per-pair, in seconds, and must keep a stable pair order
+     * across detections (PAMGuard likewise assumes matching lengths).
+     */
+    double update_chi2(const MhtChi2Unit& unit, const std::vector<double>& delays_seconds,
+                       bool in_track, std::size_t bitcount, std::size_t kcount);
+    void clear();
+
+    [[nodiscard]] double raw_chi2() const noexcept { return chi2_; }
+    [[nodiscard]] double error() const noexcept { return config_.error; }
+
+private:
+    MhtTimeDelayChi2Config config_;
+    double chi2_ = 0.0;
+    bool has_last_unit_ = false;
+    bool has_last_delta_ = false;
+    MhtChi2Unit last_unit_;
+    std::vector<double> last_delays_;
+    std::vector<double> last_delta_;
+};
+
 /** IDIManager.calcTime replica shared by the simple chi2 variables. */
 [[nodiscard]] double mht_calc_time_seconds(const MhtChi2Unit& prev, const MhtChi2Unit& next, double sample_rate_hz);
 

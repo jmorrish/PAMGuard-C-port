@@ -164,6 +164,12 @@ add_executable(mht_bearing_chi2_fixture_check
 
 target_link_libraries(mht_bearing_chi2_fixture_check PRIVATE pamguard_engine)
 
+add_executable(mht_time_delay_chi2_fixture_check
+    tools/mht_time_delay_chi2_fixture_check.cpp
+)
+
+target_link_libraries(mht_time_delay_chi2_fixture_check PRIVATE pamguard_engine)
+
 add_executable(mht_kernel_fixture_check
     tools/mht_kernel_fixture_check.cpp
 )
@@ -425,6 +431,11 @@ add_test(
 add_test(
     NAME mht_bearing_chi2_parity
     COMMAND mht_bearing_chi2_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-train/mht-bearing-chi2.csv
+)
+
+add_test(
+    NAME mht_time_delay_chi2_parity
+    COMMAND mht_time_delay_chi2_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-train/mht-time-delay-chi2.csv
 )
 
 add_test(

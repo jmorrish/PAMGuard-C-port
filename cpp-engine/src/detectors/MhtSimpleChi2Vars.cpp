@@ -177,6 +177,65 @@ double MhtBearingChi2Delta::update_chi2(const MhtChi2Unit& unit, bool in_track, 
     return chi2_ / static_cast<double>(bitcount);
 }
 
+MhtTimeDelayChi2Delta::MhtTimeDelayChi2Delta(MhtTimeDelayChi2Config config)
+    : config_(std::move(config)) {
+    if (config_.sample_rate_hz <= 0.0 || config_.error <= 0.0 || config_.min_error <= 0.0) {
+        throw std::invalid_argument("mht time delay chi2 config values must be positive");
+    }
+}
+
+void MhtTimeDelayChi2Delta::clear() {
+    chi2_ = 0.0;
+    has_last_unit_ = false;
+    has_last_delta_ = false;
+    last_delays_.clear();
+    last_delta_.clear();
+}
+
+double MhtTimeDelayChi2Delta::update_chi2(const MhtChi2Unit& unit, const std::vector<double>& delays_seconds,
+                                          bool in_track, std::size_t bitcount, std::size_t kcount) {
+    if (!in_track) {
+        return chi2_ / static_cast<double>(bitcount);
+    }
+    if (!has_last_unit_ || kcount <= 1 || bitcount < 2) {
+        has_last_unit_ = true;
+        last_unit_ = unit;
+        last_delays_ = delays_seconds;
+        chi2_ = 0.0;
+        return chi2_;
+    }
+
+    // TimeDelayChi2Delta.getDiffValue2: per-pair delay differences.
+    std::vector<double> new_delta(delays_seconds.size(), 0.0);
+    for (std::size_t i = 0; i < delays_seconds.size() && i < last_delays_.size(); ++i) {
+        new_delta[i] = last_delays_[i] - delays_seconds[i];
+    }
+
+    if (!has_last_delta_) {
+        has_last_delta_ = true;
+        last_unit_ = unit;
+        last_delays_ = delays_seconds;
+        last_delta_ = std::move(new_delta);
+        return chi2_ / static_cast<double>(bitcount);
+    }
+
+    // calcDeltaChi2: summed squared changes minus the worst pair, scaled.
+    double sum = 0.0;
+    double worst = 0.0;
+    for (std::size_t i = 0; i < new_delta.size() && i < last_delta_.size(); ++i) {
+        const double term = std::pow(last_delta_[i] - new_delta[i], 2.0);
+        sum += term;
+        worst = std::max(worst, term);
+    }
+    const double time_diff = mht_calc_time_seconds(last_unit_, unit, config_.sample_rate_hz);
+    chi2_ += (sum - worst) / std::pow(std::max(time_diff * config_.error, config_.min_error), 2.0);
+
+    last_unit_ = unit;
+    last_delays_ = delays_seconds;
+    last_delta_ = std::move(new_delta);
+    return chi2_ / static_cast<double>(bitcount);
+}
+
 MhtAmplitudeChi2::MhtAmplitudeChi2(MhtAmplitudeChi2Config config)
     : config_(std::move(config)) {
     if (config_.sample_rate_hz <= 0.0 || config_.error <= 0.0 || config_.min_error <= 0.0) {
