@@ -48,6 +48,8 @@ const std::vector<Vec3> kPlanePositions = {
 const std::vector<Vec3> kVolumePositions = {
     {0.0, 0.0, 0.0}, {2.0, 0.0, 0.0}, {0.0, 3.0, 0.0}, {0.5, 1.0, 2.5}};
 const std::vector<Vec3> kLinePositions = {{0.0, 0.0, 0.0}, {0.0, 2.0, 0.0}, {0.0, 4.0, 0.0}};
+const std::vector<Vec3> kLineFour = {
+    {0.0, 0.0, 0.0}, {0.0, 1.5, 0.0}, {0.0, 3.0, 0.0}, {0.0, 4.5, 0.0}};
 const std::vector<Vec3> kErrors4 = {{0.1, 0.1, 0.1}, {0.1, 0.1, 0.1}, {0.1, 0.1, 0.1}, {0.1, 0.1, 0.1}};
 const std::vector<Vec3> kErrors3 = {{0.1, 0.1, 0.1}, {0.1, 0.1, 0.1}, {0.1, 0.1, 0.1}};
 const std::vector<Vec3> kAsymmetricErrors4 = {
@@ -66,6 +68,9 @@ std::map<std::string, GridCase> case_catalogue() {
         {"volume-sos-error", {kVolumePositions, kErrors4, 25.0, 3.0e-5}},
         {"line-broadside", {kLinePositions, kErrors3, 0.0, 1.0e-5}},
         {"line-oblique", {kLinePositions, kErrors3, 0.0, 1.0e-5}},
+        // Line-convention (MLLineBearingLocaliser2) cases only.
+        {"line-endfire", {kLinePositions, kErrors3, 0.0, 1.0e-5}},
+        {"line-four-oblique", {kLineFour, kErrors4, 20.0, 2.0e-5}},
     };
 }
 
@@ -122,10 +127,14 @@ std::vector<GridRow> read_fixture(const std::string& path) {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cerr << "Usage: ml_grid_bearing_fixture_check <fixture.csv>\n";
+    if (argc < 2 || argc > 3) {
+        std::cerr << "Usage: ml_grid_bearing_fixture_check <fixture.csv> [grid|line]\n";
         return 2;
     }
+    // "line" selects MLLineBearingLocaliser2's theta convention, which the
+    // reference reaches by subclassing and which changes the delay table as
+    // well as the reported angle.
+    const bool line_convention = argc == 3 && std::string(argv[2]) == "line";
 
     try {
         const auto fixture = read_fixture(argv[1]);
@@ -155,6 +164,7 @@ int main(int argc, char** argv) {
             config.speed_of_sound_mps = 1500.0;
             config.speed_of_sound_error_mps = grid_case.speed_of_sound_error_mps;
             config.timing_error_seconds = grid_case.timing_error_seconds;
+            config.line_theta_convention = line_convention;
 
             const pamguard::localisation::MlGridBearingLocaliser localiser(config);
             if (!localiser.prepared()) {
@@ -235,7 +245,7 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        std::cout << "ML grid bearing parity passed\n";
+        std::cout << (line_convention ? "ML line bearing parity passed\n" : "ML grid bearing parity passed\n");
         std::cout << "cases=" << fixture.size() << " max_abs_error=" << max_abs_error << "\n";
         return 0;
     }

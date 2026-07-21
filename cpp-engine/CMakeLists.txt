@@ -588,6 +588,11 @@ add_test(
 )
 
 add_test(
+    NAME ml_line_bearing_parity
+    COMMAND ml_grid_bearing_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/ml-line-bearing.csv line
+)
+
+add_test(
     NAME bearing_localiser_selection
     COMMAND bearing_localiser_selector_check
 )

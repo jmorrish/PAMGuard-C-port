@@ -40,6 +40,23 @@ public final class MlGridBearingFixtureExporter {
 
     private static final double SPEED_OF_SOUND = 1500.0;
 
+    /**
+     * MLLineBearingLocaliser2 overrides thetaBinToAngle to return
+     * pi/2 - super.thetaBinToAngle(bin). Java dispatches that virtually, and
+     * prepare() calls it while building the delay table, so the override
+     * changes the table as well as the reported angle.
+     *
+     * That subclass is selected only for a line sub-array of more than two
+     * hydrophones and only when SMRUEnable.isEnable(), which gates licensed
+     * extras absent from the open distribution.
+     */
+    private static boolean lineThetaConvention = false;
+
+    private static double thetaBinToAngle(double bin, double[] thetaRange, double thetaStep) {
+        double base = Math.PI / 2. - (thetaRange[0] + bin * thetaStep);
+        return lineThetaConvention ? Math.PI / 2. - base : base;
+    }
+
     private static final class GridCase {
         String name;
         double[][] positions;
@@ -65,10 +82,11 @@ public final class MlGridBearingFixtureExporter {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 1) {
-            System.err.println("Usage: MlGridBearingFixtureExporter <output.csv>");
+        if (args.length < 1 || args.length > 2) {
+            System.err.println("Usage: MlGridBearingFixtureExporter <output.csv> [grid|line]");
             System.exit(2);
         }
+        lineThetaConvention = args.length == 2 && args[1].equals("line");
 
         Locale.setDefault(Locale.ROOT);
         File output = new File(args[0]);
@@ -80,7 +98,7 @@ public final class MlGridBearingFixtureExporter {
             // on both sides at once and read as parity.
             writer.println("case,arrayType,nThetaBins,nPhiBins,thetaRadians,thetaErrorRadians,"
                     + "phiRadians,phiErrorRadians,hasPhi,peakLogLikelihood,delaysSeconds");
-            for (GridCase gridCase : caseCatalogue()) {
+            for (GridCase gridCase : lineThetaConvention ? lineCaseCatalogue() : caseCatalogue()) {
                 writeCase(writer, gridCase);
             }
         }
@@ -165,7 +183,7 @@ public final class MlGridBearingFixtureExporter {
 
             for (int iT = 0; iT < nThetaBins; iT++) {
                 for (int iPhi = 0; iPhi < nPhiBins; iPhi++) {
-                    double theta = Math.PI / 2. - (thetaRange[0] + iT * thetaStep);
+                    double theta = thetaBinToAngle(iT, thetaRange, thetaStep);
                     double phi = phiRange[0] + iPhi * phiStep;
                     PamVector bearingVector = PamVector.fromHeadAndSlantR(Math.PI / 2. - theta, phi);
                     delayGrid[iT][iPhi][iP] = -bearingVector.dotProd(pairVector) / SPEED_OF_SOUND;
@@ -192,7 +210,7 @@ public final class MlGridBearingFixtureExporter {
         double[] errors = getErrors((int) Math.round(peakResult.getBin0()), (int) Math.round(peakResult.getBin1()),
                 delays, delayGrid, delayErrorGrid, nThetaBins, nPhiBins, thetaStep, phiStep);
 
-        double theta = Math.PI / 2. - (thetaRange[0] + peakResult.getBin0() * thetaStep);
+        double theta = thetaBinToAngle(peakResult.getBin0(), thetaRange, thetaStep);
         double phi = phiRange[0] + peakResult.getBin1() * phiStep;
         boolean hasPhi = arrayType != ARRAY_TYPE_LINE;
 
@@ -277,6 +295,41 @@ public final class MlGridBearingFixtureExporter {
                 "getArrayDirections", PamVector[].class, int[].class);
         method.setAccessible(true);
         return (PamVector[]) method.invoke(null, positions, null);
+    }
+
+    /**
+     * The line-convention subclass is only ever selected for line sub-arrays,
+     * so its catalogue covers those alone.
+     */
+    private static GridCase[] lineCaseCatalogue() {
+        double[][] linePositions = {
+                {0.0, 0.0, 0.0},
+                {0.0, 2.0, 0.0},
+                {0.0, 4.0, 0.0},
+        };
+        double[][] lineFour = {
+                {0.0, 0.0, 0.0},
+                {0.0, 1.5, 0.0},
+                {0.0, 3.0, 0.0},
+                {0.0, 4.5, 0.0},
+        };
+        double[][] errors3 = {
+                {0.1, 0.1, 0.1},
+                {0.1, 0.1, 0.1},
+                {0.1, 0.1, 0.1},
+        };
+        double[][] errors4 = {
+                {0.1, 0.1, 0.1},
+                {0.1, 0.1, 0.1},
+                {0.1, 0.1, 0.1},
+                {0.1, 0.1, 0.1},
+        };
+        return new GridCase[]{
+                new GridCase("line-broadside", linePositions, errors3, 0.0, 1.0e-5, new double[]{1.0, 0.0, 0.0}),
+                new GridCase("line-oblique", linePositions, errors3, 0.0, 1.0e-5, new double[]{1.0, 1.0, 0.0}),
+                new GridCase("line-endfire", linePositions, errors3, 0.0, 1.0e-5, new double[]{0.0, 1.0, 0.0}),
+                new GridCase("line-four-oblique", lineFour, errors4, 20.0, 2.0e-5, new double[]{2.0, 1.0, 0.0}),
+        };
     }
 
     private static GridCase[] caseCatalogue() {

@@ -32,6 +32,23 @@ struct MlGridBearingConfig {
      */
     double theta_step_radians = 3.0 * (3.141592653589793238462643383279502884 / 180.0);
     double phi_step_radians = 3.0 * (3.141592653589793238462643383279502884 / 180.0);
+    /**
+     * Select `MLLineBearingLocaliser2`'s theta convention, which is the whole
+     * of that subclass: it overrides `thetaBinToAngle` to return
+     * `pi/2 - super.thetaBinToAngle(bin)`.
+     *
+     * Because Java dispatches virtually and `prepare` calls that method while
+     * building the delay table, the flag changes the **table** as well as the
+     * reported angle — the two are not independent, and treating this as a
+     * post-hoc output transform would give different numbers.
+     *
+     * PAMGuard selects that subclass only for a line sub-array of more than
+     * two hydrophones **and** only when `SMRUEnable.isEnable()`, which gates
+     * licensed extras absent from the open distribution. The default build
+     * takes the pair localiser instead, so the engine's selector never asks
+     * for this; it exists so an SMRU-licensed deployment can be reproduced.
+     */
+    bool line_theta_convention = false;
 };
 
 struct MlGridBearingResult {

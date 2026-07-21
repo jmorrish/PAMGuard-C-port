@@ -205,7 +205,10 @@ MlGridBearingLocaliser::MlGridBearingLocaliser(MlGridBearingConfig config)
 }
 
 double MlGridBearingLocaliser::theta_bin_to_angle(double bin) const {
-    return kPi / 2.0 - (theta_range_[0] + bin * config_.theta_step_radians);
+    const double base = kPi / 2.0 - (theta_range_[0] + bin * config_.theta_step_radians);
+    // MLLineBearingLocaliser2's whole contribution, applied here so it reaches
+    // the delay table too, exactly as virtual dispatch does in the reference.
+    return config_.line_theta_convention ? kPi / 2.0 - base : base;
 }
 
 double MlGridBearingLocaliser::phi_bin_to_angle(double bin) const {
