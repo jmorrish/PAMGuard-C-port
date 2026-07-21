@@ -81,13 +81,34 @@ public final class StandardMhtChi2FixtureExporter {
         double[] timesMs;
         double[] amplitudesDb;
         double[] durationsMs;
+        boolean electricalNoiseFilter;
 
         StackCase(String name, double[] timesMs, double[] amplitudesDb, double[] durationsMs) {
+            this(name, timesMs, amplitudesDb, durationsMs, false);
+        }
+
+        StackCase(String name, double[] timesMs, double[] amplitudesDb, double[] durationsMs,
+                  boolean electricalNoiseFilter) {
             this.name = name;
             this.timesMs = timesMs;
             this.amplitudesDb = amplitudesDb;
             this.durationsMs = durationsMs;
+            this.electricalNoiseFilter = electricalNoiseFilter;
         }
+    }
+
+    /** Perfectly uniform detections: the electrical noise signature. */
+    private static StackCase uniformCase(String name, boolean filterOn) {
+        int n = 34;
+        double[] times = new double[n];
+        double[] amps = new double[n];
+        double[] lengths = new double[n];
+        for (int i = 0; i < n; i++) {
+            times[i] = 1000 + i * 50.0;
+            amps[i] = 120.0;
+            lengths[i] = 0.30;
+        }
+        return new StackCase(name, times, amps, lengths, filterOn);
     }
 
     private StandardMhtChi2FixtureExporter() {
@@ -127,6 +148,8 @@ public final class StandardMhtChi2FixtureExporter {
                                 120.8, 90.8, 121.2, 91.2},
                         new double[]{0.30, 0.60, 0.32, 0.62, 0.31, 0.61, 0.33, 0.63,
                                 0.30, 0.60, 0.32, 0.62}),
+                uniformCase("uniform-noise-filter-off", false),
+                uniformCase("uniform-noise-filter-on", true),
         };
     }
 
@@ -135,7 +158,7 @@ public final class StandardMhtChi2FixtureExporter {
         // Enable only the ported variables in createChi2Vars order:
         // IDI, Amplitude, BearingDelta, Correlation, TimeDelayDelta, Length, PeakFrequency.
         chi2Params.enable = new boolean[]{true, true, false, false, false, true, false};
-        chi2Params.useElectricNoiseFilter = false;
+        chi2Params.useElectricNoiseFilter = stackCase.electricalNoiseFilter;
         chi2Params.useCorrelation = false;
 
         MHTKernelParams kernelParams = new MHTKernelParams();

@@ -45,6 +45,10 @@ public:
 
     void clear();
 
+    /** Raw accumulated chi2 (not divided by bitcount), as MHTChi2Var.getChi2. */
+    [[nodiscard]] double raw_chi2() const noexcept { return chi2_; }
+    [[nodiscard]] double error() const noexcept { return config_.error; }
+
 private:
     MhtIdiChi2Config config_;
     double chi2_ = 0.0;

@@ -120,6 +120,8 @@ public:
     [[nodiscard]] virtual std::unique_ptr<MhtChi2<T>> clone_chi2() const = 0;
     /** MHTChi2.clearKernelGarbage: StandardMHTChi2 is a no-op. */
     virtual void clear_kernel_garbage(std::size_t new_ref_index) { (void)new_ref_index; }
+    /** Set by the electrical noise filter during update; read by pruning. */
+    [[nodiscard]] virtual bool is_junk_track() const { return false; }
 };
 
 /** MHTChi2Provider equivalent. */
@@ -283,6 +285,11 @@ private:
 
         for (auto& track : new_possibilities) {
             track.chi2->update(detection, track.bits, kcount_);
+            // SimpleElectricalNoiseFilter sets the junk flag on the track
+            // during the chi2 update; pruning confirms flagged tracks.
+            if (track.chi2->is_junk_track()) {
+                track.flag = MhtTrackBitset<T>::kJunkTrack;
+            }
         }
         possible_tracks_ = std::move(new_possibilities);
     }

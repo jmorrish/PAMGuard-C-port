@@ -1912,6 +1912,9 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 chi2.max_ici = mht.value("maxIci", chi2.max_ici);
                 chi2.low_ici_exponent = mht.value("lowIciExponent", chi2.low_ici_exponent);
                 chi2.long_track_exponent = mht.value("longTrackExponent", chi2.long_track_exponent);
+                chi2.use_electrical_noise_filter = mht.value("useElectricalNoiseFilter", chi2.use_electrical_noise_filter);
+                chi2.electrical_noise_min_chi2 = mht.value("electricalNoiseMinChi2", chi2.electrical_noise_min_chi2);
+                chi2.electrical_noise_n_data_units = mht.value("electricalNoiseNDataUnits", chi2.electrical_noise_n_data_units);
                 kernel.n_hold = mht.value("nHold", kernel.n_hold);
                 kernel.n_pruneback = mht.value("nPruneback", kernel.n_pruneback);
                 kernel.n_pruneback_start = mht.value("nPrunebackStart", kernel.n_pruneback_start);
@@ -2428,6 +2431,9 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
             {"maxIci", chi2.max_ici},
             {"lowIciExponent", chi2.low_ici_exponent},
             {"longTrackExponent", chi2.long_track_exponent},
+            {"useElectricalNoiseFilter", chi2.use_electrical_noise_filter},
+            {"electricalNoiseMinChi2", chi2.electrical_noise_min_chi2},
+            {"electricalNoiseNDataUnits", chi2.electrical_noise_n_data_units},
             {"nHold", kernel.n_hold},
             {"nPruneback", kernel.n_pruneback},
             {"nPrunebackStart", kernel.n_pruneback_start},

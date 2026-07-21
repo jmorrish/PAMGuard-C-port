@@ -38,6 +38,10 @@ public:
     double update_chi2(const MhtChi2Unit& unit, bool in_track, std::size_t bitcount, std::size_t kcount);
     void clear();
 
+    /** Raw accumulated chi2 (not divided by bitcount), as MHTChi2Var.getChi2. */
+    [[nodiscard]] double raw_chi2() const noexcept { return chi2_; }
+    [[nodiscard]] double error() const noexcept { return config_.error; }
+
 private:
     MhtLengthChi2Config config_;
     double chi2_ = 0.0;
@@ -74,6 +78,9 @@ public:
     double update_chi2(const MhtChi2Unit& unit, bool in_track, std::size_t bitcount, std::size_t kcount);
     void clear();
 
+    [[nodiscard]] double raw_chi2() const noexcept { return chi2_; }
+    [[nodiscard]] double error() const noexcept { return config_.error; }
+
 private:
     MhtAmplitudeChi2Config config_;
     double chi2_ = 0.0;
@@ -104,6 +111,9 @@ public:
     [[nodiscard]] double calc_chi2(const std::vector<MhtChi2Unit>& units) const;
     double update_chi2(const MhtChi2Unit& unit, bool in_track, std::size_t bitcount, std::size_t kcount);
     void clear();
+
+    [[nodiscard]] double raw_chi2() const noexcept { return chi2_; }
+    [[nodiscard]] double error() const noexcept { return config_.error; }
 
 private:
     MhtPeakFrequencyChi2Config config_;
@@ -150,6 +160,9 @@ public:
 
     double update_chi2(const MhtChi2Unit& unit, bool in_track, std::size_t bitcount, std::size_t kcount);
     void clear();
+
+    [[nodiscard]] double raw_chi2() const noexcept { return chi2_; }
+    [[nodiscard]] double error() const noexcept { return config_.error_radians; }
 
 private:
     MhtBearingChi2Config config_;

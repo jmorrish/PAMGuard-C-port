@@ -1064,6 +1064,14 @@ components:
                       type: number
                     longTrackExponent:
                       type: number
+                    useElectricalNoiseFilter:
+                      type: boolean
+                      description: Flags tracks whose error-independent chi2 falls below electricalNoiseMinChi2 as junk (too uniform to be biological), confirming them out of the possibility mix.
+                    electricalNoiseMinChi2:
+                      type: number
+                    electricalNoiseNDataUnits:
+                      type: integer
+                      description: Minimum detections in a track before the noise filter engages.
                     nHold:
                       type: integer
                       minimum: 1

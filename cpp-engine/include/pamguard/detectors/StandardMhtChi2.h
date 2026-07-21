@@ -30,6 +30,10 @@ struct StandardMhtChi2Params {
     /** StandardMHTChi2.maxChi. */
     double max_chi = 200000000000000000.0;
     double sample_rate_hz = 48000.0;
+    /** SimpleElectricalNoiseFilter, off by default as in PAMGuard. */
+    bool use_electrical_noise_filter = false;
+    double electrical_noise_min_chi2 = 0.00001;
+    std::size_t electrical_noise_n_data_units = 30;
 };
 
 /**
@@ -54,6 +58,7 @@ public:
     [[nodiscard]] int get_n_coasts() const override;
     void update(const MhtChi2Unit& detection, const MhtBitset& track_bits, std::size_t kcount) override;
     [[nodiscard]] std::unique_ptr<MhtChi2<MhtChi2Unit>> clone_chi2() const override;
+    [[nodiscard]] bool is_junk_track() const override { return junk_track_; }
 
 private:
     const StandardMhtChi2Provider* provider_;
@@ -64,6 +69,10 @@ private:
     MhtPeakFrequencyChi2 peak_frequency_chi2_;
     double chi2_ = 1.7976931348623157e308;
     int n_coasts_ = 0;
+    bool junk_track_ = false;
+
+    /** SimpleElectricalNoiseFilter.addChi2Penalties over the enabled variables. */
+    void apply_electrical_noise_filter(std::size_t bitcount);
 };
 
 class StandardMhtChi2Provider final : public MhtChi2Provider<MhtChi2Unit> {

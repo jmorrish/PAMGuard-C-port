@@ -201,8 +201,36 @@ void StandardMhtChi2::update(const MhtChi2Unit& detection, const MhtBitset& trac
         chi2 = chi2 / std::pow(total_track_time / provider_->total_time_seconds(), params.long_track_exponent);
     }
 
+    if (params.use_electrical_noise_filter) {
+        apply_electrical_noise_filter(bitcount);
+    }
+
     chi2_ = chi2;
     n_coasts_ = static_cast<int>(n_coasts);
+}
+
+void StandardMhtChi2::apply_electrical_noise_filter(std::size_t bitcount) {
+    // SimpleElectricalNoiseFilter: a track whose error-independent chi2
+    // (raw chi2 * error^2 / bitcount) falls below minChi2 for any enabled
+    // variable is too uniform to be biological, so it is flagged as junk and
+    // the kernel confirms it out of the possibility mix. The chi2 value
+    // itself is returned unchanged, exactly as in the reference.
+    const auto& params = provider_->params();
+    if (bitcount < params.electrical_noise_n_data_units) {
+        return;
+    }
+
+    const auto too_uniform = [&](double raw_chi2, double error) {
+        return raw_chi2 * std::pow(error, 2.0) / static_cast<double>(bitcount) < params.electrical_noise_min_chi2;
+    };
+
+    if ((params.enable_idi && too_uniform(idi_chi2_.raw_chi2(), idi_chi2_.error())) ||
+        (params.enable_amplitude && too_uniform(amplitude_chi2_.raw_chi2(), amplitude_chi2_.error())) ||
+        (params.enable_length && too_uniform(length_chi2_.raw_chi2(), length_chi2_.error())) ||
+        (params.enable_bearing && too_uniform(bearing_chi2_.raw_chi2(), bearing_chi2_.error())) ||
+        (params.enable_peak_frequency && too_uniform(peak_frequency_chi2_.raw_chi2(), peak_frequency_chi2_.error()))) {
+        junk_track_ = true;
+    }
 }
 
 } // namespace pamguard::detectors

@@ -22,7 +22,21 @@ struct StackCase {
     std::vector<double> times_ms;
     std::vector<double> amplitudes_db;
     std::vector<double> durations_ms;
+    bool electrical_noise_filter = false;
 };
+
+/** Perfectly uniform detections: the electrical noise signature. */
+StackCase uniform_case(const std::string& name, bool filter_on) {
+    StackCase stack_case;
+    stack_case.name = name;
+    stack_case.electrical_noise_filter = filter_on;
+    for (int i = 0; i < 34; ++i) {
+        stack_case.times_ms.push_back(1000.0 + i * 50.0);
+        stack_case.amplitudes_db.push_back(120.0);
+        stack_case.durations_ms.push_back(0.30);
+    }
+    return stack_case;
+}
 
 // Case parameters shared by name with the PAMGuard Java fixture exporter
 // (reference-tools/.../StandardMhtChi2FixtureExporter.java).
@@ -36,6 +50,8 @@ std::vector<StackCase> case_catalogue() {
          {1000, 1050, 1100, 1150, 1200, 1250, 1300, 1350, 1400, 1450, 1500, 1550},
          {120, 90, 121, 91, 120.5, 90.5, 121.5, 91.5, 120.8, 90.8, 121.2, 91.2},
          {0.30, 0.60, 0.32, 0.62, 0.31, 0.61, 0.33, 0.63, 0.30, 0.60, 0.32, 0.62}},
+        uniform_case("uniform-noise-filter-off", false),
+        uniform_case("uniform-noise-filter-on", true),
     };
 }
 
@@ -102,6 +118,7 @@ int main(int argc, char** argv) {
 
         for (const auto& stack_case : case_catalogue()) {
             StandardMhtChi2Params params;
+            params.use_electrical_noise_filter = stack_case.electrical_noise_filter;
             pamguard::detectors::MhtKernelParams kernel_params;
             MhtKernel<MhtChi2Unit> kernel(
                 std::make_unique<StandardMhtChi2Provider>(params, kernel_params), kernel_params);
