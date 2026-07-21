@@ -33,10 +33,17 @@ public final class ArrayShapeFixtureExporter {
     private static final class ShapeCase {
         String name;
         double[][] positions;
+        /** Streamer per hydrophone; null means a single streamer. */
+        int[] streamers;
 
         ShapeCase(String name, double[][] positions) {
+            this(name, positions, null);
+        }
+
+        ShapeCase(String name, double[][] positions, int[] streamers) {
             this.name = name;
             this.positions = positions;
+            this.streamers = streamers;
         }
     }
 
@@ -57,8 +64,8 @@ public final class ArrayShapeFixtureExporter {
             writer.println("case,shape,nVectors,v0x,v0y,v0z,v1x,v1y,v1z,v2x,v2y,v2z");
             for (ShapeCase shapeCase : caseCatalogue()) {
                 PamVector[] positions = toVectors(shapeCase.positions);
-                int shape = getArrayShape(positions);
-                PamVector[] directions = getArrayDirections(positions);
+                int shape = getArrayShape(positions, shapeCase.streamers);
+                PamVector[] directions = getArrayDirections(positions, shapeCase.streamers);
                 double[] flat = new double[9];
                 int nVectors = directions == null ? 0 : directions.length;
                 for (int i = 0; i < nVectors; i++) {
@@ -90,6 +97,22 @@ public final class ArrayShapeFixtureExporter {
                         {0.0, 0.0, 0.0}, {2.5, 0.0, 0.0}, {0.0, 2.5, 0.0}, {0.0, 0.0, 2.5}}),
                 new ShapeCase("volume-5ch-towed-cluster", new double[][]{
                         {0.0, 0.0, 0.0}, {0.05, 3.0, 0.02}, {-0.03, 6.0, 0.04}, {0.02, 9.0, 0.5}, {0.5, 12.0, 0.1}}),
+                // Multi-streamer: co-located phones on DIFFERENT streamers are
+                // not duplicates, so these stay a two-element line array rather
+                // than collapsing to a point.
+                new ShapeCase("streamers-colocated-pair",
+                        new double[][]{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 5.0, 0.0}, {0.0, 5.0, 0.0}},
+                        new int[]{0, 1, 0, 1}),
+                // Same positions on ONE streamer collapse to a point.
+                new ShapeCase("streamers-colocated-pair-single-streamer",
+                        new double[][]{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 5.0, 0.0}, {0.0, 5.0, 0.0}},
+                        new int[]{0, 0, 0, 0}),
+                // Two towed streamers offset in x form a plane.
+                new ShapeCase("streamers-two-towed-lines",
+                        new double[][]{
+                                {0.0, 0.0, 0.0}, {0.0, 4.0, 0.0}, {0.0, 8.0, 0.0},
+                                {3.0, 0.0, 0.0}, {3.0, 4.0, 0.0}, {3.0, 8.0, 0.0}},
+                        new int[]{0, 0, 0, 1, 1, 1}),
         };
     }
 
@@ -101,13 +124,19 @@ public final class ArrayShapeFixtureExporter {
         return vectors;
     }
 
-    /** ArrayManager.getSpatiallyUniquePhones transcription (single streamer): last duplicate wins. */
-    private static PamVector[] spatiallyUnique(PamVector[] positions) {
+    /**
+     * ArrayManager.getSpatiallyUniquePhones transcription: last duplicate
+     * wins, and duplicates only count within the same streamer.
+     */
+    private static PamVector[] spatiallyUnique(PamVector[] positions, int[] streamers) {
         boolean[] unique = new boolean[positions.length];
         int count = 0;
         for (int i = 0; i < positions.length; i++) {
             unique[i] = true;
             for (int j = i + 1; j < positions.length; j++) {
+                if (streamers != null && streamers[i] != streamers[j]) {
+                    continue;
+                }
                 if (positions[i].equals(positions[j])) {
                     unique[i] = false;
                 }
@@ -126,23 +155,59 @@ public final class ArrayShapeFixtureExporter {
         return result;
     }
 
+    /** Streamers of the phones kept by spatiallyUnique, in the same order. */
+    private static int[] survivingStreamers(PamVector[] positions, int[] streamers) {
+        if (streamers == null) {
+            return null;
+        }
+        boolean[] unique = new boolean[positions.length];
+        int count = 0;
+        for (int i = 0; i < positions.length; i++) {
+            unique[i] = true;
+            for (int j = i + 1; j < positions.length; j++) {
+                if (streamers[i] != streamers[j]) {
+                    continue;
+                }
+                if (positions[i].equals(positions[j])) {
+                    unique[i] = false;
+                }
+            }
+            if (unique[i]) {
+                count++;
+            }
+        }
+        int[] result = new int[count];
+        int index = 0;
+        for (int i = 0; i < positions.length; i++) {
+            if (unique[i]) {
+                result[index++] = streamers[i];
+            }
+        }
+        return result;
+    }
+
     /** ArrayManager.getArrayShape transcription over explicit positions. */
-    private static int getArrayShape(PamVector[] positions) {
+    private static int getArrayShape(PamVector[] positions, int[] streamers) {
         if (positions.length == 0) {
             return ARRAY_TYPE_NONE;
         }
-        PamVector[] uniquePositions = spatiallyUnique(positions);
+        PamVector[] uniquePositions = spatiallyUnique(positions, streamers);
         int nPhones = uniquePositions.length;
         if (nPhones <= 1) {
             return ARRAY_TYPE_POINT;
         }
 
+        int[] uniqueStreamers = survivingStreamers(positions, streamers);
         PamVector[] phoneVectors = new PamVector[nPhones];
+        int[] keptStreamers = new int[nPhones];
         int uniquePhones = 0;
         for (int i = 0; i < nPhones; i++) {
             PamVector phoneVec = uniquePositions[i];
             boolean matches = false;
             for (int j = 0; j < uniquePhones; j++) {
+                if (uniqueStreamers != null && uniqueStreamers[i] != keptStreamers[j]) {
+                    continue;
+                }
                 if (phoneVec.equals(phoneVectors[j])) {
                     matches = true;
                     break;
@@ -150,6 +215,9 @@ public final class ArrayShapeFixtureExporter {
             }
             if (matches) {
                 continue;
+            }
+            if (uniqueStreamers != null) {
+                keptStreamers[uniquePhones] = uniqueStreamers[i];
             }
             phoneVectors[uniquePhones++] = phoneVec;
         }
@@ -180,12 +248,12 @@ public final class ArrayShapeFixtureExporter {
     }
 
     /** ArrayManager.getArrayDirections transcription over explicit positions. */
-    private static PamVector[] getArrayDirections(PamVector[] positions) {
-        PamVector[] uniquePositions = spatiallyUnique(positions);
+    private static PamVector[] getArrayDirections(PamVector[] positions, int[] streamers) {
+        PamVector[] uniquePositions = spatiallyUnique(positions, streamers);
         if (uniquePositions.length <= 0) {
             return null;
         }
-        int arrayType = getArrayShape(positions);
+        int arrayType = getArrayShape(positions, streamers);
         switch (arrayType) {
             case ARRAY_TYPE_POINT:
                 return null;

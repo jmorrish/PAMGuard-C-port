@@ -98,13 +98,21 @@ std::size_t principal_axis(const Vec3& a) {
     return axis;
 }
 
-/** ArrayManager.getSpatiallyUniquePhones: last duplicate wins. */
-std::vector<Vec3> spatially_unique(const std::vector<Vec3>& positions) {
+/**
+ * ArrayManager.getSpatiallyUniquePhones: last duplicate wins, and duplicates
+ * only count when the phones share a streamer, so co-located hydrophones on
+ * different streamers both survive.
+ */
+std::vector<Vec3> spatially_unique(const std::vector<Vec3>& positions, const std::vector<int>& streamer_ids) {
+    const bool use_streamers = streamer_ids.size() == positions.size();
     std::vector<Vec3> result;
     result.reserve(positions.size());
     for (std::size_t i = 0; i < positions.size(); ++i) {
         bool unique_position = true;
         for (std::size_t j = i + 1; j < positions.size(); ++j) {
+            if (use_streamers && streamer_ids[i] != streamer_ids[j]) {
+                continue;
+            }
             if (exactly_equal(positions[i], positions[j])) {
                 unique_position = false;
             }
@@ -230,11 +238,12 @@ std::vector<Vec3> plane_array_vectors(const std::vector<Vec3>& positions) {
 
 } // namespace
 
-ArrayShapeType array_shape(const std::vector<Vec3>& hydrophone_positions_m) {
+ArrayShapeType array_shape(const std::vector<Vec3>& hydrophone_positions_m,
+                           const std::vector<int>& streamer_ids) {
     if (hydrophone_positions_m.empty()) {
         return ArrayShapeType::None;
     }
-    const auto unique_positions = spatially_unique(hydrophone_positions_m);
+    const auto unique_positions = spatially_unique(hydrophone_positions_m, streamer_ids);
     if (unique_positions.size() <= 1) {
         return ArrayShapeType::Point;
     }
@@ -255,12 +264,13 @@ ArrayShapeType array_shape(const std::vector<Vec3>& hydrophone_positions_m) {
     return ArrayShapeType::Volume;
 }
 
-std::vector<Vec3> array_directions(const std::vector<Vec3>& hydrophone_positions_m) {
-    const auto unique_positions = spatially_unique(hydrophone_positions_m);
+std::vector<Vec3> array_directions(const std::vector<Vec3>& hydrophone_positions_m,
+                                   const std::vector<int>& streamer_ids) {
+    const auto unique_positions = spatially_unique(hydrophone_positions_m, streamer_ids);
     if (unique_positions.empty()) {
         return {};
     }
-    switch (array_shape(hydrophone_positions_m)) {
+    switch (array_shape(hydrophone_positions_m, streamer_ids)) {
     case ArrayShapeType::Line:
         return line_array_vector(unique_positions);
     case ArrayShapeType::Plane:

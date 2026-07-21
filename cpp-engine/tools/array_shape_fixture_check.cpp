@@ -21,6 +21,8 @@ struct ArrayShapeFixtureRow {
 struct ArrayShapeCase {
     std::string name;
     std::vector<std::array<double, 3>> positions_m;
+    /** Empty means a single streamer. */
+    std::vector<int> streamer_ids;
 };
 
 // Case positions shared by name with the PAMGuard Java fixture exporter
@@ -37,6 +39,17 @@ std::vector<ArrayShapeCase> case_catalogue() {
         {"volume-4ch-tetrahedron", {{0.0, 0.0, 0.0}, {2.5, 0.0, 0.0}, {0.0, 2.5, 0.0}, {0.0, 0.0, 2.5}}},
         {"volume-5ch-towed-cluster",
          {{0.0, 0.0, 0.0}, {0.05, 3.0, 0.02}, {-0.03, 6.0, 0.04}, {0.02, 9.0, 0.5}, {0.5, 12.0, 0.1}}},
+        // Co-located phones on different streamers are not duplicates.
+        {"streamers-colocated-pair",
+         {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 5.0, 0.0}, {0.0, 5.0, 0.0}},
+         {0, 1, 0, 1}},
+        {"streamers-colocated-pair-single-streamer",
+         {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 5.0, 0.0}, {0.0, 5.0, 0.0}},
+         {0, 0, 0, 0}},
+        {"streamers-two-towed-lines",
+         {{0.0, 0.0, 0.0}, {0.0, 4.0, 0.0}, {0.0, 8.0, 0.0},
+          {3.0, 0.0, 0.0}, {3.0, 4.0, 0.0}, {3.0, 8.0, 0.0}},
+         {0, 0, 0, 1, 1, 1}},
     };
 }
 
@@ -115,14 +128,14 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
-            const auto shape = pamguard::localisation::array_shape(shape_case.positions_m);
+            const auto shape = pamguard::localisation::array_shape(shape_case.positions_m, shape_case.streamer_ids);
             if (static_cast<int>(shape) != expected.shape) {
                 std::cerr << "Array shape mismatch for case " << shape_case.name << ": fixture=" << expected.shape
                           << " actual=" << static_cast<int>(shape) << "\n";
                 return 1;
             }
 
-            const auto directions = pamguard::localisation::array_directions(shape_case.positions_m);
+            const auto directions = pamguard::localisation::array_directions(shape_case.positions_m, shape_case.streamer_ids);
             if (directions.size() != expected.vector_count) {
                 std::cerr << "Direction count mismatch for case " << shape_case.name << ": fixture="
                           << expected.vector_count << " actual=" << directions.size() << "\n";
