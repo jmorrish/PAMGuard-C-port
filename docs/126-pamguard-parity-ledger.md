@@ -61,6 +61,14 @@ It is not safe to say:
 - PAMGuard project import/config equivalence is implemented.
 - The system has production throughput proof for 50+ real detector-heavy live streams.
 
+## Deliberate non-ports
+
+These are recorded decisions with evidence, not gaps left by oversight:
+
+- `DetectionGroupLocaliser` — class-level `@Deprecated`, needs a GPS/track model the engine lacks, and solves a different problem than instantaneous multi-array groups (`docs/192-group-localiser-non-port.md`).
+- `SimplexBearingLocaliser`, `CombinedBearingLocaliser`, and `MLGridBearingLocaliser` v1 — zero live instantiation sites anywhere in the PAMGuard tree; every reference is a commented-out line, and the first is also `@Deprecated` (`docs/200-remaining-bearing-localisers-non-port.md`).
+- PAMGuard project/config import as C++ — the payloads are Java-serialised object graphs, so any importer must run on the JVM (`docs/182-project-import-feasibility.md`).
+
 ## Next parity priorities
 
 - Whistle group *localisation* is a deliberate non-port: PAMGuard's `DetectionGroupLocaliser` is `@Deprecated`, needs a GPS/track model the engine lacks, and solves a different problem than instantaneous multi-array groups (`docs/192-group-localiser-non-port.md`).
