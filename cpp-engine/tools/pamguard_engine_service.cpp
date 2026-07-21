@@ -29,7 +29,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 11;
+constexpr int kResultSchemaVersion = 12;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2382,6 +2382,22 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 bearing_item["bearingErrorRadians"] = whistle_delay.bearing_error_radians;
             }
             item["bearing"] = std::move(bearing_item);
+        }
+        if (whistle_delay.lsq_bearing.valid) {
+            json lsq_item = {
+                {"azimuthRadians", whistle_delay.lsq_bearing.azimuth_radians},
+                {"azimuthDegrees", whistle_delay.lsq_bearing.azimuth_radians * 180.0 / 3.141592653589793238462643383279502884},
+                {"elevationRadians", whistle_delay.lsq_bearing.elevation_radians},
+                {"elevationDegrees", whistle_delay.lsq_bearing.elevation_radians * 180.0 / 3.141592653589793238462643383279502884},
+                {"usedPairs", whistle_delay.lsq_bearing.used_pairs},
+            };
+            if (std::isfinite(whistle_delay.lsq_bearing.azimuth_error_radians)) {
+                lsq_item["azimuthErrorRadians"] = whistle_delay.lsq_bearing.azimuth_error_radians;
+            }
+            if (std::isfinite(whistle_delay.lsq_bearing.elevation_error_radians)) {
+                lsq_item["elevationErrorRadians"] = whistle_delay.lsq_bearing.elevation_error_radians;
+            }
+            item["lsqBearing"] = std::move(lsq_item);
         }
         out["whistleDelays"].push_back(std::move(item));
     }

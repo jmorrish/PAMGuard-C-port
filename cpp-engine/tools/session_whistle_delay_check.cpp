@@ -134,6 +134,58 @@ int main() {
         }
 
         {
+            // Four hydrophones in a tetrahedron: PAMGuard would select the
+            // LSQ localiser, giving an unambiguous azimuth/elevation over
+            // the full six-pair set.
+            auto config = base_config(true);
+            config.channel_count = 4;
+            config.array.hydrophones = {
+                {0, 0.0, 0.0, 0.0, 0.0},
+                {1, 2.5, 0.0, 0.0, 0.0},
+                {2, 0.0, 2.5, 0.0, 0.0},
+                {3, 0.0, 0.0, 2.5, 0.0},
+            };
+            pamguard::core::AnalysisSession session(config);
+            auto chunk = synthetic_chunk();
+            // Widen the two-channel chunk to four channels by repeating the
+            // pair, so every channel carries the same tone burst.
+            pamguard::core::AudioChunk wide = chunk;
+            wide.channel_count = 4;
+            wide.interleaved_pcm.assign(chunk.interleaved_pcm.size() * 2, 0.0);
+            const std::size_t frames = chunk.interleaved_pcm.size() / 2;
+            for (std::size_t i = 0; i < frames; ++i) {
+                for (std::size_t channel = 0; channel < 4; ++channel) {
+                    wide.interleaved_pcm[i * 4 + channel] = chunk.interleaved_pcm[i * 2 + (channel % 2)];
+                }
+            }
+
+            auto result = session.process(wide);
+            const auto flushed = session.flush();
+            result.whistle_delays.insert(result.whistle_delays.end(),
+                                         flushed.whistle_delays.begin(), flushed.whistle_delays.end());
+            if (result.whistle_delays.empty()) {
+                std::cerr << "Four-channel whistle session produced no delays\n";
+                return 1;
+            }
+            bool saw_full_pair_set = false;
+            for (const auto& whistle_delay : result.whistle_delays) {
+                if (whistle_delay.delays.size() == 6) {
+                    saw_full_pair_set = true;
+                    if (whistle_delay.lsq_bearing.valid) {
+                        if (whistle_delay.bearing_ambiguity || whistle_delay.lsq_bearing.used_pairs != 6) {
+                            std::cerr << "LSQ whistle bearing should be unambiguous over six pairs\n";
+                            return 1;
+                        }
+                    }
+                }
+            }
+            if (!saw_full_pair_set) {
+                std::cerr << "Four-channel whistle regions should carry all six channel pairs\n";
+                return 1;
+            }
+        }
+
+        {
             pamguard::core::AnalysisSession session(base_config(false));
             auto result = session.process(synthetic_chunk());
             const auto flushed = session.flush();

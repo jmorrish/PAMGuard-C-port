@@ -585,12 +585,14 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
         delay_result.region_number = region.region_number;
         delay_result.start_sample = region.start_sample;
 
-        for (const auto other_channel : whistle_channels) {
-            if (other_channel == region.channel) {
-                continue;
-            }
-            const auto channel_a = std::min(region.channel, other_channel);
-            const auto channel_b = std::max(region.channel, other_channel);
+        // PAMGuard WhistleDelays measures every channel pair in the group
+        // (0-1, 0-2, 1-2, ...), which is also what an LSQ solve needs.
+        std::vector<localisation::LsqPairGeometry> lsq_pairs;
+        std::vector<double> lsq_delays_seconds;
+        for (std::size_t index_a = 0; index_a < whistle_channels.size(); ++index_a) {
+        for (std::size_t index_b = index_a + 1; index_b < whistle_channels.size(); ++index_b) {
+            const auto channel_a = whistle_channels[index_a];
+            const auto channel_b = whistle_channels[index_b];
             auto pair_geometry = click_pair_geometry(config_, {channel_a, channel_b});
             if (pair_geometry.size() != 1 || !pair_geometry[0].constrained ||
                 pair_geometry[0].hydrophone_distance_m <= 0.0) {
@@ -645,28 +647,75 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
             }
 
             std::vector<localisation::ChannelPairDelay> pair_delays(1);
-            pair_delays[0].pair_index = delay_result.delays.size();
             pair_delays[0].channel_a = 0;
             pair_delays[0].channel_b = 1;
             pair_delays[0].delay = estimator.get_delay(pair_geometry[0].max_delay_samples);
             attach_pair_geometry(pair_delays, pair_geometry, config_);
             pair_delays[0].pair_index = delay_result.delays.size();
+
+            const auto* hydrophone_a = find_hydrophone(config_.array, channel_a);
+            const auto* hydrophone_b = find_hydrophone(config_.array, channel_b);
+            if (hydrophone_a != nullptr && hydrophone_b != nullptr && config_.array.spacing_error_m > 0.0) {
+                localisation::LsqPairGeometry lsq_pair;
+                lsq_pair.baseline_m = {hydrophone_b->x_m - hydrophone_a->x_m,
+                                       hydrophone_b->y_m - hydrophone_a->y_m,
+                                       hydrophone_b->z_m - hydrophone_a->z_m};
+                const double distance = pair_geometry[0].hydrophone_distance_m;
+                const double error_scale = config_.array.spacing_error_m / distance;
+                lsq_pair.error_m = {lsq_pair.baseline_m[0] * error_scale,
+                                    lsq_pair.baseline_m[1] * error_scale,
+                                    lsq_pair.baseline_m[2] * error_scale};
+                lsq_pairs.push_back(lsq_pair);
+                lsq_delays_seconds.push_back(pair_delays[0].delay.delay_samples
+                    / static_cast<double>(config_.sample_rate_hz));
+            }
+
             delay_result.delays.push_back(std::move(pair_delays[0]));
+        }
         }
 
         if (!delay_result.delays.empty()) {
             // WhistleBearingInfo equivalent: the group's bearing localiser
-            // result for the region. With a two-element group PAMGuard uses
-            // the pair localiser, whose single cone angle carries the
-            // left/right ambiguity flag.
-            for (const auto& delay : delay_result.delays) {
-                if (delay.pair_bearing_valid && std::isfinite(delay.pair_bearing_radians)) {
-                    delay_result.bearing_valid = true;
-                    delay_result.bearing_radians = delay.pair_bearing_radians;
-                    delay_result.bearing_error_radians = delay.pair_bearing_error_radians;
-                    delay_result.bearing_ambiguity = true;
-                    delay_result.bearing_pair_count = delay_result.delays.size();
-                    break;
+            // result for the region. PAMGuard selects LSQ for groups with
+            // enough non-coplanar hydrophones (an unambiguous azimuth and
+            // elevation) and the pair localiser otherwise, whose single cone
+            // angle carries the left/right ambiguity flag.
+            const auto expected_pairs = whistle_channels.size() * (whistle_channels.size() - 1) / 2;
+            if (whistle_channels.size() >= 4 && lsq_pairs.size() == expected_pairs &&
+                lsq_delays_seconds.size() == lsq_pairs.size()) {
+                localisation::LsqBearingConfig lsq_config;
+                lsq_config.speed_of_sound_mps = config_.array.speed_of_sound_mps;
+                lsq_config.speed_of_sound_error_mps = config_.array.speed_of_sound_error_mps;
+                lsq_config.timing_error_seconds = config_.array.timing_error_seconds;
+                lsq_config.pairs = lsq_pairs;
+                const localisation::LsqBearingLocaliser lsq_localiser(std::move(lsq_config));
+                if (const auto lsq = lsq_localiser.localise(lsq_delays_seconds)) {
+                    if (std::isfinite(lsq->azimuth_radians) && std::isfinite(lsq->elevation_radians)) {
+                        delay_result.lsq_bearing.valid = true;
+                        delay_result.lsq_bearing.azimuth_radians = lsq->azimuth_radians;
+                        delay_result.lsq_bearing.elevation_radians = lsq->elevation_radians;
+                        delay_result.lsq_bearing.azimuth_error_radians = lsq->azimuth_error_radians;
+                        delay_result.lsq_bearing.elevation_error_radians = lsq->elevation_error_radians;
+                        delay_result.lsq_bearing.used_pairs = lsq_pairs.size();
+                        delay_result.bearing_valid = true;
+                        delay_result.bearing_radians = lsq->azimuth_radians;
+                        delay_result.bearing_error_radians = lsq->azimuth_error_radians;
+                        delay_result.bearing_ambiguity = false;
+                        delay_result.bearing_pair_count = lsq_pairs.size();
+                    }
+                }
+            }
+
+            if (!delay_result.bearing_valid) {
+                for (const auto& delay : delay_result.delays) {
+                    if (delay.pair_bearing_valid && std::isfinite(delay.pair_bearing_radians)) {
+                        delay_result.bearing_valid = true;
+                        delay_result.bearing_radians = delay.pair_bearing_radians;
+                        delay_result.bearing_error_radians = delay.pair_bearing_error_radians;
+                        delay_result.bearing_ambiguity = true;
+                        delay_result.bearing_pair_count = delay_result.delays.size();
+                        break;
+                    }
                 }
             }
             result.whistle_delays.push_back(std::move(delay_result));

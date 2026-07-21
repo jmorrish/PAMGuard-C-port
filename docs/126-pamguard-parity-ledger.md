@@ -36,7 +36,7 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 | Click train bearing summaries | Foundation | Summary tests | Same caveat as train localisation summaries. |
 | Whistle peak detector | Fixture parity | Better peak fixture and edge coverage | Needs broader fixture sweep across PAMGuard whistle settings. |
 | Connected-region whistle/moan tracker | Fixture parity | Basic, flush, stub, discard, branch, rejoin, split/cross fixtures | Strong current fixture coverage for contour-building behaviour. |
-| Whistle/moan localisation | Foundation | Contour delay core ported with five-case Java fixture parity (`docs/164-whistle-delay-foundation.md`); cross-channel region delays with geometry/pair-bearing metadata served at schema v9 (`docs/165-whistle-delay-service-output.md`), and region-level bearings with PAMGuard ambiguity semantics at schema v11 (`docs/175-whistle-region-bearing.md`) | Whistle LSQ bearings for four-plus hydrophone groups, array-axis reference fields, and detection-grouper semantics remain unported. |
+| Whistle/moan localisation | Foundation | Contour delay core ported with five-case Java fixture parity (`docs/164-whistle-delay-foundation.md`); cross-channel region delays with geometry/pair-bearing metadata served at schema v9 (`docs/165-whistle-delay-service-output.md`), region-level bearings with PAMGuard ambiguity semantics at schema v11 (`docs/175`), and the full channel-pair set plus LSQ bearings for four-plus hydrophone groups at schema v12 (`docs/180-whistle-lsq-bearing.md`) | Array-axis reference fields and detection-grouper semantics remain unported; localiser selection is channel-count based. |
 | PAMGuard project/config import | Gap | None yet | Current config is explicit JSON, not PAMGuard project import. |
 | Archive detector events | Operational | HTTP smoke and indexed sidecar tests | Supports web/API workflows; not detector maths. |
 | Multi-session service operation | Operational | 50-session smoke | Functional isolation smoke, not a detector throughput benchmark. |
@@ -63,5 +63,5 @@ It is not safe to say:
 
 - Finish the click train work: wire the time-delay/correlation variables into the served stack (needs per-click pair delays and correlations threaded into MHT units), and port the template/standard classifiers plus CTClassifierManager chaining (`docs/166`-`docs/179`).
 - Extend array-shape semantics to multi-streamer arrays and apply whole-array direction context where PAMGuard uses it beyond pair bearings (`docs/163-array-shape-semantics-port.md` covers shape/direction parity and the pair spacing sign flip).
-- Extend whistle localisation: LSQ bearings for four-plus hydrophone groups (needs full pair-set construction) and the whistle detection grouper (`docs/175-whistle-region-bearing.md`).
+- Port the whistle detection grouper and PAMGuard-style array-shape localiser selection (`docs/180-whistle-lsq-bearing.md`).
 - Keep every parity claim tied to a fixture, source trace, or focused regression test.

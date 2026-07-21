@@ -100,6 +100,8 @@ struct WhistleRegionDelayResult {
     double bearing_error_radians = 0.0;
     bool bearing_ambiguity = false;
     std::size_t bearing_pair_count = 0;
+    /** Populated for groups with four or more fully-geometry hydrophones. */
+    LsqBearingResult lsq_bearing;
 };
 
 struct MhtClickTrainResult {
