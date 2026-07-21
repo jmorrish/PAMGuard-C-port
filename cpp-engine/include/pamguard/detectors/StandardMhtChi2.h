@@ -67,6 +67,7 @@ public:
     void add_detection(const MhtChi2Unit& detection, std::size_t kcount) override;
     [[nodiscard]] std::unique_ptr<MhtChi2<MhtChi2Unit>> new_chi2() override;
     void clear() override;
+    void clear_kernel_garbage(std::size_t new_ref_index) override;
 
     [[nodiscard]] const StandardMhtChi2Params& params() const noexcept { return params_; }
     [[nodiscard]] const MhtKernelParams& kernel_params() const noexcept { return kernel_params_; }

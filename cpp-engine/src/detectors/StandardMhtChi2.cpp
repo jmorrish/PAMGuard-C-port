@@ -57,6 +57,17 @@ void StandardMhtChi2Provider::clear() {
     has_units_ = false;
 }
 
+void StandardMhtChi2Provider::clear_kernel_garbage(std::size_t new_ref_index) {
+    // IDIManager.trimData: drop leading entries; retained values keep the
+    // original time origin, and the first detection reference is unchanged.
+    if (new_ref_index == 0 || new_ref_index >= ici_count_) {
+        return;
+    }
+    master_time_series_.erase(master_time_series_.begin(),
+                              master_time_series_.begin() + static_cast<std::ptrdiff_t>(new_ref_index));
+    ici_count_ -= new_ref_index;
+}
+
 double StandardMhtChi2Provider::total_time_seconds() const noexcept {
     return static_cast<double>(last_unit_ms_ - first_unit_ms_) / 1000.0;
 }

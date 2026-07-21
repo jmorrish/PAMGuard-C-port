@@ -33,12 +33,12 @@ pamguard::core::AnalysisConfig base_config(bool mht) {
     return config;
 }
 
-pamguard::core::AudioChunk click_train_chunk() {
+pamguard::core::AudioChunk click_train_chunk_at(std::int64_t start_sample) {
     // Eight clicks 100 ms apart: transients at 4800*k + 4000 for k = 0..7.
     constexpr std::size_t frame_count = 48000;
     pamguard::core::AudioChunk chunk;
-    chunk.start_sample = 0;
-    chunk.time_unix_ms = 0;
+    chunk.start_sample = start_sample;
+    chunk.time_unix_ms = start_sample / 48;
     chunk.sample_rate_hz = static_cast<std::uint32_t>(sample_rate_hz);
     chunk.channel_count = 2;
     chunk.interleaved_pcm.assign(frame_count * 2, 0.0);
@@ -62,7 +62,7 @@ int main() {
     try {
         {
             pamguard::core::AnalysisSession session(base_config(true));
-            auto result = session.process(click_train_chunk());
+            auto result = session.process(click_train_chunk_at(0));
             if (result.clicks.size() != 8) {
                 std::cerr << "Expected eight detected clicks, got " << result.clicks.size() << "\n";
                 return 1;
@@ -94,8 +94,38 @@ int main() {
         }
 
         {
+            // Three widely separated click bursts: each inter-burst gap
+            // exceeds maxCoast * maxICI, exercising the ported MHTGarbageBot
+            // hard-reset path between bursts.
+            pamguard::core::AnalysisSession session(base_config(true));
+            std::vector<pamguard::core::MhtClickTrainResult> trains;
+            for (int burst = 0; burst < 3; ++burst) {
+                auto result = session.process(click_train_chunk_at(static_cast<std::int64_t>(burst) * 10 * 48000));
+                trains.insert(trains.end(), result.mht_click_trains.begin(), result.mht_click_trains.end());
+            }
+            const auto flushed = session.flush();
+            trains.insert(trains.end(), flushed.mht_click_trains.begin(), flushed.mht_click_trains.end());
+
+            std::size_t strong_trains = 0;
+            for (const auto& train : trains) {
+                if (train.click_count >= 6) {
+                    ++strong_trains;
+                    const auto span = train.last_start_sample - train.first_start_sample;
+                    if (span > 8 * 4800) {
+                        std::cerr << "Burst train spans across a reset gap: " << span << " samples\n";
+                        return 1;
+                    }
+                }
+            }
+            if (strong_trains < 3) {
+                std::cerr << "Expected one strong MHT train per burst, got " << strong_trains << "\n";
+                return 1;
+            }
+        }
+
+        {
             pamguard::core::AnalysisSession session(base_config(false));
-            auto result = session.process(click_train_chunk());
+            auto result = session.process(click_train_chunk_at(0));
             const auto flushed = session.flush();
             result.click_trains.insert(result.click_trains.end(),
                                        flushed.click_trains.begin(), flushed.click_trains.end());

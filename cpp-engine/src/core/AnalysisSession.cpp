@@ -685,6 +685,23 @@ void AnalysisSession::process_mht_click_trains(AnalysisResult& result) {
         detectors::MhtChi2Unit unit;
         unit.time_ns = static_cast<std::int64_t>(static_cast<double>(click.start_sample)
             / static_cast<double>(config_.sample_rate_hz) * 1E9);
+
+        // MHTGarbageBot hard limit: a gap longer than maxCoast * maxICI (or
+        // hitting the detection hard limit) confirms and resets the kernel.
+        constexpr std::size_t detection_hard_limit = 10000;
+        const auto* last_unit = state.kernel->last_data_unit();
+        if (state.kernel->kcount() > 5 && last_unit != nullptr) {
+            const double gap_seconds = static_cast<double>(unit.time_ns / 1'000'000 - last_unit->time_ns / 1'000'000) / 1000.0;
+            const double max_gap = 3.0 * 0.4; // maxCoast * StandardMHTChi2Params.maxICI defaults
+            if (gap_seconds > max_gap || state.kernel->kcount() > detection_hard_limit) {
+                state.kernel->confirm_remaining_tracks();
+                drain_confirmed_mht_trains(result);
+                state.kernel->clear_kernel();
+                state.start_samples.clear();
+                state.time_ms.clear();
+                state.consumed_confirmed = 0;
+            }
+        }
         // Uncalibrated peak level: the MHT amplitude chi2 only scores dB
         // differences, so a constant calibration offset cancels.
         double peak = 0.0;
@@ -700,6 +717,30 @@ void AnalysisSession::process_mht_click_trains(AnalysisResult& result) {
         state.kernel->add_detection(unit);
         state.start_samples.push_back(click.start_sample);
         state.time_ms.push_back(click.time_unix_ms);
+
+        // MHTGarbageBot trailing-zeros trim every twenty detections.
+        constexpr std::size_t garbage_count_n_test = 20;
+        constexpr std::size_t min_trim_count = 100;
+        if (state.kernel->kcount() != 0 && state.kernel->kcount() % garbage_count_n_test == 0 &&
+            state.kernel->kcount() > 5) {
+            const auto new_ref_index = state.kernel->first_detection_index();
+            if (new_ref_index == state.kernel->kcount()) {
+                drain_confirmed_mht_trains(result);
+                state.kernel->clear_kernel();
+                state.start_samples.clear();
+                state.time_ms.clear();
+                state.consumed_confirmed = 0;
+            }
+            else if (new_ref_index > min_trim_count && new_ref_index <= state.kernel->kcount()) {
+                drain_confirmed_mht_trains(result);
+                state.kernel->clear_kernel_garbage(new_ref_index);
+                state.start_samples.erase(state.start_samples.begin(),
+                                          state.start_samples.begin() + static_cast<std::ptrdiff_t>(new_ref_index));
+                state.time_ms.erase(state.time_ms.begin(),
+                                    state.time_ms.begin() + static_cast<std::ptrdiff_t>(new_ref_index));
+                state.consumed_confirmed = 0;
+            }
+        }
     }
 
     drain_confirmed_mht_trains(result);

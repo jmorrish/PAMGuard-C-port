@@ -25,4 +25,4 @@ Bumps the engine result `schemaVersion` to `10` (purely additive).
 
 ## Claim boundary
 
-MHT parameters (kernel and chi2) are PAMGuard defaults, not yet configurable per session. Kernel memory grows with session length (`clearKernelGarbage`/`MHTGarbageBot` unported) — long live streams should prefer the ICI tracker until reclamation lands. Bearing/correlation/time-delay/peak-frequency variables, the electrical noise filter, and click train classification remain unported.
+MHT parameters (kernel and chi2) are PAMGuard defaults, not yet configurable per session. Kernel memory is reclaimed for long streams via the ported `MHTGarbageBot` logic (`docs/171-mht-garbage-reclamation.md`). Bearing/correlation/time-delay/peak-frequency variables, the electrical noise filter, and click train classification remain unported.

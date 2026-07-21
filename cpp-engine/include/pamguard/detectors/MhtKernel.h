@@ -39,6 +39,25 @@ public:
         return result;
     }
 
+    /** java.util.BitSet.get(from, to): a sub-range as a new bitset. */
+    [[nodiscard]] MhtBitset range(std::size_t from, std::size_t to) const {
+        MhtBitset result(to > from ? to - from : 0);
+        for (std::size_t i = from; i < to && i < bits_.size(); ++i) {
+            result.bits_[i - from] = bits_[i];
+        }
+        return result;
+    }
+
+    /** Index of the first set bit, or size when none is set. */
+    [[nodiscard]] std::size_t first_set_bit(std::size_t size) const {
+        for (std::size_t i = 0; i < size; ++i) {
+            if (get(i)) {
+                return i;
+            }
+        }
+        return size;
+    }
+
     [[nodiscard]] bool equals(const MhtBitset& other) const {
         const auto common = std::min(bits_.size(), other.bits_.size());
         for (std::size_t i = 0; i < common; ++i) {
@@ -99,6 +118,8 @@ public:
     [[nodiscard]] virtual int get_n_coasts() const = 0;
     virtual void update(const T& detection, const MhtBitset& track_bits, std::size_t kcount) = 0;
     [[nodiscard]] virtual std::unique_ptr<MhtChi2<T>> clone_chi2() const = 0;
+    /** MHTChi2.clearKernelGarbage: StandardMHTChi2 is a no-op. */
+    virtual void clear_kernel_garbage(std::size_t new_ref_index) { (void)new_ref_index; }
 };
 
 /** MHTChi2Provider equivalent. */
@@ -109,6 +130,8 @@ public:
     virtual void add_detection(const T& detection, std::size_t kcount) = 0;
     [[nodiscard]] virtual std::unique_ptr<MhtChi2<T>> new_chi2() = 0;
     virtual void clear() = 0;
+    /** MHTChi2Provider.clearKernelGarbage: trims shared series state. */
+    virtual void clear_kernel_garbage(std::size_t new_ref_index) { (void)new_ref_index; }
 };
 
 struct MhtKernelParams {
@@ -160,6 +183,52 @@ public:
         if (!possible_tracks_.empty()) {
             prune_prob_matrix(true);
         }
+    }
+
+    /** MHTKernel.clearKernel: full reset for a fresh run. */
+    void clear_kernel() {
+        possible_tracks_.clear();
+        active_tracks_.clear();
+        confirmed_tracks_.clear();
+        data_units_.clear();
+        provider_->clear();
+        kcount_ = 0;
+        started_ = false;
+    }
+
+    /**
+     * MHTKernel.clearKernelGarbage: drop all data before the new reference
+     * index once no hypothesis references it. Deletes confirmed tracks, so
+     * callers must drain them first.
+     */
+    void clear_kernel_garbage(std::size_t new_ref_index) {
+        if (new_ref_index == 0) {
+            return;
+        }
+        confirmed_tracks_.clear();
+        data_units_.erase(data_units_.begin(),
+                          data_units_.begin() + static_cast<std::ptrdiff_t>(new_ref_index));
+        for (auto& track : possible_tracks_) {
+            track.bits = track.bits.range(new_ref_index, kcount_);
+            track.chi2->clear_kernel_garbage(new_ref_index);
+        }
+        kcount_ -= new_ref_index;
+        provider_->clear_kernel_garbage(new_ref_index);
+    }
+
+    /** MHTKernel.getFirstDetectionIndex over the current possibility mix. */
+    [[nodiscard]] std::size_t first_detection_index() const {
+        std::size_t first = kcount_;
+        bool any = false;
+        for (const auto& track : possible_tracks_) {
+            first = any ? std::min(first, track.bits.first_set_bit(kcount_)) : track.bits.first_set_bit(kcount_);
+            any = true;
+        }
+        return any ? first : kcount_;
+    }
+
+    [[nodiscard]] const T* last_data_unit() const {
+        return data_units_.empty() ? nullptr : &data_units_.back();
     }
 
     [[nodiscard]] std::size_t kcount() const { return kcount_; }
