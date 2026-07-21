@@ -1810,6 +1810,17 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         config.array.wobble_radians < 0.0 || !std::isfinite(config.array.wobble_radians)) {
         throw std::invalid_argument("array.speedOfSoundErrorMps, timingErrorSeconds, spacingErrorM, and wobbleRadians must be non-negative and finite");
     }
+    if (array.contains("streamers")) {
+        for (const auto& streamer : array.at("streamers")) {
+            pamguard::core::ArrayStreamer item;
+            item.id = streamer.at("id").get<int>();
+            item.x_m = streamer.value("xM", 0.0);
+            item.y_m = streamer.value("yM", 0.0);
+            item.z_m = streamer.value("zM", 0.0);
+            item.heading_degrees = streamer.value("headingDegrees", 0.0);
+            config.array.streamers.push_back(item);
+        }
+    }
     if (array.contains("hydrophones")) {
         for (const auto& hydrophone : array.at("hydrophones")) {
             pamguard::core::ArrayHydrophone item;
@@ -1818,7 +1829,15 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
             item.y_m = hydrophone.value("yM", 0.0);
             item.z_m = hydrophone.value("zM", 0.0);
             item.sensitivity_db = hydrophone.value("sensitivityDb", 0.0);
+            item.streamer_id = hydrophone.value("streamerId", 0);
             config.array.hydrophones.push_back(item);
+            if (!config.array.streamers.empty()) {
+                const auto known = std::any_of(config.array.streamers.begin(), config.array.streamers.end(),
+                                               [&](const auto& streamer) { return streamer.id == item.streamer_id; });
+                if (!known) {
+                    throw std::invalid_argument("array.hydrophones streamerId does not match any declared streamer");
+                }
+            }
         }
     }
 

@@ -338,9 +338,38 @@ std::vector<ClickTrainLocalisationSummary> summarize_click_train_localisations(
     return summaries;
 }
 
+namespace {
+
+/**
+ * PamArray.getAbsHydrophoneVector: a hydrophone's absolute position is its
+ * own coordinates plus its streamer's coordinate vector — a translation
+ * only, since that method does not rotate by streamer heading. Resolving
+ * once here means every downstream consumer (delay limits, bearings, array
+ * shape) sees absolute positions without needing streamer awareness.
+ */
+void resolve_streamer_offsets(ArrayConfiguration& array) {
+    if (array.streamers.empty()) {
+        return;
+    }
+    for (auto& hydrophone : array.hydrophones) {
+        for (const auto& streamer : array.streamers) {
+            if (streamer.id != hydrophone.streamer_id) {
+                continue;
+            }
+            hydrophone.x_m += streamer.x_m;
+            hydrophone.y_m += streamer.y_m;
+            hydrophone.z_m += streamer.z_m;
+            break;
+        }
+    }
+}
+
+} // namespace
+
 AnalysisSession::AnalysisSession(AnalysisConfig config)
     : config_(std::move(config)),
       spectrogram_(config_.detector.fft) {
+    resolve_streamer_offsets(config_.array);
     if (config_.detector.click_detector_enabled) {
         click_detector_.emplace(config_.detector.click);
     }

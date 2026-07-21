@@ -890,6 +890,25 @@ components:
               type: number
               minimum: 0
               description: Pair axis wobble term used by the pair bearing error estimate.
+            streamers:
+              type: array
+              description: Towed or moored streamers. A hydrophone's absolute position is its own coordinates plus its streamer's, matching PamArray.getAbsHydrophoneVector, which translates only.
+              items:
+                type: object
+                required:
+                  - id
+                properties:
+                  id:
+                    type: integer
+                  xM:
+                    type: number
+                  yM:
+                    type: number
+                  zM:
+                    type: number
+                  headingDegrees:
+                    type: number
+                    description: Carried as metadata; PAMGuard's absolute hydrophone vector does not rotate by it.
             hydrophones:
               type: array
               items:
@@ -899,12 +918,16 @@ components:
                     type: integer
                   xM:
                     type: number
+                    description: Relative to the hydrophone's streamer origin when streamers are declared.
                   yM:
                     type: number
                   zM:
                     type: number
                   sensitivityDb:
                     type: number
+                  streamerId:
+                    type: integer
+                    description: Must match a declared streamer when any are declared. Also scopes duplicate-position detection in array shape maths.
             clickLocalisationReadiness:
               type: object
               properties:

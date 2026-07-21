@@ -69,6 +69,42 @@ pamguard::core::AudioChunk synthetic_chunk(std::size_t channel_count) {
 int main() {
     try {
         {
+            // Streamer offsets translate hydrophone coordinates, so a
+            // streamer-relative layout must localise identically to the same
+            // array expressed in absolute coordinates.
+            auto absolute = base_config(4);
+            add_tetrahedron_hydrophones(absolute);
+            for (auto& hydrophone : absolute.array.hydrophones) {
+                hydrophone.x_m += 100.0;
+                hydrophone.y_m += 25.0;
+            }
+            pamguard::core::AnalysisSession absolute_session(absolute);
+            const auto absolute_result = absolute_session.process(synthetic_chunk(4));
+
+            auto streamed = base_config(4);
+            add_tetrahedron_hydrophones(streamed);
+            streamed.array.streamers = {{7, 100.0, 25.0, 0.0, 33.0}};
+            for (auto& hydrophone : streamed.array.hydrophones) {
+                hydrophone.streamer_id = 7;
+            }
+            pamguard::core::AnalysisSession streamed_session(streamed);
+            const auto streamed_result = streamed_session.process(synthetic_chunk(4));
+
+            if (absolute_result.click_localisations.empty() || streamed_result.click_localisations.empty()) {
+                std::cerr << "Streamer offset comparison produced no localisations\n";
+                return 1;
+            }
+            const auto& absolute_lsq = absolute_result.click_localisations.front().lsq_bearing;
+            const auto& streamed_lsq = streamed_result.click_localisations.front().lsq_bearing;
+            if (absolute_lsq.valid != streamed_lsq.valid ||
+                std::abs(absolute_lsq.azimuth_radians - streamed_lsq.azimuth_radians) > 1e-12 ||
+                std::abs(absolute_lsq.elevation_radians - streamed_lsq.elevation_radians) > 1e-12) {
+                std::cerr << "Streamer-relative layout should localise identically to absolute coordinates\n";
+                return 1;
+            }
+        }
+
+        {
             auto config = base_config(4);
             add_tetrahedron_hydrophones(config);
             pamguard::core::AnalysisSession session(config);

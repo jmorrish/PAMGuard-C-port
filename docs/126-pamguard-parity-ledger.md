@@ -62,7 +62,7 @@ It is not safe to say:
 ## Next parity priorities
 
 - Wire the ported whistle detection grouper into the session as a cross-group association output, and port GroupDetection/DetectionGroupLocaliser (`docs/189-whistle-detection-grouper.md`).
-- Expose streamer identity in session array config and port streamer-level geometry (positions, headings, time-varying locators) now that streamer-scoped shape semantics are in place (`docs/181-multi-streamer-arrays.md`).
+- Port PAMGuard hydrophone locators: streamer orientation (heading/pitch/roll) and time-varying streamer positions for towed arrays (`docs/190-streamer-geometry.md`).
 - Port the whistle detection grouper and PAMGuard-style array-shape localiser selection (`docs/180-whistle-lsq-bearing.md`).
 - Build PAMGuard project import as a JVM-side converter against a pinned PAMGuard version, extending `PamguardSettingsInspector` (`docs/182-project-import-feasibility.md`).
 - Keep every parity claim tied to a fixture, source trace, or focused regression test.

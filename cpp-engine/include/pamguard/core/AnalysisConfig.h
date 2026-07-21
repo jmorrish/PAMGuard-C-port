@@ -24,15 +24,33 @@ struct ChannelGroup {
 
 struct ArrayHydrophone {
     std::size_t channel = 0;
+    /** Coordinates relative to the hydrophone's streamer origin. */
     double x_m = 0.0;
     double y_m = 0.0;
     double z_m = 0.0;
     double sensitivity_db = 0.0;
+    /** Streamer this hydrophone belongs to; 0 when the array has one. */
+    int streamer_id = 0;
+};
+
+/**
+ * A towed or moored streamer carrying hydrophones. PAMGuard's
+ * PamArray.getAbsHydrophoneVector adds the streamer's coordinate vector to
+ * the hydrophone's own coordinates — a translation only. `heading_degrees`
+ * is carried as metadata because that method does not rotate by it.
+ */
+struct ArrayStreamer {
+    int id = 0;
+    double x_m = 0.0;
+    double y_m = 0.0;
+    double z_m = 0.0;
+    double heading_degrees = 0.0;
 };
 
 struct ArrayConfiguration {
     std::string id;
     std::vector<ArrayHydrophone> hydrophones;
+    std::vector<ArrayStreamer> streamers;
     double speed_of_sound_mps = 1500.0;
     double speed_of_sound_error_mps = 0.0;
     double timing_error_seconds = 0.0;
