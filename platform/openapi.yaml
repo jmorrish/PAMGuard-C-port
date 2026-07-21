@@ -1234,7 +1234,7 @@ components:
       properties:
         schemaVersion:
           type: integer
-          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard array-axis reference directions. Version 9 adds whistleDelays entries carrying per-region cross-channel contour delays with geometry and pair bearing metadata. Version 10 adds mhtClickTrains output when click.train.algorithm is "mht" (the ported PAMGuard MHT stack as an alternative click train former). Version 11 adds a region-level bearing object on whistleDelays entries, mirroring PAMGuard WhistleBearingInfo. Version 12 measures every channel pair for whistle regions (as PAMGuard WhistleDelays does) and adds an lsqBearing object for groups with four or more fully-geometry hydrophones. Version 13 adds a classification object on mhtClickTrains when click.train.classifier is enabled. Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
+          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard array-axis reference directions. Version 9 adds whistleDelays entries carrying per-region cross-channel contour delays with geometry and pair bearing metadata. Version 10 adds mhtClickTrains output when click.train.algorithm is "mht" (the ported PAMGuard MHT stack as an alternative click train former). Version 11 adds a region-level bearing object on whistleDelays entries, mirroring PAMGuard WhistleBearingInfo. Version 12 measures every channel pair for whistle regions (as PAMGuard WhistleDelays does) and adds an lsqBearing object for groups with four or more fully-geometry hydrophones. Version 13 adds a classification object on mhtClickTrains when click.train.classifier is enabled. Version 14 adds a clickTrainClassifications array for the ICI tracker's trains. Version 15 adds a whistleGroups array associating contours across channels. Version 16 adds arrayShape and bearingLocaliser to click localisations and whistle delays, and selects the bearing localiser by array shape rather than channel count, so a line sub-array of four or more hydrophones no longer produces lsqBearing. Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
         sessionId:
           type: string
         inputFrames:
@@ -1330,9 +1330,28 @@ components:
                       description: PAMGuard pair bearing error estimate; omitted when the reference formula yields a non-finite value (for example at the endfire clamp).
                     delayScore:
                       type: number
+              arrayShape:
+                type: string
+                enum: [none, point, line, plane, volume]
+                description: >-
+                  Shape of the sub-array formed by this click's channels, from PAMGuard's
+                  ArrayManager.getArrayShape. "none" means at least one channel has no declared
+                  hydrophone.
+              bearingLocaliser:
+                type: string
+                enum: [none, pair, grid]
+                description: >-
+                  Localiser class PAMGuard's BearingLocaliserSelector picks for that shape:
+                  none for none/point, pair for a line, grid for a plane or volume. PAMGuard's
+                  grid localiser (MLGridBearingLocaliser2) is unported; the engine runs its LSQ
+                  localiser for "grid", which PAMGuard's own source lists as the alternative for
+                  those two cases.
               lsqBearing:
                 type: object
-                description: PAMGuard LSQBearingLocaliser output, present for sessions with four or more hydrophones with full geometry and positive spacingErrorM.
+                description: >-
+                  PAMGuard LSQBearingLocaliser output. Present only when bearingLocaliser is
+                  "grid" and the sub-array has four or more hydrophones with full geometry and
+                  positive spacingErrorM.
                 properties:
                   azimuthRadians:
                     type: number
@@ -1442,9 +1461,20 @@ components:
                     description: True when the localiser yields a single cone angle (left/right ambiguous), as for two-element groups.
                   pairCount:
                     type: integer
+              arrayShape:
+                type: string
+                enum: [none, point, line, plane, volume]
+                description: Shape of the sub-array formed by the whistle group's channels, from PAMGuard's ArrayManager.getArrayShape.
+              bearingLocaliser:
+                type: string
+                enum: [none, pair, grid]
+                description: Localiser class PAMGuard's BearingLocaliserSelector picks for that shape. See the click localisation field of the same name.
               lsqBearing:
                 type: object
-                description: PAMGuard LSQ bearing for whistle groups with four or more fully-geometry hydrophones and positive spacingErrorM. When present the region bearing is unambiguous.
+                description: >-
+                  PAMGuard LSQ bearing for whistle groups. Present only when bearingLocaliser is
+                  "grid" and the group has four or more fully-geometry hydrophones and positive
+                  spacingErrorM. When present the region bearing is unambiguous.
                 properties:
                   azimuthRadians:
                     type: number

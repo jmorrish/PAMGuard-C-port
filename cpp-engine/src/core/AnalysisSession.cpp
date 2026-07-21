@@ -10,6 +10,7 @@
 #include "pamguard/detectors/StandardMhtChi2.h"
 #include "pamguard/detectors/WhistleDetectionGrouper.h"
 #include "pamguard/localisation/ArrayShape.h"
+#include "pamguard/localisation/BearingLocaliserSelector.h"
 #include "pamguard/localisation/LsqBearingLocaliser.h"
 #include "pamguard/localisation/PairBearingLocaliser.h"
 #include "pamguard/localisation/StreamerOrientation.h"
@@ -102,6 +103,30 @@ std::vector<ClickPairGeometry> click_pair_geometry(const AnalysisConfig& config,
     return geometry;
 }
 
+/**
+ * BearingLocaliserSelector.createBearingLocaliser is called on the hydrophone
+ * subset taking part in one localisation, so the shape that matters is the
+ * sub-array's, not the whole array's. A channel with no declared hydrophone
+ * leaves the shape unknown, which is `None` — the same answer PAMGuard gives
+ * for a null array, and one that selects no localiser.
+ */
+localisation::ArrayShapeType sub_array_shape(const AnalysisConfig& config,
+                                             const std::vector<std::size_t>& channels) {
+    std::vector<std::array<double, 3>> positions;
+    std::vector<int> streamer_ids;
+    positions.reserve(channels.size());
+    streamer_ids.reserve(channels.size());
+    for (const auto channel : channels) {
+        const auto* hydrophone = find_hydrophone(config.array, channel);
+        if (hydrophone == nullptr) {
+            return localisation::ArrayShapeType::None;
+        }
+        positions.push_back({hydrophone->x_m, hydrophone->y_m, hydrophone->z_m});
+        streamer_ids.push_back(hydrophone->streamer_id);
+    }
+    return localisation::array_shape(positions, streamer_ids);
+}
+
 std::vector<double> max_delay_samples_from_geometry(const std::vector<ClickPairGeometry>& geometry) {
     if (geometry.empty() || std::any_of(geometry.begin(), geometry.end(), [](const auto& pair) { return !pair.constrained; })) {
         return {};
@@ -165,6 +190,12 @@ void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, c
 
 void attach_lsq_bearing(ClickLocalisationResult& localisation, const std::vector<ClickPairGeometry>& geometry,
                         std::size_t click_channel_count, const AnalysisConfig& config) {
+    // The selector decides whether a grid-class localiser applies at all;
+    // PAMGuard reserves those for plane and volume sub-arrays and gives a line
+    // array only pair bearings.
+    if (localisation.bearing_localiser != localisation::BearingLocaliserChoice::Grid) {
+        return;
+    }
     // PAMGuard's LSQ bearing localiser needs at least four hydrophones (any
     // three-hydrophone pair set is rank deficient) and nonzero separation
     // errors for its fit weights, so LSQ output requires spacingErrorM > 0.
@@ -496,6 +527,8 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
             ClickLocalisationResult localisation;
             localisation.click_index = i;
             localisation.click_start_sample = click.start_sample;
+            localisation.array_shape = sub_array_shape(config_, click.channels);
+            localisation.bearing_localiser = localisation::select_bearing_localiser(localisation.array_shape);
             const auto pair_geometry = click_pair_geometry(config_, click.channels);
             localisation.delays = click_delay_estimator_.estimate_delays(
                 click.waveform,
@@ -629,6 +662,8 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
         delay_result.channel = region.channel;
         delay_result.region_number = region.region_number;
         delay_result.start_sample = region.start_sample;
+        delay_result.array_shape = sub_array_shape(config_, whistle_channels);
+        delay_result.bearing_localiser = localisation::select_bearing_localiser(delay_result.array_shape);
 
         // PAMGuard WhistleDelays measures every channel pair in the group
         // (0-1, 0-2, 1-2, ...), which is also what an LSQ solve needs.
@@ -726,7 +761,8 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
             // elevation) and the pair localiser otherwise, whose single cone
             // angle carries the left/right ambiguity flag.
             const auto expected_pairs = whistle_channels.size() * (whistle_channels.size() - 1) / 2;
-            if (whistle_channels.size() >= 4 && lsq_pairs.size() == expected_pairs &&
+            if (delay_result.bearing_localiser == localisation::BearingLocaliserChoice::Grid &&
+                whistle_channels.size() >= 4 && lsq_pairs.size() == expected_pairs &&
                 lsq_delays_seconds.size() == lsq_pairs.size()) {
                 localisation::LsqBearingConfig lsq_config;
                 lsq_config.speed_of_sound_mps = config_.array.speed_of_sound_mps;

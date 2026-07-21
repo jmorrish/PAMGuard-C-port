@@ -31,6 +31,7 @@ add_library(pamguard_engine
     src/dsp/WindowFunction.cpp
     src/io/WavReader.cpp
     src/localisation/ArrayShape.cpp
+    src/localisation/BearingLocaliserSelector.cpp
     src/localisation/CorrelationDelayEstimator.cpp
     src/localisation/DelayGroupEstimator.cpp
     src/localisation/FarFieldBearingLocaliser.cpp
@@ -273,6 +274,12 @@ add_executable(array_shape_fixture_check
 )
 
 target_link_libraries(array_shape_fixture_check PRIVATE pamguard_engine)
+
+add_executable(bearing_localiser_selector_check
+    tools/bearing_localiser_selector_check.cpp
+)
+
+target_link_libraries(bearing_localiser_selector_check PRIVATE pamguard_engine)
 
 add_executable(streamer_orientation_fixture_check
     tools/streamer_orientation_fixture_check.cpp
@@ -553,6 +560,11 @@ add_test(
 add_test(
     NAME array_shape_basic_parity
     COMMAND array_shape_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/array-shape.csv
+)
+
+add_test(
+    NAME bearing_localiser_selection
+    COMMAND bearing_localiser_selector_check
 )
 
 add_test(

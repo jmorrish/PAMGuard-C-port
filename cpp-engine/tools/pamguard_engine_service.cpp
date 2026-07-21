@@ -30,7 +30,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 15;
+constexpr int kResultSchemaVersion = 16;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2184,6 +2184,8 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             }
             loc["lsqBearing"] = std::move(lsq_item);
         }
+        loc["arrayShape"] = std::string(pamguard::localisation::array_shape_name(localisation.array_shape));
+        loc["bearingLocaliser"] = std::string(pamguard::localisation::bearing_localiser_name(localisation.bearing_localiser));
         attach_related_train_ids(loc, localisation.click_start_sample, train_ids_by_sample);
         out["clickLocalisations"].push_back(std::move(loc));
     }
@@ -2543,6 +2545,8 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             }
             item["lsqBearing"] = std::move(lsq_item);
         }
+        item["arrayShape"] = std::string(pamguard::localisation::array_shape_name(whistle_delay.array_shape));
+        item["bearingLocaliser"] = std::string(pamguard::localisation::bearing_localiser_name(whistle_delay.bearing_localiser));
         out["whistleDelays"].push_back(std::move(item));
     }
 

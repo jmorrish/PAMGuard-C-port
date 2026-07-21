@@ -14,6 +14,7 @@
 #include "pamguard/detectors/ConnectedRegionTracker.h"
 #include "pamguard/detectors/WhistlePeakDetector.h"
 #include "pamguard/dsp/SpectrogramEngine.h"
+#include "pamguard/localisation/BearingLocaliserSelector.h"
 #include "pamguard/localisation/DelayGroupEstimator.h"
 #include "pamguard/localisation/FarFieldBearingLocaliser.h"
 
@@ -34,6 +35,10 @@ struct ClickLocalisationResult {
     std::int64_t click_start_sample = 0;
     std::vector<localisation::ChannelPairDelay> delays;
     LsqBearingResult lsq_bearing;
+    /** Shape of the sub-array formed by this click's channels. */
+    localisation::ArrayShapeType array_shape = localisation::ArrayShapeType::None;
+    /** Localiser class PAMGuard's selector picks for that shape. */
+    localisation::BearingLocaliserChoice bearing_localiser = localisation::BearingLocaliserChoice::None;
 };
 
 struct ClickBearingResult {
@@ -103,6 +108,10 @@ struct WhistleRegionDelayResult {
     std::size_t bearing_pair_count = 0;
     /** Populated for groups with four or more fully-geometry hydrophones. */
     LsqBearingResult lsq_bearing;
+    /** Shape of the sub-array formed by the group's channels. */
+    localisation::ArrayShapeType array_shape = localisation::ArrayShapeType::None;
+    /** Localiser class PAMGuard's selector picks for that shape. */
+    localisation::BearingLocaliserChoice bearing_localiser = localisation::BearingLocaliserChoice::None;
 };
 
 /** Whistle contours on different channels associated as one call. */

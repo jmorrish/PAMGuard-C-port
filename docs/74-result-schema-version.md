@@ -22,6 +22,7 @@ The HTTP service smoke asserts the health endpoint, live PCM result body, and ar
 
 ## Version history
 
+- `16`: Adds `arrayShape` and `bearingLocaliser` to every click localisation and whistle delay entry, reporting which localiser PAMGuard's `BearingLocaliserSelector` picks for that sub-array's shape. Localiser choice is now made by shape rather than channel count, so a **line** sub-array of four or more hydrophones no longer produces `lsqBearing` — those solves were rank deficient and reported no bearing anyway.
 - `15`: Adds a `whistleGroups` array associating whistle contours detected on different channels as one call, via the ported detection grouper.
 - `14`: Adds a `clickTrainClassifications` array carrying classifier verdicts for the ICI tracker's click trains, keyed by `trainId`.
 - `13`: Adds a `classification` object on `mhtClickTrains` when `click.train.classifier` is enabled (junk flag, species id, every classifier's verdict, and the template correlation).

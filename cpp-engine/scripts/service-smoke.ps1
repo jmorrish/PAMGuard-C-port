@@ -115,7 +115,7 @@ try {
     if (-not $healthy) {
         throw "Service did not become healthy"
     }
-    if ($lastHealth.resultSchemaVersion -ne 15) {
+    if ($lastHealth.resultSchemaVersion -ne 16) {
         throw "Health endpoint did not report result schema version 15"
     }
     if (-not $lastHealth.ingestStatusEnabled) {
@@ -316,7 +316,7 @@ try {
     }
 
     $first = Post-PcmChunk -Uri "$base/sessions/$SessionId/pcm-f32le?startSample=0" -Path $pcmPath
-    if ($first.schemaVersion -ne 15) {
+    if ($first.schemaVersion -ne 16) {
         throw "PCM response did not report result schema version 15"
     }
     if ($first.sampleContinuity -ne "first" -or $first.nextExpectedStartSample -ne 256) {
@@ -333,6 +333,12 @@ try {
     }
     if ($null -ne $first.clickLocalisations[0].lsqBearing) {
         throw "Two-channel session should not produce LSQ bearing output (needs four-plus hydrophones)"
+    }
+    if ($first.clickLocalisations[0].arrayShape -ne "line") {
+        throw "Two separated hydrophones should be reported as a line array, got '$($first.clickLocalisations[0].arrayShape)'"
+    }
+    if ($first.clickLocalisations[0].bearingLocaliser -ne "pair") {
+        throw "A line sub-array should select the pair bearing localiser, got '$($first.clickLocalisations[0].bearingLocaliser)'"
     }
 
     $second = Post-PcmChunk -Uri "$base/sessions/$SessionId/pcm-f32le?startSample=256" -Path $pcmPath
@@ -381,7 +387,7 @@ try {
     if ($fullArchive.count -ne 3) {
         throw "Archive query expected three records"
     }
-    if ($fullArchive.records[0].schemaVersion -ne 15) {
+    if ($fullArchive.records[0].schemaVersion -ne 16) {
         throw "Archived result record did not preserve result schema version 15"
     }
     $filteredArchive = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId/archive?startSampleFrom=256&startSampleTo=256&limit=10" -Headers $headers
