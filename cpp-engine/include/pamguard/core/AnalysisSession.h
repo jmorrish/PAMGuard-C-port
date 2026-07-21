@@ -104,6 +104,16 @@ struct WhistleRegionDelayResult {
     LsqBearingResult lsq_bearing;
 };
 
+/** Whistle contours on different channels associated as one call. */
+struct WhistleRegionGroup {
+    std::size_t group_id = 0;
+    /** Indices into AnalysisResult::whistle_regions. */
+    std::vector<std::size_t> region_indices;
+    std::vector<std::size_t> channels;
+    std::int64_t first_start_sample = 0;
+    std::int64_t last_start_sample = 0;
+};
+
 /** Classifier chain verdict for an ICI-tracker click train. */
 struct ClickTrainClassificationResult {
     std::size_t train_id = 0;
@@ -145,6 +155,7 @@ struct AnalysisResult {
     std::vector<WhistleRegionDelayResult> whistle_delays;
     std::vector<MhtClickTrainResult> mht_click_trains;
     std::vector<ClickTrainClassificationResult> click_train_classifications;
+    std::vector<WhistleRegionGroup> whistle_groups;
 };
 
 [[nodiscard]] std::vector<ClickTrainBearingSummary> summarize_click_train_bearings(
@@ -199,6 +210,7 @@ private:
     void classify_mht_train(MhtClickTrainResult& train, const MhtTrainState& state,
                             const detectors::MhtBitset& track_bits) const;
     void classify_ici_click_trains(AnalysisResult& result) const;
+    void group_whistle_regions(AnalysisResult& result) const;
     [[nodiscard]] std::vector<std::shared_ptr<const detectors::CtClassifier>> build_ct_classifiers() const;
     [[nodiscard]] double template_correlation_for(const detectors::CtTrainSummary& summary) const;
 };

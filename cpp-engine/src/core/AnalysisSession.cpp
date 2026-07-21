@@ -7,6 +7,7 @@
 
 #include "pamguard/detectors/CtTrainSpectrum.h"
 #include "pamguard/detectors/StandardMhtChi2.h"
+#include "pamguard/detectors/WhistleDetectionGrouper.h"
 #include "pamguard/localisation/ArrayShape.h"
 #include "pamguard/localisation/LsqBearingLocaliser.h"
 #include "pamguard/localisation/PairBearingLocaliser.h"
@@ -556,6 +557,7 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
         }
     }
     compute_whistle_delays(result);
+    group_whistle_regions(result);
     return result;
 }
 
@@ -574,6 +576,7 @@ AnalysisResult AnalysisSession::flush() {
         result.whistle_regions.insert(result.whistle_regions.end(), regions.begin(), regions.end());
     }
     compute_whistle_delays(result);
+    group_whistle_regions(result);
     return result;
 }
 
@@ -901,6 +904,71 @@ double AnalysisSession::template_correlation_for(const detectors::CtTrainSummary
     const detectors::CtTemplateClassifier template_classifier(
         config_.detector.click_train_template_classifier);
     return template_classifier.classify_detailed(summary).correlation;
+}
+
+void AnalysisSession::group_whistle_regions(AnalysisResult& result) const {
+    if (whistle_region_trackers_.size() < 2 || result.whistle_regions.size() < 2 ||
+        config_.sample_rate_hz == 0 || config_.detector.fft.fft_length == 0) {
+        return;
+    }
+
+    const double bin_hz = static_cast<double>(config_.sample_rate_hz)
+        / static_cast<double>(config_.detector.fft.fft_length);
+    std::vector<detectors::WhistleGroupCandidate> candidates;
+    candidates.reserve(result.whistle_regions.size());
+    for (const auto& region : result.whistle_regions) {
+        detectors::WhistleGroupCandidate candidate;
+        candidate.sequence_bitmap = static_cast<std::uint32_t>(1u << region.channel);
+        candidate.start_sample = region.start_sample;
+        candidate.last_sample = region.start_sample + region.duration_samples;
+        candidate.time_ms = region.time_ms;
+        candidate.min_frequency_hz = static_cast<double>(region.min_frequency_bin) * bin_hz;
+        candidate.max_frequency_hz = static_cast<double>(region.max_frequency_bin) * bin_hz;
+        candidates.push_back(candidate);
+    }
+
+    // Each region joins the first earlier region it matches, forming
+    // cross-channel groups. PAMGuard scans its live data block; the engine
+    // scans the regions completed in this result, which is the same
+    // newest-first association over the data it has.
+    std::vector<std::size_t> group_of(candidates.size(), static_cast<std::size_t>(-1));
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+        const std::vector<detectors::WhistleGroupCandidate> earlier(candidates.begin(),
+                                                                    candidates.begin() + static_cast<std::ptrdiff_t>(i));
+        const auto matches = detectors::find_whistle_groups(candidates[i], earlier,
+                                                           whistle_region_trackers_.size());
+        for (const auto match : matches) {
+            if (group_of[match] != static_cast<std::size_t>(-1)) {
+                group_of[i] = group_of[match];
+                break;
+            }
+        }
+        if (group_of[i] == static_cast<std::size_t>(-1) && !matches.empty()) {
+            WhistleRegionGroup group;
+            group.group_id = result.whistle_groups.size() + 1;
+            result.whistle_groups.push_back(std::move(group));
+            group_of[i] = result.whistle_groups.size() - 1;
+            for (const auto match : matches) {
+                group_of[match] = group_of[i];
+            }
+        }
+    }
+
+    for (std::size_t i = 0; i < group_of.size(); ++i) {
+        if (group_of[i] == static_cast<std::size_t>(-1)) {
+            continue;
+        }
+        auto& group = result.whistle_groups[group_of[i]];
+        group.region_indices.push_back(i);
+        group.channels.push_back(result.whistle_regions[i].channel);
+    }
+    for (auto& group : result.whistle_groups) {
+        if (group.region_indices.empty()) {
+            continue;
+        }
+        group.first_start_sample = result.whistle_regions[group.region_indices.front()].start_sample;
+        group.last_start_sample = result.whistle_regions[group.region_indices.back()].start_sample;
+    }
 }
 
 void AnalysisSession::classify_ici_click_trains(AnalysisResult& result) const {

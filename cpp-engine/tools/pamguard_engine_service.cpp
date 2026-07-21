@@ -30,7 +30,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 14;
+constexpr int kResultSchemaVersion = 15;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2457,6 +2457,17 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             item["peakSweepRateHzPerSecond"] = bin_value_to_hz(region.peak_sweep_rate_bins_per_second);
         }
         out["whistleRegions"].push_back(std::move(item));
+    }
+
+    out["whistleGroups"] = json::array();
+    for (const auto& group : result.whistle_groups) {
+        out["whistleGroups"].push_back({
+            {"groupId", group.group_id},
+            {"regionIndices", group.region_indices},
+            {"channels", group.channels},
+            {"firstStartSample", group.first_start_sample},
+            {"lastStartSample", group.last_start_sample},
+        });
     }
 
     out["whistleDelays"] = json::array();
