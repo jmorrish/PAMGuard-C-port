@@ -45,4 +45,21 @@ struct WorldVector {
                                                      const std::vector<std::array<double, 3>>& array_axes,
                                                      const std::vector<double>& angles_radians);
 
+/**
+ * PAMGuard's getPlanarVector for a two-angle set: the unit vector an azimuth
+ * and elevation point at, **in the frame those angles were measured in**.
+ *
+ * No array-axis rotation is applied, which is what makes this the right
+ * treatment for `LSQBearingLocaliser` output. That localiser fits raw
+ * inter-hydrophone vectors — unlike `MLGridBearingLocaliser2`, which rotates
+ * every pair vector into the array-axis frame first — so its angles are
+ * already in the hydrophone frame and this reconstructs the fitted vector
+ * exactly. Rotating them again, as `getWorldVectors` would, double-transforms.
+ *
+ * For a **volume** sub-array the two agree anyway, because a volume array's
+ * principal axes are the Cartesian axes and the rotation is the identity. They
+ * diverge for a plane.
+ */
+[[nodiscard]] std::array<double, 3> planar_unit_vector(double azimuth_radians, double elevation_radians);
+
 } // namespace pamguard::localisation

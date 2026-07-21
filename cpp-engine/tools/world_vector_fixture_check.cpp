@@ -178,6 +178,45 @@ int main(int argc, char** argv) {
             return 1;
         }
 
+        // planar_unit_vector is the identity round trip of the azimuth and
+        // elevation LSQBearingLocaliser derives from its fitted unit vector
+        // (azimuth = pi/2 - atan2(x, y), elevation = asin(z)). Feeding those
+        // angles back must return the vector it started from, which is why
+        // LSQ output needs no array-axis rotation.
+        for (const Vec3& fitted : {Vec3{0.3, 0.5, -0.2}, Vec3{-0.7, 0.1, 0.6}, Vec3{0.0, 1.0, 0.0},
+                                   Vec3{0.0, 0.0, 1.0}, Vec3{-1.0, 0.0, 0.0}}) {
+            const double length = std::sqrt(fitted[0] * fitted[0] + fitted[1] * fitted[1] + fitted[2] * fitted[2]);
+            const Vec3 unit = {fitted[0] / length, fitted[1] / length, fitted[2] / length};
+            const double azimuth = std::numbers::pi / 2.0 - std::atan2(unit[0], unit[1]);
+            const double elevation = std::asin(unit[2]);
+            const auto reconstructed = pamguard::localisation::planar_unit_vector(azimuth, elevation);
+            for (std::size_t e = 0; e < 3; ++e) {
+                if (std::abs(reconstructed[e] - unit[e]) > 1e-12) {
+                    std::cerr << "planar_unit_vector did not round trip component " << e << ": expected " << unit[e]
+                              << " got " << reconstructed[e] << "\n";
+                    return 1;
+                }
+            }
+
+            // And for a volume sub-array the two treatments agree, because a
+            // volume array's principal axes are the Cartesian axes, so
+            // getWorldVectors' rotation is the identity. That is what makes
+            // skipping it for LSQ safe on the shape LSQ actually runs on.
+            const auto rotated = pamguard::localisation::world_vectors(
+                ArrayShapeType::Volume, pamguard::localisation::array_directions(kVolume), {azimuth, elevation});
+            if (rotated.size() != 1) {
+                std::cerr << "Volume world vectors should hold one entry\n";
+                return 1;
+            }
+            for (std::size_t e = 0; e < 3; ++e) {
+                if (std::abs(rotated.front().direction[e] - unit[e]) > 1e-12) {
+                    std::cerr << "Volume array-axis rotation should be the identity, component " << e
+                              << ": expected " << unit[e] << " got " << rotated.front().direction[e] << "\n";
+                    return 1;
+                }
+            }
+        }
+
         std::cout << "World vector parity passed\n";
         std::cout << "cases=" << fixture.size() << " max_abs_error=" << max_abs_error << "\n";
         return 0;

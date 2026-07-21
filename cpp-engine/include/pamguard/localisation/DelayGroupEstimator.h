@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "pamguard/localisation/CorrelationDelayEstimator.h"
+#include "pamguard/localisation/WorldVectors.h"
 
 namespace pamguard::localisation {
 
@@ -19,6 +20,12 @@ struct ChannelPairDelay {
     bool pair_bearing_valid = false;
     double pair_bearing_radians = 0.0;
     double pair_bearing_error_radians = 0.0;
+    /**
+     * The pair's cone angle as unit vectors in the array's xyz frame. A pair
+     * is a line sub-array, so there are always two, both cones, carrying the
+     * left/right ambiguity the pair cannot resolve.
+     */
+    std::vector<WorldVector> pair_bearing_world_vectors;
     TimeDelayData delay;
 };
 

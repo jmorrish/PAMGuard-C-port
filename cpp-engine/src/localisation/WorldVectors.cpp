@@ -72,6 +72,10 @@ Matrix3 coordinate_matrix(const std::vector<Vec3>& array_axes, bool flip_z) {
 
 } // namespace
 
+std::array<double, 3> planar_unit_vector(double azimuth_radians, double elevation_radians) {
+    return from_head_and_slant(kPi / 2.0 - azimuth_radians, elevation_radians);
+}
+
 std::vector<WorldVector> world_vectors(ArrayShapeType shape, const std::vector<Vec3>& array_axes,
                                        const std::vector<double>& angles_radians) {
     if (shape == ArrayShapeType::None || shape == ArrayShapeType::Point || angles_radians.empty()) {

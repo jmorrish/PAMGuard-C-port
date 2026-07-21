@@ -59,6 +59,6 @@ Full CTest suite passes `70/70`.
 
 **Array frame, not earth frame.** These vectors are relative to the hydrophone coordinate system the session declares. Getting to a compass direction needs `getRealWorldVectors`' rotation by vessel course, pitch, and roll, which needs GPS and attitude feeds the engine has no source for. The distinction is PAMGuard's own and is preserved deliberately: the field is named for what the reference calls it, and this document is where the qualification lives.
 
-The vectors are attached to `gridBearing` only. Pair and LSQ bearings do not carry them yet — LSQ already reports in the hydrophone frame directly, and the pair localiser's cone angle would need its own treatment.
+The vectors are attached to `gridBearing` only in this slice. `docs/198-pair-and-lsq-world-vectors.md` extends them to pair and LSQ bearings, and explains why LSQ needs a *different* treatment rather than the same one — its angles are already in the hydrophone frame, so rotating them again would double-transform.
 
 Streamer orientation (`docs/193`) is baked into the hydrophone positions before the axes are derived, so the frame follows the oriented array. It is still a static frame; a towed array that changes attitude through a tow is not modelled.

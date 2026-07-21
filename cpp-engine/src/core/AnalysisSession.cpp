@@ -155,17 +155,18 @@ void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, c
             // the pair vector points along the pair's principal array axis
             // (ArrayManager.getArrayDirections over the pair's two phones).
             double spacing_m = geometry[i].hydrophone_distance_m;
+            std::vector<std::array<double, 3>> pair_axes;
             const auto* hydrophone_a = find_hydrophone(config.array, geometry[i].audio_channel_a);
             const auto* hydrophone_b = find_hydrophone(config.array, geometry[i].audio_channel_b);
             if (hydrophone_a != nullptr && hydrophone_b != nullptr) {
-                const auto directions = localisation::array_directions({
+                pair_axes = localisation::array_directions({
                     {hydrophone_a->x_m, hydrophone_a->y_m, hydrophone_a->z_m},
                     {hydrophone_b->x_m, hydrophone_b->y_m, hydrophone_b->z_m},
                 });
-                if (!directions.empty()) {
-                    const double axis_dot = geometry[i].baseline_x_m * directions[0][0] +
-                        geometry[i].baseline_y_m * directions[0][1] +
-                        geometry[i].baseline_z_m * directions[0][2];
+                if (!pair_axes.empty()) {
+                    const double axis_dot = geometry[i].baseline_x_m * pair_axes[0][0] +
+                        geometry[i].baseline_y_m * pair_axes[0][1] +
+                        geometry[i].baseline_z_m * pair_axes[0][2];
                     if (axis_dot > 0.0) {
                         spacing_m = -spacing_m;
                     }
@@ -184,6 +185,11 @@ void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, c
                 delays[i].pair_bearing_valid = true;
                 delays[i].pair_bearing_radians = pair_bearing->angle_radians;
                 delays[i].pair_bearing_error_radians = pair_bearing->error_radians;
+                // The pair's cone angle is measured against its own principal
+                // axis, so it goes through getWorldVectors' line branch with
+                // that axis — giving the left/right pair explicitly.
+                delays[i].pair_bearing_world_vectors = localisation::world_vectors(
+                    localisation::ArrayShapeType::Line, pair_axes, {pair_bearing->angle_radians});
             }
         }
     }
@@ -233,6 +239,10 @@ void attach_lsq_bearing(ClickLocalisationResult& localisation, const std::vector
         localisation.lsq_bearing.azimuth_error_radians = lsq->azimuth_error_radians;
         localisation.lsq_bearing.elevation_error_radians = lsq->elevation_error_radians;
         localisation.lsq_bearing.used_pairs = geometry.size();
+        // No array-axis rotation: LSQ fits raw inter-hydrophone vectors, so its
+        // angles are already in the array's xyz frame.
+        localisation.lsq_bearing.world_vectors = {localisation::WorldVector{
+            localisation::planar_unit_vector(lsq->azimuth_radians, lsq->elevation_radians), false}};
     }
 }
 
@@ -867,6 +877,8 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
                         delay_result.lsq_bearing.azimuth_error_radians = lsq->azimuth_error_radians;
                         delay_result.lsq_bearing.elevation_error_radians = lsq->elevation_error_radians;
                         delay_result.lsq_bearing.used_pairs = lsq_pairs.size();
+                        delay_result.lsq_bearing.world_vectors = {localisation::WorldVector{
+                            localisation::planar_unit_vector(lsq->azimuth_radians, lsq->elevation_radians), false}};
                         delay_result.bearing_valid = true;
                         delay_result.bearing_radians = lsq->azimuth_radians;
                         delay_result.bearing_error_radians = lsq->azimuth_error_radians;

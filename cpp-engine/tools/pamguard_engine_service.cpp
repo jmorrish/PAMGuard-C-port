@@ -30,7 +30,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 18;
+constexpr int kResultSchemaVersion = 19;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2078,6 +2078,19 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
     return config;
 }
 
+json world_vectors_to_json(const std::vector<pamguard::localisation::WorldVector>& vectors) {
+    json out = json::array();
+    for (const auto& world : vectors) {
+        out.push_back({
+            {"x", world.direction[0]},
+            {"y", world.direction[1]},
+            {"z", world.direction[2]},
+            {"cone", world.cone},
+        });
+    }
+    return out;
+}
+
 /**
  * PAMGuard MLGridBearingLocaliser2 output. Theta and phi are the reference's
  * own angles in the sub-array's principal axis frame, so they keep those names
@@ -2095,15 +2108,7 @@ json grid_bearing_to_json(const pamguard::core::GridBearingResult& grid) {
         item["thetaErrorRadians"] = grid.theta_error_radians;
     }
     if (!grid.world_vectors.empty()) {
-        item["worldVectors"] = json::array();
-        for (const auto& world : grid.world_vectors) {
-            item["worldVectors"].push_back({
-                {"x", world.direction[0]},
-                {"y", world.direction[1]},
-                {"z", world.direction[2]},
-                {"cone", world.cone},
-            });
-        }
+        item["worldVectors"] = world_vectors_to_json(grid.world_vectors);
     }
     if (grid.has_phi) {
         item["phiRadians"] = grid.phi_radians;
@@ -2209,6 +2214,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 if (std::isfinite(delay.pair_bearing_error_radians)) {
                     delay_item["pairBearingErrorRadians"] = delay.pair_bearing_error_radians;
                 }
+                if (!delay.pair_bearing_world_vectors.empty()) {
+                    delay_item["pairBearingWorldVectors"] = world_vectors_to_json(delay.pair_bearing_world_vectors);
+                }
             }
             loc["delays"].push_back(std::move(delay_item));
         }
@@ -2225,6 +2233,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             }
             if (std::isfinite(localisation.lsq_bearing.elevation_error_radians)) {
                 lsq_item["elevationErrorRadians"] = localisation.lsq_bearing.elevation_error_radians;
+            }
+            if (!localisation.lsq_bearing.world_vectors.empty()) {
+                lsq_item["worldVectors"] = world_vectors_to_json(localisation.lsq_bearing.world_vectors);
             }
             loc["lsqBearing"] = std::move(lsq_item);
         }
@@ -2561,6 +2572,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 if (std::isfinite(delay.pair_bearing_error_radians)) {
                     delay_item["pairBearingErrorRadians"] = delay.pair_bearing_error_radians;
                 }
+                if (!delay.pair_bearing_world_vectors.empty()) {
+                    delay_item["pairBearingWorldVectors"] = world_vectors_to_json(delay.pair_bearing_world_vectors);
+                }
             }
             item["delays"].push_back(std::move(delay_item));
         }
@@ -2589,6 +2603,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             }
             if (std::isfinite(whistle_delay.lsq_bearing.elevation_error_radians)) {
                 lsq_item["elevationErrorRadians"] = whistle_delay.lsq_bearing.elevation_error_radians;
+            }
+            if (!whistle_delay.lsq_bearing.world_vectors.empty()) {
+                lsq_item["worldVectors"] = world_vectors_to_json(whistle_delay.lsq_bearing.world_vectors);
             }
             item["lsqBearing"] = std::move(lsq_item);
         }

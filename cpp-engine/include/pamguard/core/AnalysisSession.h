@@ -29,6 +29,15 @@ struct LsqBearingResult {
     double azimuth_error_radians = 0.0;
     double elevation_error_radians = 0.0;
     std::size_t used_pairs = 0;
+    /**
+     * The same direction as a unit vector in the hydrophone array's xyz frame.
+     * Unlike the grid localiser's, this needs **no** array-axis rotation:
+     * LSQBearingLocaliser fits raw inter-hydrophone vectors, so its azimuth and
+     * elevation are already in that frame, and PAMGuard's getPlanarVector
+     * round-trips them back to the fitted unit vector exactly. Always one
+     * vector; the ambiguity a plane sub-array carries is not expressed here.
+     */
+    std::vector<localisation::WorldVector> world_vectors;
 };
 
 /**
