@@ -153,6 +153,59 @@ int main() {
         }
 
         {
+            // A volume sub-array selects the grid localiser, so PAMGuard's own
+            // choice runs alongside the LSQ substitute. The grid table weights
+            // bins by hydrophone position error, so it needs those declared.
+            auto config = base_config(4);
+            add_tetrahedron_hydrophones(config);
+            for (auto& hydrophone : config.array.hydrophones) {
+                hydrophone.x_error_m = 0.05;
+                hydrophone.y_error_m = 0.05;
+                hydrophone.z_error_m = 0.05;
+            }
+            pamguard::core::AnalysisSession session(config);
+            const auto result = session.process(synthetic_chunk(4));
+            if (result.click_localisations.empty()) {
+                std::cerr << "Volume-array session produced no localisations\n";
+                return 1;
+            }
+            const auto& grid = result.click_localisations.front().grid_bearing;
+            if (!grid.valid || !grid.has_phi || grid.used_pairs != 6) {
+                std::cerr << "A volume sub-array should produce a grid bearing over all six pairs\n";
+                return 1;
+            }
+            if (!std::isfinite(grid.theta_radians) || !std::isfinite(grid.phi_radians)) {
+                std::cerr << "Grid bearing angles should be finite\n";
+                return 1;
+            }
+
+            // Without position errors the remaining error terms still make the
+            // delay uncertainty non-zero, so the grid stays available; this
+            // pins that the wiring does not silently require them.
+            auto no_errors = base_config(4);
+            add_tetrahedron_hydrophones(no_errors);
+            pamguard::core::AnalysisSession no_errors_session(no_errors);
+            const auto no_errors_result = no_errors_session.process(synthetic_chunk(4));
+            if (no_errors_result.click_localisations.empty() ||
+                !no_errors_result.click_localisations.front().grid_bearing.valid) {
+                std::cerr << "Grid bearing should survive zero hydrophone position errors when timing error is set\n";
+                return 1;
+            }
+
+            // A two-channel line sub-array selects the pair localiser, so no
+            // grid bearing should appear at all.
+            auto line_config = base_config(2);
+            line_config.array.hydrophones = {{0, 0.0, 0.0, 0.0, 0.0}, {1, 1.0, 0.0, 0.0, 0.0}};
+            pamguard::core::AnalysisSession line_session(line_config);
+            const auto line_result = line_session.process(synthetic_chunk(2));
+            if (!line_result.click_localisations.empty() &&
+                line_result.click_localisations.front().grid_bearing.valid) {
+                std::cerr << "A line sub-array should not produce a grid bearing\n";
+                return 1;
+            }
+        }
+
+        {
             auto config = base_config(4);
             add_tetrahedron_hydrophones(config);
             pamguard::core::AnalysisSession session(config);

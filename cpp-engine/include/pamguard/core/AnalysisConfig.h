@@ -31,6 +31,14 @@ struct ArrayHydrophone {
     double sensitivity_db = 0.0;
     /** Streamer this hydrophone belongs to; 0 when the array has one. */
     int streamer_id = 0;
+    /**
+     * PAMGuard Hydrophone.getCoordinateErrors: per-axis position uncertainty,
+     * used by the ML grid localiser to weight each grid bin. Zero means the
+     * position is treated as exact.
+     */
+    double x_error_m = 0.0;
+    double y_error_m = 0.0;
+    double z_error_m = 0.0;
 };
 
 /**

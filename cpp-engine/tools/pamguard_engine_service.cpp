@@ -30,7 +30,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 16;
+constexpr int kResultSchemaVersion = 17;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -1836,6 +1836,13 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
             item.z_m = hydrophone.value("zM", 0.0);
             item.sensitivity_db = hydrophone.value("sensitivityDb", 0.0);
             item.streamer_id = hydrophone.value("streamerId", 0);
+            item.x_error_m = hydrophone.value("xErrorM", 0.0);
+            item.y_error_m = hydrophone.value("yErrorM", 0.0);
+            item.z_error_m = hydrophone.value("zErrorM", 0.0);
+            if (item.x_error_m < 0.0 || item.y_error_m < 0.0 || item.z_error_m < 0.0 ||
+                !std::isfinite(item.x_error_m) || !std::isfinite(item.y_error_m) || !std::isfinite(item.z_error_m)) {
+                throw std::invalid_argument("array.hydrophones xErrorM, yErrorM, and zErrorM must be non-negative and finite");
+            }
             config.array.hydrophones.push_back(item);
             if (!config.array.streamers.empty()) {
                 const auto known = std::any_of(config.array.streamers.begin(), config.array.streamers.end(),
@@ -2071,6 +2078,32 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
     return config;
 }
 
+/**
+ * PAMGuard MLGridBearingLocaliser2 output. Theta and phi are the reference's
+ * own angles in the sub-array's principal axis frame, so they keep those names
+ * rather than being presented as compass azimuth and elevation.
+ */
+json grid_bearing_to_json(const pamguard::core::GridBearingResult& grid) {
+    constexpr double kRadiansToDegrees = 180.0 / 3.141592653589793238462643383279502884;
+    json item = {
+        {"thetaRadians", grid.theta_radians},
+        {"thetaDegrees", grid.theta_radians * kRadiansToDegrees},
+        {"usedPairs", grid.used_pairs},
+        {"hasPhi", grid.has_phi},
+    };
+    if (std::isfinite(grid.theta_error_radians)) {
+        item["thetaErrorRadians"] = grid.theta_error_radians;
+    }
+    if (grid.has_phi) {
+        item["phiRadians"] = grid.phi_radians;
+        item["phiDegrees"] = grid.phi_radians * kRadiansToDegrees;
+        if (std::isfinite(grid.phi_error_radians)) {
+            item["phiErrorRadians"] = grid.phi_error_radians;
+        }
+    }
+    return item;
+}
+
 json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJsonOptions& options = {}) {
     json out;
     out["schemaVersion"] = kResultSchemaVersion;
@@ -2183,6 +2216,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 lsq_item["elevationErrorRadians"] = localisation.lsq_bearing.elevation_error_radians;
             }
             loc["lsqBearing"] = std::move(lsq_item);
+        }
+        if (localisation.grid_bearing.valid) {
+            loc["gridBearing"] = grid_bearing_to_json(localisation.grid_bearing);
         }
         loc["arrayShape"] = std::string(pamguard::localisation::array_shape_name(localisation.array_shape));
         loc["bearingLocaliser"] = std::string(pamguard::localisation::bearing_localiser_name(localisation.bearing_localiser));
@@ -2544,6 +2580,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 lsq_item["elevationErrorRadians"] = whistle_delay.lsq_bearing.elevation_error_radians;
             }
             item["lsqBearing"] = std::move(lsq_item);
+        }
+        if (whistle_delay.grid_bearing.valid) {
+            item["gridBearing"] = grid_bearing_to_json(whistle_delay.grid_bearing);
         }
         item["arrayShape"] = std::string(pamguard::localisation::array_shape_name(whistle_delay.array_shape));
         item["bearingLocaliser"] = std::string(pamguard::localisation::bearing_localiser_name(whistle_delay.bearing_localiser));

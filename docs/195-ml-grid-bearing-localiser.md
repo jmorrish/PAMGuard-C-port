@@ -59,7 +59,7 @@ Full CTest suite passes `69/69`.
 
 ## Claim boundary
 
-**Not yet wired into the served path.** This slice is the localiser and its parity; click and whistle localisations still run LSQ for `grid` selections as `docs/194` describes. The wiring needs per-hydrophone coordinate errors in session config, which PAMGuard's `Hydrophone` has and the engine's `ArrayHydrophone` does not.
+This slice is the localiser and its parity. Service wiring followed immediately in `docs/196-grid-bearing-service-output.md`, which adds per-hydrophone coordinate errors to session config and serves the result as `gridBearing` at schema v17.
 
 The zero-delay-error guard is a **deliberate deviation**. The reference divides by zero there, producing an all-negative-infinity surface and returning whichever bin the peak search seeded from — a bearing with no meaning. The port returns nothing instead. This is reachable only with zero position, speed-of-sound, and timing errors, which is a misconfiguration rather than a real array.
 

@@ -115,8 +115,8 @@ try {
     if (-not $healthy) {
         throw "Service did not become healthy"
     }
-    if ($lastHealth.resultSchemaVersion -ne 16) {
-        throw "Health endpoint did not report result schema version 15"
+    if ($lastHealth.resultSchemaVersion -ne 17) {
+        throw "Health endpoint did not report result schema version 17"
     }
     if (-not $lastHealth.ingestStatusEnabled) {
         throw "Health endpoint did not report enabled ingest status projection"
@@ -316,8 +316,8 @@ try {
     }
 
     $first = Post-PcmChunk -Uri "$base/sessions/$SessionId/pcm-f32le?startSample=0" -Path $pcmPath
-    if ($first.schemaVersion -ne 16) {
-        throw "PCM response did not report result schema version 15"
+    if ($first.schemaVersion -ne 17) {
+        throw "PCM response did not report result schema version 17"
     }
     if ($first.sampleContinuity -ne "first" -or $first.nextExpectedStartSample -ne 256) {
         throw "First PCM continuity mismatch"
@@ -339,6 +339,9 @@ try {
     }
     if ($first.clickLocalisations[0].bearingLocaliser -ne "pair") {
         throw "A line sub-array should select the pair bearing localiser, got '$($first.clickLocalisations[0].bearingLocaliser)'"
+    }
+    if ($null -ne $first.clickLocalisations[0].gridBearing) {
+        throw "A line sub-array should not produce grid bearing output"
     }
 
     $second = Post-PcmChunk -Uri "$base/sessions/$SessionId/pcm-f32le?startSample=256" -Path $pcmPath
@@ -387,8 +390,8 @@ try {
     if ($fullArchive.count -ne 3) {
         throw "Archive query expected three records"
     }
-    if ($fullArchive.records[0].schemaVersion -ne 16) {
-        throw "Archived result record did not preserve result schema version 15"
+    if ($fullArchive.records[0].schemaVersion -ne 17) {
+        throw "Archived result record did not preserve result schema version 17"
     }
     $filteredArchive = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId/archive?startSampleFrom=256&startSampleTo=256&limit=10" -Headers $headers
     if ($filteredArchive.count -ne 1 -or $filteredArchive.records[0].startSample -ne 256) {

@@ -938,6 +938,22 @@ components:
                   streamerId:
                     type: integer
                     description: Must match a declared streamer when any are declared. Also scopes duplicate-position detection in array shape maths.
+                  xErrorM:
+                    type: number
+                    minimum: 0
+                    description: >-
+                      Per-axis position uncertainty (PAMGuard Hydrophone.getCoordinateErrors), used by
+                      the ML grid bearing localiser to weight each grid bin. Defaults to 0, which
+                      treats the position as exact; the localiser still runs as long as
+                      timingErrorSeconds or speedOfSoundErrorMps is positive.
+                  yErrorM:
+                    type: number
+                    minimum: 0
+                    description: Per-axis position uncertainty; see xErrorM.
+                  zErrorM:
+                    type: number
+                    minimum: 0
+                    description: Per-axis position uncertainty; see xErrorM.
             clickLocalisationReadiness:
               type: object
               properties:
@@ -1234,7 +1250,7 @@ components:
       properties:
         schemaVersion:
           type: integer
-          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard array-axis reference directions. Version 9 adds whistleDelays entries carrying per-region cross-channel contour delays with geometry and pair bearing metadata. Version 10 adds mhtClickTrains output when click.train.algorithm is "mht" (the ported PAMGuard MHT stack as an alternative click train former). Version 11 adds a region-level bearing object on whistleDelays entries, mirroring PAMGuard WhistleBearingInfo. Version 12 measures every channel pair for whistle regions (as PAMGuard WhistleDelays does) and adds an lsqBearing object for groups with four or more fully-geometry hydrophones. Version 13 adds a classification object on mhtClickTrains when click.train.classifier is enabled. Version 14 adds a clickTrainClassifications array for the ICI tracker's trains. Version 15 adds a whistleGroups array associating contours across channels. Version 16 adds arrayShape and bearingLocaliser to click localisations and whistle delays, and selects the bearing localiser by array shape rather than channel count, so a line sub-array of four or more hydrophones no longer produces lsqBearing. Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
+          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard array-axis reference directions. Version 9 adds whistleDelays entries carrying per-region cross-channel contour delays with geometry and pair bearing metadata. Version 10 adds mhtClickTrains output when click.train.algorithm is "mht" (the ported PAMGuard MHT stack as an alternative click train former). Version 11 adds a region-level bearing object on whistleDelays entries, mirroring PAMGuard WhistleBearingInfo. Version 12 measures every channel pair for whistle regions (as PAMGuard WhistleDelays does) and adds an lsqBearing object for groups with four or more fully-geometry hydrophones. Version 13 adds a classification object on mhtClickTrains when click.train.classifier is enabled. Version 14 adds a clickTrainClassifications array for the ICI tracker's trains. Version 15 adds a whistleGroups array associating contours across channels. Version 16 adds arrayShape and bearingLocaliser to click localisations and whistle delays, and selects the bearing localiser by array shape rather than channel count, so a line sub-array of four or more hydrophones no longer produces lsqBearing. Version 17 adds a gridBearing object carrying the ported PAMGuard MLGridBearingLocaliser2 result for sub-arrays whose shape selects it, with per-hydrophone coordinate error configuration; lsqBearing is unchanged. Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
         sessionId:
           type: string
         inputFrames:
@@ -1330,6 +1346,35 @@ components:
                       description: PAMGuard pair bearing error estimate; omitted when the reference formula yields a non-finite value (for example at the endfire clamp).
                     delayScore:
                       type: number
+              gridBearing:
+                type: object
+                description: >-
+                  PAMGuard MLGridBearingLocaliser2 output — the localiser bearingLocaliser names.
+                  Present when the sub-array's shape selects "grid" and the solve succeeds.
+                  Theta and phi are the reference's own angles in the sub-array's principal axis
+                  frame, NOT compass azimuth and elevation; converting them would need an array
+                  orientation the engine does not have. Compare lsqBearing, which does report
+                  azimuth and elevation because it solves in the hydrophone coordinate frame.
+                properties:
+                  thetaRadians:
+                    type: number
+                  thetaDegrees:
+                    type: number
+                  thetaErrorRadians:
+                    type: number
+                    description: Curvature-based error estimate; omitted when non-finite.
+                  phiRadians:
+                    type: number
+                    description: Present only when hasPhi is true.
+                  phiDegrees:
+                    type: number
+                  phiErrorRadians:
+                    type: number
+                  hasPhi:
+                    type: boolean
+                    description: False for a line sub-array, where the reference returns theta alone.
+                  usedPairs:
+                    type: integer
               arrayShape:
                 type: string
                 enum: [none, point, line, plane, volume]
@@ -1460,6 +1505,30 @@ components:
                     type: boolean
                     description: True when the localiser yields a single cone angle (left/right ambiguous), as for two-element groups.
                   pairCount:
+                    type: integer
+              gridBearing:
+                type: object
+                description: >-
+                  PAMGuard MLGridBearingLocaliser2 output for the whistle group. See the click
+                  localisation field of the same name, including why theta and phi are not
+                  reported as azimuth and elevation. The region-level bearing object is
+                  unchanged and still carries the LSQ azimuth when one is available.
+                properties:
+                  thetaRadians:
+                    type: number
+                  thetaDegrees:
+                    type: number
+                  thetaErrorRadians:
+                    type: number
+                  phiRadians:
+                    type: number
+                  phiDegrees:
+                    type: number
+                  phiErrorRadians:
+                    type: number
+                  hasPhi:
+                    type: boolean
+                  usedPairs:
                     type: integer
               arrayShape:
                 type: string

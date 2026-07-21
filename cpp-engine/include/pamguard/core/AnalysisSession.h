@@ -30,11 +30,30 @@ struct LsqBearingResult {
     std::size_t used_pairs = 0;
 };
 
+/**
+ * PAMGuard MLGridBearingLocaliser2 output. The angles are the reference's own
+ * theta and phi, measured in the sub-array's principal axis frame rather than
+ * as compass azimuth and elevation, so they are reported under those names
+ * rather than converted.
+ */
+struct GridBearingResult {
+    bool valid = false;
+    double theta_radians = 0.0;
+    double phi_radians = 0.0;
+    double theta_error_radians = 0.0;
+    double phi_error_radians = 0.0;
+    /** False for a line sub-array, where the reference returns theta alone. */
+    bool has_phi = false;
+    std::size_t used_pairs = 0;
+};
+
 struct ClickLocalisationResult {
     std::size_t click_index = 0;
     std::int64_t click_start_sample = 0;
     std::vector<localisation::ChannelPairDelay> delays;
     LsqBearingResult lsq_bearing;
+    /** PAMGuard's selected localiser for a plane or volume sub-array. */
+    GridBearingResult grid_bearing;
     /** Shape of the sub-array formed by this click's channels. */
     localisation::ArrayShapeType array_shape = localisation::ArrayShapeType::None;
     /** Localiser class PAMGuard's selector picks for that shape. */
@@ -108,6 +127,8 @@ struct WhistleRegionDelayResult {
     std::size_t bearing_pair_count = 0;
     /** Populated for groups with four or more fully-geometry hydrophones. */
     LsqBearingResult lsq_bearing;
+    /** PAMGuard's selected localiser for a plane or volume sub-array. */
+    GridBearingResult grid_bearing;
     /** Shape of the sub-array formed by the group's channels. */
     localisation::ArrayShapeType array_shape = localisation::ArrayShapeType::None;
     /** Localiser class PAMGuard's selector picks for that shape. */

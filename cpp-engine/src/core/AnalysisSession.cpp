@@ -12,6 +12,7 @@
 #include "pamguard/localisation/ArrayShape.h"
 #include "pamguard/localisation/BearingLocaliserSelector.h"
 #include "pamguard/localisation/LsqBearingLocaliser.h"
+#include "pamguard/localisation/MlGridBearingLocaliser.h"
 #include "pamguard/localisation/PairBearingLocaliser.h"
 #include "pamguard/localisation/StreamerOrientation.h"
 #include "pamguard/localisation/WhistleDelayEstimator.h"
@@ -233,6 +234,56 @@ void attach_lsq_bearing(ClickLocalisationResult& localisation, const std::vector
         localisation.lsq_bearing.elevation_error_radians = lsq->elevation_error_radians;
         localisation.lsq_bearing.used_pairs = geometry.size();
     }
+}
+
+/**
+ * Run PAMGuard's own choice of localiser for a plane or volume sub-array.
+ * The grid table is built from the participating hydrophones' absolute
+ * positions and per-axis position errors, which is what
+ * MLGridBearingLocaliser2's `prepare` reads off the array.
+ */
+GridBearingResult grid_bearing_for_channels(const AnalysisConfig& config,
+                                            const std::vector<std::size_t>& channels,
+                                            localisation::BearingLocaliserChoice choice,
+                                            const std::vector<double>& delays_seconds) {
+    GridBearingResult result;
+    if (choice != localisation::BearingLocaliserChoice::Grid || config.sample_rate_hz == 0) {
+        return result;
+    }
+    const auto expected_pairs = channels.size() * (channels.size() - 1) / 2;
+    if (delays_seconds.size() != expected_pairs || expected_pairs == 0) {
+        return result;
+    }
+
+    localisation::MlGridBearingConfig grid_config;
+    grid_config.speed_of_sound_mps = config.array.speed_of_sound_mps;
+    grid_config.speed_of_sound_error_mps = config.array.speed_of_sound_error_mps;
+    grid_config.timing_error_seconds = config.array.timing_error_seconds;
+    for (const auto channel : channels) {
+        const auto* hydrophone = find_hydrophone(config.array, channel);
+        if (hydrophone == nullptr) {
+            return result;
+        }
+        localisation::MlGridHydrophone grid_hydrophone;
+        grid_hydrophone.position_m = {hydrophone->x_m, hydrophone->y_m, hydrophone->z_m};
+        grid_hydrophone.position_error_m = {hydrophone->x_error_m, hydrophone->y_error_m, hydrophone->z_error_m};
+        grid_hydrophone.streamer_id = hydrophone->streamer_id;
+        grid_config.hydrophones.push_back(grid_hydrophone);
+    }
+
+    const localisation::MlGridBearingLocaliser localiser(std::move(grid_config));
+    const auto grid = localiser.localise(delays_seconds);
+    if (!grid.has_value() || !std::isfinite(grid->theta_radians)) {
+        return result;
+    }
+    result.valid = true;
+    result.theta_radians = grid->theta_radians;
+    result.theta_error_radians = grid->theta_error_radians;
+    result.phi_radians = grid->phi_radians;
+    result.phi_error_radians = grid->phi_error_radians;
+    result.has_phi = grid->has_phi;
+    result.used_pairs = expected_pairs;
+    return result;
 }
 
 double degrees_from_radians(double radians) {
@@ -535,6 +586,16 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                 max_delay_samples_from_geometry(pair_geometry));
             attach_pair_geometry(localisation.delays, pair_geometry, config_);
             attach_lsq_bearing(localisation, pair_geometry, click.channels.size(), config_);
+            {
+                std::vector<double> grid_delays_seconds;
+                grid_delays_seconds.reserve(localisation.delays.size());
+                for (const auto& delay : localisation.delays) {
+                    grid_delays_seconds.push_back(delay.delay.delay_samples / static_cast<double>(config_.sample_rate_hz));
+                }
+                localisation.grid_bearing = grid_bearing_for_channels(config_, click.channels,
+                                                                     localisation.bearing_localiser,
+                                                                     grid_delays_seconds);
+            }
             result.click_localisations.push_back(std::move(localisation));
             if (click_bearing_localiser_) {
                 ClickBearingResult bearing;
@@ -761,6 +822,16 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
             // elevation) and the pair localiser otherwise, whose single cone
             // angle carries the left/right ambiguity flag.
             const auto expected_pairs = whistle_channels.size() * (whistle_channels.size() - 1) / 2;
+            if (delay_result.delays.size() == expected_pairs) {
+                std::vector<double> grid_delays_seconds;
+                grid_delays_seconds.reserve(expected_pairs);
+                for (const auto& delay : delay_result.delays) {
+                    grid_delays_seconds.push_back(delay.delay.delay_samples / static_cast<double>(config_.sample_rate_hz));
+                }
+                delay_result.grid_bearing = grid_bearing_for_channels(config_, whistle_channels,
+                                                                     delay_result.bearing_localiser,
+                                                                     grid_delays_seconds);
+            }
             if (delay_result.bearing_localiser == localisation::BearingLocaliserChoice::Grid &&
                 whistle_channels.size() >= 4 && lsq_pairs.size() == expected_pairs &&
                 lsq_delays_seconds.size() == lsq_pairs.size()) {
