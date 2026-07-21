@@ -22,6 +22,7 @@
 #include <json.hpp>
 
 #include "pamguard/core/SessionManager.h"
+#include "pamguard/detectors/CtSpectrumTemplates.h"
 #include "pamguard/dsp/WindowFunction.h"
 
 using json = nlohmann::json;
@@ -29,7 +30,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 12;
+constexpr int kResultSchemaVersion = 13;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -1897,6 +1898,61 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 throw std::invalid_argument("click.train.algorithm must be \"ici\" or \"mht\"");
             }
 
+            const auto classifier = click_train.value("classifier", json::object());
+            config.detector.click_train_classifier_enabled = classifier.value("enabled", false);
+            if (config.detector.click_train_classifier_enabled) {
+                auto& pre = config.detector.click_train_pre_classifier;
+                const auto pre_json = classifier.value("preClassifier", json::object());
+                pre.chi2_threshold = pre_json.value("chi2Threshold", pre.chi2_threshold);
+                pre.min_clicks = pre_json.value("minClicks", pre.min_clicks);
+                pre.min_time_seconds = pre_json.value("minTimeSeconds", pre.min_time_seconds);
+                pre.species_flag = pre_json.value("speciesFlag", pre.species_flag);
+
+                const auto idi_json = classifier.value("idi", json::object());
+                config.detector.click_train_idi_classifier_enabled = idi_json.value("enabled", false);
+                auto& idi = config.detector.click_train_idi_classifier;
+                idi.use_median_idi = idi_json.value("useMedianIdi", idi.use_median_idi);
+                idi.min_median_idi = idi_json.value("minMedianIdi", idi.min_median_idi);
+                idi.max_median_idi = idi_json.value("maxMedianIdi", idi.max_median_idi);
+                idi.use_mean_idi = idi_json.value("useMeanIdi", idi.use_mean_idi);
+                idi.min_mean_idi = idi_json.value("minMeanIdi", idi.min_mean_idi);
+                idi.max_mean_idi = idi_json.value("maxMeanIdi", idi.max_mean_idi);
+                idi.use_std_idi = idi_json.value("useStdIdi", idi.use_std_idi);
+                idi.min_std_idi = idi_json.value("minStdIdi", idi.min_std_idi);
+                idi.max_std_idi = idi_json.value("maxStdIdi", idi.max_std_idi);
+                idi.species_flag = idi_json.value("speciesFlag", idi.species_flag);
+
+                const auto template_json = classifier.value("template", json::object());
+                config.detector.click_train_template_classifier_enabled = template_json.value("enabled", false);
+                if (config.detector.click_train_template_classifier_enabled) {
+                    auto& tmpl = config.detector.click_train_template_classifier;
+                    const auto preset = template_json.value("preset", std::string());
+                    if (!preset.empty()) {
+                        bool matched = false;
+                        for (const auto& candidate : pamguard::detectors::ct_default_spectrum_templates()) {
+                            if (candidate.name == preset) {
+                                tmpl.template_spectrum = candidate.values;
+                                tmpl.template_sample_rate_hz = candidate.sample_rate_hz;
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (!matched) {
+                            throw std::invalid_argument("click.train.classifier.template.preset is not a known PAMGuard template");
+                        }
+                    }
+                    else if (template_json.contains("spectrum")) {
+                        tmpl.template_spectrum = template_json.at("spectrum").get<std::vector<double>>();
+                        tmpl.template_sample_rate_hz = template_json.value("sampleRateHz", tmpl.template_sample_rate_hz);
+                    }
+                    tmpl.correlation_threshold = template_json.value("correlationThreshold", tmpl.correlation_threshold);
+                    tmpl.species_flag = template_json.value("speciesFlag", tmpl.species_flag);
+                    if (tmpl.template_spectrum.size() < 2 || tmpl.template_sample_rate_hz <= 0.0) {
+                        throw std::invalid_argument("click.train.classifier.template needs a preset or a spectrum with a positive sampleRateHz");
+                    }
+                }
+            }
+
             if (config.detector.click_train_mht && click_train.contains("mht")) {
                 const auto& mht = click_train.at("mht");
                 auto& chi2 = config.detector.click_train_mht_chi2;
@@ -2237,7 +2293,7 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
 
     out["mhtClickTrains"] = json::array();
     for (const auto& train : result.mht_click_trains) {
-        out["mhtClickTrains"].push_back({
+        json item = {
             {"trainId", train.train_id},
             {"channelBitmap", train.channel_bitmap},
             {"chi2", train.chi2},
@@ -2246,7 +2302,19 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             {"lastStartSample", train.last_start_sample},
             {"clickStartSamples", train.click_start_samples},
             {"clickTimeMs", train.click_time_ms},
-        });
+        };
+        if (train.classified) {
+            json classification = {
+                {"junkTrain", train.junk_train},
+                {"speciesId", train.species_id},
+                {"classifierSpeciesIds", train.classifier_species_ids},
+            };
+            if (train.template_correlation != 0.0) {
+                classification["templateCorrelation"] = train.template_correlation;
+            }
+            item["classification"] = std::move(classification);
+        }
+        out["mhtClickTrains"].push_back(std::move(item));
     }
 
     out["whistlePeaks"] = json::array();
@@ -2446,6 +2514,7 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"trainAlgorithm", config.detector.click_train_mht ? "mht" : "ici"},
         {"trainMaxIciSeconds", config.detector.click_train.max_ici_seconds},
         {"trainMinClicks", config.detector.click_train.min_clicks},
+        {"trainClassifierEnabled", config.detector.click_train_classifier_enabled},
     };
     if (config.detector.click_train_mht) {
         const auto& chi2 = config.detector.click_train_mht_chi2;

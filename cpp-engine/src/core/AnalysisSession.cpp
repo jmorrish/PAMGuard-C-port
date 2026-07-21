@@ -5,6 +5,7 @@
 #include <complex>
 #include <utility>
 
+#include "pamguard/detectors/CtTrainSpectrum.h"
 #include "pamguard/detectors/StandardMhtChi2.h"
 #include "pamguard/localisation/ArrayShape.h"
 #include "pamguard/localisation/LsqBearingLocaliser.h"
@@ -811,6 +812,11 @@ void AnalysisSession::process_mht_click_trains(AnalysisResult& result) {
         state.kernel->add_detection(unit);
         state.start_samples.push_back(click.start_sample);
         state.time_ms.push_back(click.time_unix_ms);
+        if (config_.detector.click_train_classifier_enabled) {
+            state.waveforms.push_back(click.waveform.empty() ? std::vector<double>{} : click.waveform.front());
+            state.bearings_radians.push_back(unit.bearing_radians);
+            state.has_bearing.push_back(unit.bearing_radians != 0.0);
+        }
 
         // MHTGarbageBot trailing-zeros trim every twenty detections.
         constexpr std::size_t garbage_count_n_test = 20;
@@ -840,6 +846,71 @@ void AnalysisSession::process_mht_click_trains(AnalysisResult& result) {
     drain_confirmed_mht_trains(result);
 }
 
+void AnalysisSession::classify_mht_train(MhtClickTrainResult& train, const MhtTrainState& state,
+                                         const detectors::MhtBitset& track_bits) const {
+    if (!config_.detector.click_train_classifier_enabled) {
+        return;
+    }
+
+    detectors::CtTrainSummary summary;
+    summary.chi2 = train.chi2;
+    summary.click_count = train.click_count;
+    summary.duration_ms = static_cast<double>(train.last_start_sample - train.first_start_sample)
+        / static_cast<double>(config_.sample_rate_hz) * 1000.0;
+
+    std::vector<double> idis;
+    std::vector<std::vector<double>> member_waveforms;
+    for (std::size_t bit = 0; bit < state.start_samples.size(); ++bit) {
+        if (!track_bits.get(bit)) {
+            continue;
+        }
+        if (bit < state.waveforms.size() && !state.waveforms[bit].empty()) {
+            member_waveforms.push_back(state.waveforms[bit]);
+        }
+        detectors::CtBearingClick bearing_click;
+        bearing_click.time_ms = state.time_ms[bit];
+        if (bit < state.has_bearing.size() && state.has_bearing[bit]) {
+            bearing_click.bearing_radians = state.bearings_radians[bit];
+        }
+        summary.bearing_clicks.push_back(bearing_click);
+    }
+    for (std::size_t i = 1; i < train.click_start_samples.size(); ++i) {
+        idis.push_back(static_cast<double>(train.click_start_samples[i] - train.click_start_samples[i - 1])
+            / static_cast<double>(config_.sample_rate_hz));
+    }
+    if (!idis.empty()) {
+        summary.idi.median_idi = detectors::ct_median(idis);
+        summary.idi.mean_idi = detectors::ct_mean(idis);
+        summary.idi.std_idi = detectors::ct_std(idis);
+    }
+    if (!member_waveforms.empty()) {
+        summary.average_spectrum = detectors::ct_train_average_spectrum(
+            member_waveforms, config_.detector.click_train_average_spectrum_fft_length);
+        summary.average_spectrum_sample_rate_hz = static_cast<double>(config_.sample_rate_hz);
+    }
+
+    std::vector<std::shared_ptr<const detectors::CtClassifier>> classifiers;
+    if (config_.detector.click_train_idi_classifier_enabled) {
+        classifiers.push_back(std::make_shared<const detectors::CtIdiClassifierAdapter>(
+            config_.detector.click_train_idi_classifier));
+    }
+    if (config_.detector.click_train_template_classifier_enabled) {
+        classifiers.push_back(std::make_shared<const detectors::CtTemplateClassifierAdapter>(
+            config_.detector.click_train_template_classifier));
+        const detectors::CtTemplateClassifier template_classifier(
+            config_.detector.click_train_template_classifier);
+        train.template_correlation = template_classifier.classify_detailed(summary).correlation;
+    }
+
+    const detectors::CtClassifierChain chain(config_.detector.click_train_pre_classifier,
+                                             std::move(classifiers));
+    const auto chain_result = chain.classify(summary);
+    train.classified = true;
+    train.junk_train = chain_result.junk_train;
+    train.species_id = chain_result.species_id;
+    train.classifier_species_ids = chain_result.classifications;
+}
+
 void AnalysisSession::drain_confirmed_mht_trains(AnalysisResult& result) {
     for (auto& [key, state] : mht_train_states_) {
         for (std::size_t i = state.consumed_confirmed; i < state.kernel->confirmed_track_count(); ++i) {
@@ -864,6 +935,7 @@ void AnalysisSession::drain_confirmed_mht_trains(AnalysisResult& result) {
                 train.first_start_sample = train.click_start_samples.front();
                 train.last_start_sample = train.click_start_samples.back();
             }
+            classify_mht_train(train, state, track.bits);
             result.mht_click_trains.push_back(std::move(train));
         }
         state.consumed_confirmed = state.kernel->confirmed_track_count();

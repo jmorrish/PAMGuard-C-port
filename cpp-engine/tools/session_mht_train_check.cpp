@@ -184,6 +184,56 @@ int main() {
         }
 
         {
+            // Classifier chain over MHT trains: a permissive pre-classifier
+            // plus an IDI classifier bracketing the synthetic 100 ms ICI.
+            auto config = base_config(true);
+            config.detector.click_train_classifier_enabled = true;
+            config.detector.click_train_pre_classifier.chi2_threshold = 0.0; // disables the chi2 test
+            config.detector.click_train_pre_classifier.min_clicks = 3;
+            config.detector.click_train_pre_classifier.species_flag = 1;
+            config.detector.click_train_idi_classifier_enabled = true;
+            config.detector.click_train_idi_classifier.min_median_idi = 0.05;
+            config.detector.click_train_idi_classifier.max_median_idi = 0.15;
+            config.detector.click_train_idi_classifier.species_flag = 42;
+
+            pamguard::core::AnalysisSession session(config);
+            auto result = session.process(click_train_chunk_at(0));
+            const auto flushed = session.flush();
+            result.mht_click_trains.insert(result.mht_click_trains.end(),
+                                           flushed.mht_click_trains.begin(), flushed.mht_click_trains.end());
+            bool saw_classified_species = false;
+            for (const auto& train : result.mht_click_trains) {
+                if (!train.classified) {
+                    std::cerr << "Every MHT train should carry a classification when the chain is enabled\n";
+                    return 1;
+                }
+                if (!train.junk_train && train.species_id == 42) {
+                    saw_classified_species = true;
+                }
+            }
+            if (!saw_classified_species) {
+                std::cerr << "The steady 100 ms train should be classified by the IDI classifier\n";
+                return 1;
+            }
+
+            // Narrowing the IDI window past the train's ICI rejects it.
+            auto strict = config;
+            strict.detector.click_train_idi_classifier.max_median_idi = 0.01;
+            pamguard::core::AnalysisSession strict_session(strict);
+            auto strict_result = strict_session.process(click_train_chunk_at(0));
+            const auto strict_flushed = strict_session.flush();
+            strict_result.mht_click_trains.insert(strict_result.mht_click_trains.end(),
+                                                  strict_flushed.mht_click_trains.begin(),
+                                                  strict_flushed.mht_click_trains.end());
+            for (const auto& train : strict_result.mht_click_trains) {
+                if (train.species_id == 42) {
+                    std::cerr << "A train outside the IDI window should not be classified\n";
+                    return 1;
+                }
+            }
+        }
+
+        {
             pamguard::core::AnalysisSession session(base_config(false));
             auto result = session.process(click_train_chunk_at(0));
             const auto flushed = session.flush();

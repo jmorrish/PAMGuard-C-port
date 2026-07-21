@@ -4,7 +4,7 @@ All engine result JSON bodies now include:
 
 ```json
 {
-  "schemaVersion": 12
+  "schemaVersion": 13
 }
 ```
 
@@ -22,6 +22,7 @@ The HTTP service smoke asserts the health endpoint, live PCM result body, and ar
 
 ## Version history
 
+- `13`: Adds a `classification` object on `mhtClickTrains` when `click.train.classifier` is enabled (junk flag, species id, every classifier's verdict, and the template correlation).
 - `12`: Whistle regions now measure **every** channel pair (matching PAMGuard `WhistleDelays`), so multi-channel sessions report more `delays` entries per region, and groups with four or more fully-geometry hydrophones gain an `lsqBearing` object with an unambiguous region bearing.
 - `11`: Adds a region-level `bearing` object on `whistleDelays` entries (PAMGuard `WhistleBearingInfo` equivalent, including the ambiguity flag).
 - `10`: Adds `mhtClickTrains` output when `click.train.algorithm` is `"mht"` — the ported PAMGuard MHT stack as an alternative click train former — plus the `trainAlgorithm` config echo field.

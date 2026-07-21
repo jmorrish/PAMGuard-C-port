@@ -21,6 +21,7 @@ add_library(pamguard_engine
     src/detectors/ClickFeatureExtractor.cpp
     src/detectors/ClickTrainTracker.cpp
     src/detectors/MhtIdiChi2.cpp
+    src/detectors/CtTrainSpectrum.cpp
     src/detectors/MhtSimpleChi2Vars.cpp
     src/detectors/StandardMhtChi2.cpp
     src/detectors/ConnectedRegionTracker.cpp

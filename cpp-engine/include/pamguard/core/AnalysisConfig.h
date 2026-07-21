@@ -9,6 +9,7 @@
 #include "pamguard/detectors/ClickFeatureExtractor.h"
 #include "pamguard/detectors/BasicClickClassifier.h"
 #include "pamguard/detectors/ClickTrainTracker.h"
+#include "pamguard/detectors/CtClassifiers.h"
 #include "pamguard/detectors/StandardMhtChi2.h"
 #include "pamguard/detectors/ConnectedRegionTracker.h"
 #include "pamguard/detectors/WhistlePeakDetector.h"
@@ -65,6 +66,15 @@ struct DetectorConfig {
     detectors::ClickTrainConfig click_train;
     detectors::StandardMhtChi2Params click_train_mht_chi2;
     detectors::MhtKernelParams click_train_mht_kernel;
+    /** Runs PAMGuard's click train classifier chain over MHT trains. */
+    bool click_train_classifier_enabled = false;
+    detectors::CtChi2ClassifierConfig click_train_pre_classifier;
+    bool click_train_idi_classifier_enabled = false;
+    detectors::CtIdiClassifierConfig click_train_idi_classifier;
+    bool click_train_template_classifier_enabled = false;
+    detectors::CtTemplateClassifierConfig click_train_template_classifier;
+    /** FFT length for the train average spectrum the template classifier reads. */
+    std::size_t click_train_average_spectrum_fft_length = 256;
     bool whistle_peak_detector_enabled = false;
     detectors::WhistlePeakConfig whistle_peak;
     bool whistle_region_detector_enabled = false;

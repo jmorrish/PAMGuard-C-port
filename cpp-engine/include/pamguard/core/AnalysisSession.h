@@ -113,6 +113,12 @@ struct MhtClickTrainResult {
     std::int64_t last_start_sample = 0;
     std::vector<std::int64_t> click_start_samples;
     std::vector<std::int64_t> click_time_ms;
+    /** Populated when the classifier chain runs for this session. */
+    bool classified = false;
+    bool junk_train = false;
+    int species_id = 0;
+    std::vector<int> classifier_species_ids;
+    double template_correlation = 0.0;
 };
 
 struct AnalysisResult {
@@ -166,6 +172,10 @@ private:
         std::unique_ptr<detectors::MhtKernel<detectors::MhtChi2Unit>> kernel;
         std::vector<std::int64_t> start_samples;
         std::vector<std::int64_t> time_ms;
+        /** Per-click data the classifier chain needs, parallel to the above. */
+        std::vector<std::vector<double>> waveforms;
+        std::vector<double> bearings_radians;
+        std::vector<bool> has_bearing;
         std::size_t consumed_confirmed = 0;
     };
     std::unordered_map<std::uint32_t, MhtTrainState> mht_train_states_;
@@ -176,6 +186,8 @@ private:
     void compute_whistle_delays(AnalysisResult& result);
     void process_mht_click_trains(AnalysisResult& result);
     void drain_confirmed_mht_trains(AnalysisResult& result);
+    void classify_mht_train(MhtClickTrainResult& train, const MhtTrainState& state,
+                            const detectors::MhtBitset& track_bits) const;
 };
 
 } // namespace pamguard::core
