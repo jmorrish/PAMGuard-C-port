@@ -155,11 +155,23 @@ struct WhistleRegionDelayResult {
 /** Whistle contours on different channels associated as one call. */
 struct WhistleRegionGroup {
     std::size_t group_id = 0;
-    /** Indices into AnalysisResult::whistle_regions. */
+    /**
+     * Indices into AnalysisResult::whistle_regions — **this chunk's members
+     * only**. A group whose contours completed in different chunks is reported
+     * once per contributing chunk, so earlier members are not indexable here;
+     * `earlier_region_count` says how many there were.
+     */
     std::vector<std::size_t> region_indices;
+    /** Every channel in the group, including earlier chunks' members. */
     std::vector<std::size_t> channels;
+    /**
+     * The group's true first sample, carried across chunks — not the first
+     * sample of this chunk's earliest member.
+     */
     std::int64_t first_start_sample = 0;
     std::int64_t last_start_sample = 0;
+    /** Members that completed in earlier chunks and are not in region_indices. */
+    std::size_t earlier_region_count = 0;
 };
 
 /** Classifier chain verdict for an ICI-tracker click train. */
@@ -259,9 +271,29 @@ private:
         detectors::WhistleGroupCandidate candidate;
         std::size_t channel = 0;
         std::size_t group_id = 0;
+        /**
+         * Where this region sits in the current result, valid only while
+         * `from_current_chunk` holds. A region processed earlier in this same
+         * chunk can be pulled into a group by a later one, and when that
+         * happens it belongs in the group's region_indices rather than being
+         * counted as an earlier-chunk member.
+         */
+        std::size_t result_index = 0;
+        bool from_current_chunk = false;
     };
     std::deque<RetainedWhistleRegion> whistle_group_history_;
     std::size_t next_whistle_group_id_ = 1;
+    /**
+     * Per-group facts that outlive the chunk a group was formed in, so a group
+     * re-reported in a later chunk still describes its whole self rather than
+     * only its newest members. Keyed by group id.
+     */
+    struct WhistleGroupState {
+        std::int64_t first_start_sample = 0;
+        std::size_t region_count = 0;
+        std::vector<std::size_t> channels;
+    };
+    std::unordered_map<std::size_t, WhistleGroupState> whistle_group_states_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

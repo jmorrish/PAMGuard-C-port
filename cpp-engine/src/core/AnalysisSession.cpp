@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <iterator>
 #include <numbers>
+#include <unordered_set>
 #include <utility>
 
 #include "pamguard/detectors/CtTrainSpectrum.h"
@@ -1078,6 +1080,11 @@ void AnalysisSession::group_whistle_regions(AnalysisResult& result) {
     // completed earlier, so contours finishing in different chunks still
     // group — PAMGuard's grouper likewise scans a data block spanning
     // earlier processing rather than only the current batch.
+    // Everything retained before this call belongs to an earlier chunk.
+    for (auto& retained : whistle_group_history_) {
+        retained.from_current_chunk = false;
+    }
+
     std::unordered_map<std::size_t, std::size_t> group_index_by_id;
     const auto touch_group = [&](std::size_t group_id) -> WhistleRegionGroup& {
         const auto found = group_index_by_id.find(group_id);
@@ -1086,9 +1093,24 @@ void AnalysisSession::group_whistle_regions(AnalysisResult& result) {
         }
         WhistleRegionGroup group;
         group.group_id = group_id;
+        // A group carried over from an earlier chunk describes its whole self:
+        // its true first sample and every channel seen so far, not just the
+        // members this chunk happens to contribute.
+        const auto state = whistle_group_states_.find(group_id);
+        if (state != whistle_group_states_.end()) {
+            group.first_start_sample = state->second.first_start_sample;
+            group.channels = state->second.channels;
+            group.earlier_region_count = state->second.region_count;
+        }
         result.whistle_groups.push_back(std::move(group));
         group_index_by_id.emplace(group_id, result.whistle_groups.size() - 1);
         return result.whistle_groups.back();
+    };
+
+    const auto add_channel = [](WhistleRegionGroup& group, std::size_t channel) {
+        if (std::find(group.channels.begin(), group.channels.end(), channel) == group.channels.end()) {
+            group.channels.push_back(channel);
+        }
     };
 
     for (std::size_t i = 0; i < candidates.size(); ++i) {
@@ -1113,25 +1135,44 @@ void AnalysisSession::group_whistle_regions(AnalysisResult& result) {
 
         if (group_id != 0) {
             auto& group = touch_group(group_id);
+            auto& state = whistle_group_states_[group_id];
             for (const auto match : matches) {
                 auto& retained = whistle_group_history_[match];
                 if (retained.group_id == 0) {
                     retained.group_id = group_id;
-                    group.channels.push_back(retained.channel);
+                    add_channel(group, retained.channel);
+                    if (state.region_count == 0 || retained.candidate.start_sample < state.first_start_sample) {
+                        state.first_start_sample = retained.candidate.start_sample;
+                    }
+                    ++state.region_count;
+                    if (retained.from_current_chunk) {
+                        // Processed earlier in this same chunk and ungrouped
+                        // until now, so it is indexable in this result.
+                        group.region_indices.push_back(retained.result_index);
+                    }
+                    else {
+                        ++group.earlier_region_count;
+                    }
                 }
             }
             group.region_indices.push_back(i);
-            group.channels.push_back(result.whistle_regions[i].channel);
-            if (group.region_indices.size() == 1) {
-                group.first_start_sample = result.whistle_regions[i].start_sample;
+            add_channel(group, result.whistle_regions[i].channel);
+            const auto start_sample = result.whistle_regions[i].start_sample;
+            if (state.region_count == 0 || start_sample < state.first_start_sample) {
+                state.first_start_sample = start_sample;
             }
-            group.last_start_sample = result.whistle_regions[i].start_sample;
+            ++state.region_count;
+            state.channels = group.channels;
+            group.first_start_sample = state.first_start_sample;
+            group.last_start_sample = start_sample;
         }
 
         RetainedWhistleRegion retained;
         retained.candidate = candidates[i];
         retained.channel = result.whistle_regions[i].channel;
         retained.group_id = group_id;
+        retained.result_index = i;
+        retained.from_current_chunk = true;
         whistle_group_history_.push_back(std::move(retained));
     }
 
@@ -1140,6 +1181,19 @@ void AnalysisSession::group_whistle_regions(AnalysisResult& result) {
     constexpr std::size_t max_history_regions = 256;
     while (whistle_group_history_.size() > max_history_regions) {
         whistle_group_history_.pop_front();
+    }
+
+    // Group state outlives a chunk but must not outlive the history that can
+    // still extend the group, or a long session would accumulate one entry per
+    // group ever formed.
+    std::unordered_set<std::size_t> live_group_ids;
+    for (const auto& retained : whistle_group_history_) {
+        if (retained.group_id != 0) {
+            live_group_ids.insert(retained.group_id);
+        }
+    }
+    for (auto it = whistle_group_states_.begin(); it != whistle_group_states_.end();) {
+        it = live_group_ids.count(it->first) == 0 ? whistle_group_states_.erase(it) : std::next(it);
     }
 }
 

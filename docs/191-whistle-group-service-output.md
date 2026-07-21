@@ -30,4 +30,4 @@ The history is bounded at 256 regions. That bound cannot change results: PAMGuar
 
 ## Claim boundary
 
-Grouping is association only: `GroupDetection` and `DetectionGroupLocaliser`, which localise a group once formed, remain unported, and the grouper itself is branch-covered rather than fixture-pinned (`docs/189`). Groups are reported in the result where their newest member completed, so a long-lived group appears once per chunk that adds to it rather than as a single consolidated record.
+Grouping is association only: `GroupDetection` and `DetectionGroupLocaliser`, which localise a group once formed, remain unported, and the grouper itself is branch-covered rather than fixture-pinned (`docs/189`). Groups are reported once per chunk that contributes a member, so a call whose contours complete in different chunks appears more than once. `docs/201-cross-chunk-whistle-groups.md` makes that self-describing with `earlierRegionCount` and fixes what such a group reported about its own extent.

@@ -30,7 +30,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 19;
+constexpr int kResultSchemaVersion = 20;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2533,6 +2533,7 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             {"channels", group.channels},
             {"firstStartSample", group.first_start_sample},
             {"lastStartSample", group.last_start_sample},
+            {"earlierRegionCount", group.earlier_region_count},
         });
     }
 
