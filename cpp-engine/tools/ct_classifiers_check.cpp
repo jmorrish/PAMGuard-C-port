@@ -253,6 +253,68 @@ bool check_standard_classifier() {
     return true;
 }
 
+bool check_template_classifier() {
+    using pamguard::detectors::CtTemplateClassifier;
+    using pamguard::detectors::CtTemplateClassifierConfig;
+    using pamguard::detectors::kCtPreClassifierFlag;
+
+    // A simple peaked template; the average spectrum spans the same band.
+    CtTemplateClassifierConfig config;
+    config.template_spectrum = {0.0, 0.2, 1.0, 0.6, 0.1, 0.0};
+    config.template_sample_rate_hz = 96000.0;
+    config.correlation_threshold = 0.9;
+    config.species_flag = kSpecies;
+
+    pamguard::detectors::CtTrainSummary train;
+    train.average_spectrum_sample_rate_hz = 96000.0;
+
+    // Identical shape: cosine similarity is 1, comfortably over threshold.
+    {
+        train.average_spectrum = config.template_spectrum;
+        const CtTemplateClassifier classifier(config);
+        const auto result = classifier.classify_detailed(train);
+        if (result.species_id != kSpecies || std::abs(result.correlation - 1.0) > 1e-9) {
+            std::cerr << "Identical spectrum should correlate to 1 and classify, got "
+                      << result.correlation << "\n";
+            return false;
+        }
+    }
+
+    // Scaling the spectrum does not change the normalised correlation.
+    {
+        train.average_spectrum = {0.0, 0.4, 2.0, 1.2, 0.2, 0.0};
+        const CtTemplateClassifier classifier(config);
+        const auto result = classifier.classify_detailed(train);
+        if (result.species_id != kSpecies || std::abs(result.correlation - 1.0) > 1e-9) {
+            std::cerr << "Correlation should be scale invariant\n";
+            return false;
+        }
+    }
+
+    // A mismatched shape falls below threshold and returns PRECLASSIFIERFLAG,
+    // which is distinct from NOSPECIES.
+    {
+        train.average_spectrum = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+        const CtTemplateClassifier classifier(config);
+        const auto result = classifier.classify_detailed(train);
+        if (result.species_id != kCtPreClassifierFlag || result.correlation >= config.correlation_threshold) {
+            std::cerr << "Mismatched spectrum should return PRECLASSIFIERFLAG\n";
+            return false;
+        }
+    }
+
+    // A missing average spectrum also returns PRECLASSIFIERFLAG.
+    {
+        pamguard::detectors::CtTrainSummary empty;
+        const CtTemplateClassifier classifier(config);
+        if (classifier.classify_detailed(empty).species_id != kCtPreClassifierFlag) {
+            std::cerr << "Missing average spectrum should return PRECLASSIFIERFLAG\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 bool check_classifier_chain() {
     using pamguard::detectors::CtClassifierChain;
     using pamguard::detectors::CtIdiClassifierAdapter;
@@ -313,6 +375,9 @@ int main() {
             return 1;
         }
         if (!check_standard_classifier()) {
+            return 1;
+        }
+        if (!check_template_classifier()) {
             return 1;
         }
         if (!check_classifier_chain()) {

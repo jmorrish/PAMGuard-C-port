@@ -15,6 +15,13 @@ struct CtChi2ClassifierConfig {
 /** CTClassifier.NOSPECIES. */
 inline constexpr int kCtNoSpecies = 0;
 
+/**
+ * CTClassifier.PRECLASSIFIERFLAG. Distinct from NOSPECIES and negative, which
+ * matters: the standard composite classifier vetoes on any species id at or
+ * below NOSPECIES, so a pre-classifier rejection also vetoes.
+ */
+inline constexpr int kCtPreClassifierFlag = -1;
+
 struct CtClassificationResult {
     int species_id = kCtNoSpecies;
 };

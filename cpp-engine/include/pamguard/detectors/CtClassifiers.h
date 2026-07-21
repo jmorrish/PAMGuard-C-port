@@ -215,6 +215,126 @@ struct CtTrainSummary {
     double duration_ms = 0.0;
     CtIdiSummary idi;
     std::vector<CtBearingClick> bearing_clicks;
+    /** Average spectrum of the train's clicks, evenly spaced from 0 Hz. */
+    std::vector<double> average_spectrum;
+    /** Sample rate the average spectrum spans, as PAMGuard passes it. */
+    double average_spectrum_sample_rate_hz = 0.0;
+};
+
+/** PamArrayUtils.normalise: scale so the L2 norm is one. */
+[[nodiscard]] inline std::vector<double> ct_normalise(const std::vector<double>& values) {
+    double sum = 0.0;
+    for (const auto value : values) {
+        sum += value * value;
+    }
+    sum = std::sqrt(sum);
+    std::vector<double> result(values.size(), 0.0);
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        result[i] = values[i] / sum;
+    }
+    return result;
+}
+
+/** PamInterp.interp1: linear interpolation with a constant extrapolation value. */
+[[nodiscard]] inline std::vector<double> ct_interp1(const std::vector<double>& x, const std::vector<double>& y,
+                                                    const std::vector<double>& xi, double extrapolation) {
+    std::vector<double> result(xi.size(), extrapolation);
+    if (x.size() < 2 || x.size() != y.size()) {
+        return result;
+    }
+    for (std::size_t i = 0; i < xi.size(); ++i) {
+        const double target = xi[i];
+        if (target < x.front() || target > x.back()) {
+            continue;
+        }
+        const auto upper = std::lower_bound(x.begin(), x.end(), target);
+        if (upper == x.begin()) {
+            result[i] = y.front();
+            continue;
+        }
+        const auto index = static_cast<std::size_t>(upper - x.begin());
+        const double x0 = x[index - 1];
+        const double x1 = x[index];
+        const double span = x1 - x0;
+        result[i] = span == 0.0 ? y[index] : y[index - 1] + (y[index] - y[index - 1]) * (target - x0) / span;
+    }
+    return result;
+}
+
+/** Evenly spaced values from `from` to `to`, as PamUtils.linspace. */
+[[nodiscard]] inline std::vector<double> ct_linspace(double from, double to, std::size_t count) {
+    std::vector<double> result(count, from);
+    if (count < 2) {
+        return result;
+    }
+    const double step = (to - from) / static_cast<double>(count - 1);
+    for (std::size_t i = 0; i < count; ++i) {
+        result[i] = from + step * static_cast<double>(i);
+    }
+    return result;
+}
+
+struct CtTemplateClassifierConfig {
+    /** Template spectrum and the sample rate it spans. */
+    std::vector<double> template_spectrum;
+    double template_sample_rate_hz = 0.0;
+    /** TemplateClassifierParams default. */
+    double correlation_threshold = 0.5;
+    int species_flag = 1;
+};
+
+struct CtTemplateClassificationResult {
+    int species_id = kCtPreClassifierFlag;
+    double correlation = 0.0;
+};
+
+/**
+ * Port of PAMGuard's CTTemplateClassifier. The template spectrum is linearly
+ * interpolated onto the average spectrum's frequency grid (extrapolating
+ * zero), both are L2-normalised, and the correlation is their dot product —
+ * a cosine similarity that reaches one for identical shapes.
+ *
+ * Faithful detail: a failing correlation (or a missing average spectrum, or
+ * NaN) returns PRECLASSIFIERFLAG (-1) rather than NOSPECIES (0). Both are at
+ * or below NOSPECIES, so either still vetoes the standard composite
+ * classifier, but the distinct value is preserved for reporting.
+ */
+class CtTemplateClassifier {
+public:
+    explicit CtTemplateClassifier(CtTemplateClassifierConfig config) : config_(std::move(config)) {}
+
+    [[nodiscard]] int classify_species(const CtTrainSummary& train) const {
+        return classify_detailed(train).species_id;
+    }
+
+    [[nodiscard]] CtTemplateClassificationResult classify_detailed(const CtTrainSummary& train) const {
+        CtTemplateClassificationResult result;
+        if (train.average_spectrum.empty() || train.average_spectrum_sample_rate_hz <= 0.0 ||
+            config_.template_spectrum.size() < 2 || config_.template_sample_rate_hz <= 0.0) {
+            return result;
+        }
+
+        const auto template_bins = ct_linspace(0.0, config_.template_sample_rate_hz, config_.template_spectrum.size());
+        const auto target_bins = ct_linspace(0.0, train.average_spectrum_sample_rate_hz, train.average_spectrum.size());
+        const auto interpolated = ct_normalise(
+            ct_interp1(template_bins, config_.template_spectrum, target_bins, 0.0));
+        const auto normalised_spectrum = ct_normalise(train.average_spectrum);
+
+        double correlation = 0.0;
+        for (std::size_t i = 0; i < interpolated.size() && i < normalised_spectrum.size(); ++i) {
+            correlation += normalised_spectrum[i] * interpolated[i];
+        }
+        result.correlation = correlation;
+
+        if (std::isnan(correlation) || correlation < config_.correlation_threshold) {
+            return result;
+        }
+        result.species_id = config_.species_flag;
+        return result;
+    }
+
+private:
+    CtTemplateClassifierConfig config_;
 };
 
 /** Common interface so classifiers can be composed and chained. */
@@ -244,6 +364,17 @@ public:
 
 private:
     CtIdiClassifier classifier_;
+};
+
+class CtTemplateClassifierAdapter final : public CtClassifier {
+public:
+    explicit CtTemplateClassifierAdapter(CtTemplateClassifierConfig config) : classifier_(std::move(config)) {}
+    [[nodiscard]] int classify(const CtTrainSummary& train) const override {
+        return classifier_.classify_species(train);
+    }
+
+private:
+    CtTemplateClassifier classifier_;
 };
 
 class CtBearingClassifierAdapter final : public CtClassifier {
