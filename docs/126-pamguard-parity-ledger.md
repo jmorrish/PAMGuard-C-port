@@ -71,8 +71,18 @@ These are recorded decisions with evidence, not gaps left by oversight:
 
 ## Next parity priorities
 
-- Whistle group *localisation* is a deliberate non-port: PAMGuard's `DetectionGroupLocaliser` is `@Deprecated`, needs a GPS/track model the engine lacks, and solves a different problem than instantaneous multi-array groups (`docs/192-group-localiser-non-port.md`).
-- Model time-varying streamer positions and attitude for towed arrays, which needs a sensor/GPS feed path the engine does not have; static geometry and static attitude are both ported (`docs/190-streamer-geometry.md`, `docs/193-streamer-orientation.md`).
-- Add the GPS/attitude feed `getRealWorldVectors` needs to reach an earth frame; world vectors are carried on every localiser's output but stay in the array frame (`docs/198-pair-and-lsq-world-vectors.md`).
-- Build PAMGuard project import as a JVM-side converter against a pinned PAMGuard version, extending `PamguardSettingsInspector` (`docs/182-project-import-feasibility.md`).
+As of 2026-07-21 the scoped **porting** work has no unblocked items left: every class in the click, whistle, click train, array, and bearing localiser paths is ported, ported-but-deliberately-unselected, or recorded above as a non-port with evidence. What remains needs an input the engine does not currently have.
+
+### Blocked on a decision or an input from outside the port
+
+- **PAMGuard project import.** Must be a JVM-side converter emitting engine JSON, extending `PamguardSettingsInspector` (`docs/182-project-import-feasibility.md`). Blocked on a **pinned PAMGuard version** and a `.psfx` written by it — the format is version-brittle enough that the repo's own sample fails against PAMGuard's current build.
+- **A GPS and attitude feed.** Three separate items collapse into this one missing input:
+  - time-varying streamer positions and attitude for towed arrays (`docs/190`, `docs/193`);
+  - earth-frame directions via `getRealWorldVectors` (`docs/198`);
+  - anything that would make `DetectionGroupLocaliser` meaningful (`docs/192`).
+
+  Static geometry, static attitude, and array-frame vectors are all ported and served; the gap is a data source and the streaming architecture to carry it, not reference maths.
+
+### Standing
+
 - Keep every parity claim tied to a fixture, source trace, or focused regression test.
