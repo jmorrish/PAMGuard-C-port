@@ -176,6 +176,12 @@ add_executable(ct_classifiers_check
 
 target_link_libraries(ct_classifiers_check PRIVATE pamguard_engine)
 
+add_executable(ct_spectrum_template_check
+    tools/ct_spectrum_template_check.cpp
+)
+
+target_link_libraries(ct_spectrum_template_check PRIVATE pamguard_engine)
+
 add_executable(mht_time_delay_chi2_fixture_check
     tools/mht_time_delay_chi2_fixture_check.cpp
 )
@@ -453,6 +459,11 @@ add_test(
 add_test(
     NAME ct_idi_bearing_classifier_branches
     COMMAND ct_classifiers_check
+)
+
+add_test(
+    NAME ct_spectrum_template_parity
+    COMMAND ct_spectrum_template_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-train/spectrum-templates.csv
 )
 
 add_test(
