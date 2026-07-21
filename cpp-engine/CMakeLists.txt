@@ -183,6 +183,12 @@ add_executable(ct_spectrum_template_check
 
 target_link_libraries(ct_spectrum_template_check PRIVATE pamguard_engine)
 
+add_executable(whistle_grouper_check
+    tools/whistle_grouper_check.cpp
+)
+
+target_link_libraries(whistle_grouper_check PRIVATE pamguard_engine)
+
 add_executable(mht_time_delay_chi2_fixture_check
     tools/mht_time_delay_chi2_fixture_check.cpp
 )
@@ -465,6 +471,11 @@ add_test(
 add_test(
     NAME ct_spectrum_template_parity
     COMMAND ct_spectrum_template_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-train/spectrum-templates.csv
+)
+
+add_test(
+    NAME whistle_grouper_coverage
+    COMMAND whistle_grouper_check
 )
 
 add_test(

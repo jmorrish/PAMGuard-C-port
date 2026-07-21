@@ -36,7 +36,7 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 | Click train bearing summaries | Foundation | Summary tests | Same caveat as train localisation summaries. |
 | Whistle peak detector | Fixture parity | Better peak fixture and edge coverage | Needs broader fixture sweep across PAMGuard whistle settings. |
 | Connected-region whistle/moan tracker | Fixture parity | Basic, flush, stub, discard, branch, rejoin, split/cross fixtures | Strong current fixture coverage for contour-building behaviour. |
-| Whistle/moan localisation | Foundation | Contour delay core ported with five-case Java fixture parity (`docs/164-whistle-delay-foundation.md`); cross-channel region delays with geometry/pair-bearing metadata served at schema v9 (`docs/165-whistle-delay-service-output.md`), region-level bearings with PAMGuard ambiguity semantics at schema v11 (`docs/175`), and the full channel-pair set plus LSQ bearings for four-plus hydrophone groups at schema v12 (`docs/180-whistle-lsq-bearing.md`) | Array-axis reference fields and detection-grouper semantics remain unported; localiser selection is channel-count based. |
+| Whistle/moan localisation | Foundation | Contour delay core ported with five-case Java fixture parity (`docs/164-whistle-delay-foundation.md`); cross-channel region delays with geometry/pair-bearing metadata served at schema v9 (`docs/165-whistle-delay-service-output.md`), region-level bearings with PAMGuard ambiguity semantics at schema v11 (`docs/175`), and the full channel-pair set plus LSQ bearings for four-plus hydrophone groups at schema v12 (`docs/180-whistle-lsq-bearing.md`) | The detection grouper is ported with branch coverage including its non-intersection frequency-overlap quirk (`docs/189-whistle-detection-grouper.md`) but not wired into the session; array-axis reference fields remain unported and localiser selection is channel-count based. |
 | PAMGuard project/config import | Gap | Feasibility established with a working settings inspector (`docs/182-project-import-feasibility.md`) | Settings payloads are Java-serialised object graphs, so import must run on the JVM and emit engine JSON — it cannot be ported to C++. The format is also version-brittle: the repo's sample `.psf` fails to load against PAMGuard's own current build. Requires a pinned target version. |
 | Archive detector events | Operational | HTTP smoke and indexed sidecar tests | Supports web/API workflows; not detector maths. |
 | Multi-session service operation | Operational | 50-session smoke | Functional isolation smoke, not a detector throughput benchmark. |
@@ -61,7 +61,7 @@ It is not safe to say:
 
 ## Next parity priorities
 
-- Port the whistle detection grouper, the last unported detector-side module (`docs/180-whistle-lsq-bearing.md`).
+- Wire the ported whistle detection grouper into the session as a cross-group association output, and port GroupDetection/DetectionGroupLocaliser (`docs/189-whistle-detection-grouper.md`).
 - Expose streamer identity in session array config and port streamer-level geometry (positions, headings, time-varying locators) now that streamer-scoped shape semantics are in place (`docs/181-multi-streamer-arrays.md`).
 - Port the whistle detection grouper and PAMGuard-style array-shape localiser selection (`docs/180-whistle-lsq-bearing.md`).
 - Build PAMGuard project import as a JVM-side converter against a pinned PAMGuard version, extending `PamguardSettingsInspector` (`docs/182-project-import-feasibility.md`).
