@@ -186,6 +186,37 @@ int main() {
         }
 
         {
+            // Cross-chunk grouping: the same two-channel burst fed as two
+            // successive chunks must still associate contours across
+            // channels, which needs the retained region history.
+            pamguard::core::AnalysisSession session(base_config(true));
+            auto first = session.process(synthetic_chunk());
+            auto second_chunk = synthetic_chunk();
+            const auto frames = second_chunk.interleaved_pcm.size() / second_chunk.channel_count;
+            second_chunk.start_sample = static_cast<std::int64_t>(frames);
+            second_chunk.time_unix_ms = static_cast<std::int64_t>(frames) / 48;
+            auto second = session.process(second_chunk);
+            const auto flushed = session.flush();
+
+            std::size_t total_groups = first.whistle_groups.size() + second.whistle_groups.size()
+                + flushed.whistle_groups.size();
+            if (total_groups == 0) {
+                std::cerr << "Two-channel whistle session should associate contours across channels\n";
+                return 1;
+            }
+            std::vector<pamguard::core::WhistleRegionGroup> all_groups;
+            all_groups.insert(all_groups.end(), first.whistle_groups.begin(), first.whistle_groups.end());
+            all_groups.insert(all_groups.end(), second.whistle_groups.begin(), second.whistle_groups.end());
+            all_groups.insert(all_groups.end(), flushed.whistle_groups.begin(), flushed.whistle_groups.end());
+            for (const auto& group : all_groups) {
+                if (group.channels.size() < 2) {
+                    std::cerr << "A whistle group should span at least two channels\n";
+                    return 1;
+                }
+            }
+        }
+
+        {
             pamguard::core::AnalysisSession session(base_config(false));
             auto result = session.process(synthetic_chunk());
             const auto flushed = session.flush();

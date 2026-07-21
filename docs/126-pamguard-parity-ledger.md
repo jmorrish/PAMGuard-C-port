@@ -61,7 +61,7 @@ It is not safe to say:
 
 ## Next parity priorities
 
-- Extend whistle grouping across chunk boundaries with a retained region history, and port GroupDetection/DetectionGroupLocaliser (`docs/191-whistle-group-service-output.md`).
+- Port GroupDetection/DetectionGroupLocaliser to localise whistle groups once formed (`docs/191-whistle-group-service-output.md`).
 - Port PAMGuard hydrophone locators: streamer orientation (heading/pitch/roll) and time-varying streamer positions for towed arrays (`docs/190-streamer-geometry.md`).
 - Port the whistle detection grouper and PAMGuard-style array-shape localiser selection (`docs/180-whistle-lsq-bearing.md`).
 - Build PAMGuard project import as a JVM-side converter against a pinned PAMGuard version, extending `PamguardSettingsInspector` (`docs/182-project-import-feasibility.md`).

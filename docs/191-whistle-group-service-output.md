@@ -20,8 +20,14 @@ Bumps the engine result `schemaVersion` to `15` (purely additive).
 
 Full CTest suite passes `66/66`, including the grouper's own eight-case coverage (`whistle_grouper_coverage`) which pins the match semantics this wiring depends on.
 
+## Cross-chunk association
+
+Grouping matches each new region against a **retained history** of regions completed in earlier chunks, mirroring PAMGuard's grouper scanning a live data block that spans earlier processing. Without it, contours finishing in different chunks would never group, which for streamed audio would miss most associations.
+
+The history is bounded at 256 regions. That bound cannot change results: PAMGuard's scan stops at matches older than two seconds, so regions far beyond that never contribute. Group identity is carried on the retained entries, so a region joining an existing group re-uses its `groupId` across chunks rather than starting a new one.
+
+`session_whistle_delay_wiring` covers this by feeding the same two-channel burst as two successive chunks and asserting groups still form and always span at least two channels.
+
 ## Claim boundary
 
-**Scope of association differs from PAMGuard in one respect worth stating plainly.** PAMGuard's `DetectionGrouper` scans a live data block that spans earlier processing, so it can associate a contour with one completed some seconds earlier. The engine associates regions completed within the same result, which for streamed chunks means association is bounded by the chunk in which regions complete. Contours completing in different chunks will not group. Widening that would need a retained cross-chunk region history like the FFT history used for whistle delays (`docs/165`).
-
-Grouping is association only: `GroupDetection` and `DetectionGroupLocaliser`, which localise a group once formed, remain unported, and the grouper itself is branch-covered rather than fixture-pinned (`docs/189`).
+Grouping is association only: `GroupDetection` and `DetectionGroupLocaliser`, which localise a group once formed, remain unported, and the grouper itself is branch-covered rather than fixture-pinned (`docs/189`). Groups are reported in the result where their newest member completed, so a long-lived group appears once per chunk that adds to it rather than as a single consolidated record.

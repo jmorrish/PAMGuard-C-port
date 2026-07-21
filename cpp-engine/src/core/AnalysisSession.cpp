@@ -906,8 +906,8 @@ double AnalysisSession::template_correlation_for(const detectors::CtTrainSummary
     return template_classifier.classify_detailed(summary).correlation;
 }
 
-void AnalysisSession::group_whistle_regions(AnalysisResult& result) const {
-    if (whistle_region_trackers_.size() < 2 || result.whistle_regions.size() < 2 ||
+void AnalysisSession::group_whistle_regions(AnalysisResult& result) {
+    if (whistle_region_trackers_.size() < 2 || result.whistle_regions.empty() ||
         config_.sample_rate_hz == 0 || config_.detector.fft.fft_length == 0) {
         return;
     }
@@ -927,47 +927,72 @@ void AnalysisSession::group_whistle_regions(AnalysisResult& result) const {
         candidates.push_back(candidate);
     }
 
-    // Each region joins the first earlier region it matches, forming
-    // cross-channel groups. PAMGuard scans its live data block; the engine
-    // scans the regions completed in this result, which is the same
-    // newest-first association over the data it has.
-    std::vector<std::size_t> group_of(candidates.size(), static_cast<std::size_t>(-1));
+    // Each new region is matched against the retained history of regions
+    // completed earlier, so contours finishing in different chunks still
+    // group — PAMGuard's grouper likewise scans a data block spanning
+    // earlier processing rather than only the current batch.
+    std::unordered_map<std::size_t, std::size_t> group_index_by_id;
+    const auto touch_group = [&](std::size_t group_id) -> WhistleRegionGroup& {
+        const auto found = group_index_by_id.find(group_id);
+        if (found != group_index_by_id.end()) {
+            return result.whistle_groups[found->second];
+        }
+        WhistleRegionGroup group;
+        group.group_id = group_id;
+        result.whistle_groups.push_back(std::move(group));
+        group_index_by_id.emplace(group_id, result.whistle_groups.size() - 1);
+        return result.whistle_groups.back();
+    };
+
     for (std::size_t i = 0; i < candidates.size(); ++i) {
-        const std::vector<detectors::WhistleGroupCandidate> earlier(candidates.begin(),
-                                                                    candidates.begin() + static_cast<std::ptrdiff_t>(i));
-        const auto matches = detectors::find_whistle_groups(candidates[i], earlier,
+        std::vector<detectors::WhistleGroupCandidate> history;
+        history.reserve(whistle_group_history_.size());
+        for (const auto& retained : whistle_group_history_) {
+            history.push_back(retained.candidate);
+        }
+        const auto matches = detectors::find_whistle_groups(candidates[i], history,
                                                            whistle_region_trackers_.size());
+
+        std::size_t group_id = 0;
         for (const auto match : matches) {
-            if (group_of[match] != static_cast<std::size_t>(-1)) {
-                group_of[i] = group_of[match];
+            if (whistle_group_history_[match].group_id != 0) {
+                group_id = whistle_group_history_[match].group_id;
                 break;
             }
         }
-        if (group_of[i] == static_cast<std::size_t>(-1) && !matches.empty()) {
-            WhistleRegionGroup group;
-            group.group_id = result.whistle_groups.size() + 1;
-            result.whistle_groups.push_back(std::move(group));
-            group_of[i] = result.whistle_groups.size() - 1;
-            for (const auto match : matches) {
-                group_of[match] = group_of[i];
-            }
+        if (group_id == 0 && !matches.empty()) {
+            group_id = next_whistle_group_id_++;
         }
+
+        if (group_id != 0) {
+            auto& group = touch_group(group_id);
+            for (const auto match : matches) {
+                auto& retained = whistle_group_history_[match];
+                if (retained.group_id == 0) {
+                    retained.group_id = group_id;
+                    group.channels.push_back(retained.channel);
+                }
+            }
+            group.region_indices.push_back(i);
+            group.channels.push_back(result.whistle_regions[i].channel);
+            if (group.region_indices.size() == 1) {
+                group.first_start_sample = result.whistle_regions[i].start_sample;
+            }
+            group.last_start_sample = result.whistle_regions[i].start_sample;
+        }
+
+        RetainedWhistleRegion retained;
+        retained.candidate = candidates[i];
+        retained.channel = result.whistle_regions[i].channel;
+        retained.group_id = group_id;
+        whistle_group_history_.push_back(std::move(retained));
     }
 
-    for (std::size_t i = 0; i < group_of.size(); ++i) {
-        if (group_of[i] == static_cast<std::size_t>(-1)) {
-            continue;
-        }
-        auto& group = result.whistle_groups[group_of[i]];
-        group.region_indices.push_back(i);
-        group.channels.push_back(result.whistle_regions[i].channel);
-    }
-    for (auto& group : result.whistle_groups) {
-        if (group.region_indices.empty()) {
-            continue;
-        }
-        group.first_start_sample = result.whistle_regions[group.region_indices.front()].start_sample;
-        group.last_start_sample = result.whistle_regions[group.region_indices.back()].start_sample;
+    // Bound the history: PAMGuard's grouper stops scanning at matches older
+    // than two seconds, so retaining far beyond that cannot change results.
+    constexpr std::size_t max_history_regions = 256;
+    while (whistle_group_history_.size() > max_history_regions) {
+        whistle_group_history_.pop_front();
     }
 }
 

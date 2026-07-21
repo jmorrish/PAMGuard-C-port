@@ -10,6 +10,7 @@
 #include "pamguard/detectors/ClickDetectorEngine.h"
 #include "pamguard/detectors/MhtKernel.h"
 #include "pamguard/detectors/MhtSimpleChi2Vars.h"
+#include "pamguard/detectors/WhistleDetectionGrouper.h"
 #include "pamguard/detectors/ConnectedRegionTracker.h"
 #include "pamguard/detectors/WhistlePeakDetector.h"
 #include "pamguard/dsp/SpectrogramEngine.h"
@@ -202,6 +203,19 @@ private:
     std::unordered_map<std::uint32_t, MhtTrainState> mht_train_states_;
     std::size_t next_mht_train_id_ = 1;
 
+    /**
+     * Whistle regions completed in earlier chunks, so cross-channel grouping
+     * can associate contours that finish in different chunks — PAMGuard's
+     * grouper scans a live data block spanning earlier processing.
+     */
+    struct RetainedWhistleRegion {
+        detectors::WhistleGroupCandidate candidate;
+        std::size_t channel = 0;
+        std::size_t group_id = 0;
+    };
+    std::deque<RetainedWhistleRegion> whistle_group_history_;
+    std::size_t next_whistle_group_id_ = 1;
+
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);
     void compute_whistle_delays(AnalysisResult& result);
@@ -210,7 +224,7 @@ private:
     void classify_mht_train(MhtClickTrainResult& train, const MhtTrainState& state,
                             const detectors::MhtBitset& track_bits) const;
     void classify_ici_click_trains(AnalysisResult& result) const;
-    void group_whistle_regions(AnalysisResult& result) const;
+    void group_whistle_regions(AnalysisResult& result);
     [[nodiscard]] std::vector<std::shared_ptr<const detectors::CtClassifier>> build_ct_classifiers() const;
     [[nodiscard]] double template_correlation_for(const detectors::CtTrainSummary& summary) const;
 };
