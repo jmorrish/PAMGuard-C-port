@@ -4,6 +4,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "pamguard/localisation/JamaMatrix.h"
+
 namespace pamguard::localisation {
 
 namespace {
@@ -18,15 +20,6 @@ double dot3(const Vec3& a, const Vec3& b) {
 
 Vec3 sub3(const Vec3& a, const Vec3& b) {
     return {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
-}
-
-/** PamVector.vecProd. */
-Vec3 cross3(const Vec3& a, const Vec3& b) {
-    return {
-        a[1] * b[2] - a[2] * b[1],
-        -a[0] * b[2] + a[2] * b[0],
-        a[0] * b[1] - a[1] * b[0],
-    };
 }
 
 /** PamVector.rotate(double): a rotation about z, applied in the xy plane. */
@@ -71,115 +64,6 @@ double sum_components_squared(const Vec3& a, const Vec3& b) {
         sum += term * term;
     }
     return std::sqrt(sum);
-}
-
-/**
- * Jama LUDecomposition (Crout, partial pivoting) followed by its solve against
- * the identity, which is what Jama's Matrix.inverse() does. Ported rather than
- * replaced with a 3x3 cofactor formula so the rounding matches the reference.
- * Returns false when the decomposition is singular, where Jama throws and
- * PAMGuard's `prepare` catches and returns with an empty table.
- */
-bool jama_inverse_3x3(const std::array<Vec3, 3>& input, std::array<Vec3, 3>& inverse) {
-    constexpr int n = 3;
-    double lu[n][n];
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            lu[i][j] = input[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
-        }
-    }
-    int piv[n];
-    for (int i = 0; i < n; ++i) {
-        piv[i] = i;
-    }
-
-    double lu_col_j[n];
-    for (int j = 0; j < n; ++j) {
-        for (int i = 0; i < n; ++i) {
-            lu_col_j[i] = lu[i][j];
-        }
-        for (int i = 0; i < n; ++i) {
-            const int kmax = std::min(i, j);
-            double s = 0.0;
-            for (int k = 0; k < kmax; ++k) {
-                s += lu[i][k] * lu_col_j[k];
-            }
-            lu_col_j[i] -= s;
-            lu[i][j] = lu_col_j[i];
-        }
-        int p = j;
-        for (int i = j + 1; i < n; ++i) {
-            if (std::abs(lu_col_j[i]) > std::abs(lu_col_j[p])) {
-                p = i;
-            }
-        }
-        if (p != j) {
-            for (int k = 0; k < n; ++k) {
-                std::swap(lu[p][k], lu[j][k]);
-            }
-            std::swap(piv[p], piv[j]);
-        }
-        if (lu[j][j] != 0.0) {
-            for (int i = j + 1; i < n; ++i) {
-                lu[i][j] /= lu[j][j];
-            }
-        }
-    }
-
-    for (int j = 0; j < n; ++j) {
-        if (lu[j][j] == 0.0) {
-            return false;
-        }
-    }
-
-    // solve(identity), with the right-hand side permuted by piv first.
-    double x[n][n];
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            x[i][j] = piv[i] == j ? 1.0 : 0.0;
-        }
-    }
-    for (int k = 0; k < n; ++k) {
-        for (int i = k + 1; i < n; ++i) {
-            for (int j = 0; j < n; ++j) {
-                x[i][j] -= x[k][j] * lu[i][k];
-            }
-        }
-    }
-    for (int k = n - 1; k >= 0; --k) {
-        for (int j = 0; j < n; ++j) {
-            x[k][j] /= lu[k][k];
-        }
-        for (int i = 0; i < k; ++i) {
-            for (int j = 0; j < n; ++j) {
-                x[i][j] -= x[k][j] * lu[i][k];
-            }
-        }
-    }
-
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            inverse[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = x[i][j];
-        }
-    }
-    return true;
-}
-
-/**
- * PamVector.rotate(Matrix) makes the vector a **single-row** matrix and
- * right-multiplies, so the result is the row vector times the matrix, not the
- * matrix times a column.
- */
-Vec3 rotate_by_matrix(const Vec3& v, const std::array<Vec3, 3>& matrix) {
-    Vec3 out{};
-    for (std::size_t j = 0; j < 3; ++j) {
-        double sum = 0.0;
-        for (std::size_t i = 0; i < 3; ++i) {
-            sum += v[i] * matrix[i][j];
-        }
-        out[j] = sum;
-    }
-    return out;
 }
 
 /** PamVector.addQuadrature over two error vectors, component by component. */
@@ -264,7 +148,7 @@ MlGridBearingLocaliser::MlGridBearingLocaliser(MlGridBearingConfig config)
     // The rotation frame: the array axes as matrix rows, inverted. Missing
     // axes are filled in as the reference does — a perpendicular to the first
     // for a line, and the cross product of the first two otherwise.
-    std::array<Vec3, 3> rotation_rows{};
+    Matrix3 rotation_rows{};
     for (std::size_t i = 0; i < 3; ++i) {
         rotation_rows[i] = i < axes.size() ? axes[i] : Vec3{0.0, 0.0, 0.0};
     }
@@ -275,9 +159,9 @@ MlGridBearingLocaliser::MlGridBearingLocaliser(MlGridBearingConfig config)
         rotation_rows[1] = perpendicular_vector(rotation_rows[0]);
     }
     if (axes.size() < 3) {
-        rotation_rows[2] = cross3(rotation_rows[0], rotation_rows[1]);
+        rotation_rows[2] = cross_product(rotation_rows[0], rotation_rows[1]);
     }
-    std::array<Vec3, 3> rotation{};
+    Matrix3 rotation{};
     if (!jama_inverse_3x3(rotation_rows, rotation)) {
         return;
     }
@@ -297,8 +181,8 @@ MlGridBearingLocaliser::MlGridBearingLocaliser(MlGridBearingConfig config)
             // getSeparationErrorVector, for the second phone against the
             // first; streamer-level error vectors are not modelled.
             Vec3 pair_error_vector = add_quadrature(second.position_error_m, first.position_error_m);
-            pair_vector = rotate_by_matrix(pair_vector, rotation);
-            pair_error_vector = rotate_by_matrix(pair_error_vector, rotation);
+            pair_vector = row_times_matrix(pair_vector, rotation);
+            pair_error_vector = row_times_matrix(pair_error_vector, rotation);
 
             for (std::size_t theta_bin = 0; theta_bin < theta_bins_; ++theta_bin) {
                 for (std::size_t phi_bin = 0; phi_bin < phi_bins_; ++phi_bin) {

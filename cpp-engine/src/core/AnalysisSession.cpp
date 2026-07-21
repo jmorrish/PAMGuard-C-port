@@ -283,6 +283,24 @@ GridBearingResult grid_bearing_for_channels(const AnalysisConfig& config,
     result.phi_error_radians = grid->phi_error_radians;
     result.has_phi = grid->has_phi;
     result.used_pairs = expected_pairs;
+
+    // Express the same direction in the array's xyz frame, which is what makes
+    // theta and phi interpretable without an external orientation reference.
+    std::vector<std::array<double, 3>> positions;
+    std::vector<int> streamer_ids;
+    positions.reserve(channels.size());
+    streamer_ids.reserve(channels.size());
+    for (const auto channel : channels) {
+        const auto* hydrophone = find_hydrophone(config.array, channel);
+        positions.push_back({hydrophone->x_m, hydrophone->y_m, hydrophone->z_m});
+        streamer_ids.push_back(hydrophone->streamer_id);
+    }
+    std::vector<double> angles{grid->theta_radians};
+    if (grid->has_phi) {
+        angles.push_back(grid->phi_radians);
+    }
+    result.world_vectors = localisation::world_vectors(
+        localiser.array_type(), localisation::array_directions(positions, streamer_ids), angles);
     return result;
 }
 

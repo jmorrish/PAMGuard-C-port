@@ -22,6 +22,7 @@ The HTTP service smoke asserts the health endpoint, live PCM result body, and ar
 
 ## Version history
 
+- `18`: Adds `worldVectors` to the `gridBearing` object — the same direction as unit `{x, y, z, cone}` vectors in the hydrophone array's own xyz frame, via PAMGuard's `AbstractLocalisation.getWorldVectors`. One vector for a volume sub-array; two for a plane (mirror pair) or line (left/right cones).
 - `17`: Adds a `gridBearing` object to click localisations and whistle delays, carrying the ported PAMGuard `MLGridBearingLocaliser2` result for sub-arrays whose shape selects it. Angles are the reference's theta/phi in the array's principal axis frame, not compass azimuth/elevation. Session config gains `array.hydrophones[].xErrorM`/`yErrorM`/`zErrorM`. `lsqBearing` and the whistle region `bearing` object are unchanged.
 - `16`: Adds `arrayShape` and `bearingLocaliser` to every click localisation and whistle delay entry, reporting which localiser PAMGuard's `BearingLocaliserSelector` picks for that sub-array's shape. Localiser choice is now made by shape rather than channel count, so a **line** sub-array of four or more hydrophones no longer produces `lsqBearing` — those solves were rank deficient and reported no bearing anyway.
 - `15`: Adds a `whistleGroups` array associating whistle contours detected on different channels as one call, via the ported detection grouper.

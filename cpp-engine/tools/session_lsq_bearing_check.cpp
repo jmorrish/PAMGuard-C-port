@@ -178,6 +178,23 @@ int main() {
                 std::cerr << "Grid bearing angles should be finite\n";
                 return 1;
             }
+            // A volume sub-array resolves the direction unambiguously, so the
+            // array-frame vector set holds exactly one entry, and it is a
+            // direction rather than a cone.
+            if (grid.world_vectors.size() != 1 || grid.world_vectors.front().cone) {
+                std::cerr << "A volume sub-array should give one non-cone world vector, got "
+                          << grid.world_vectors.size() << "\n";
+                return 1;
+            }
+            {
+                const auto& direction = grid.world_vectors.front().direction;
+                const double length = std::sqrt(direction[0] * direction[0] + direction[1] * direction[1] +
+                                                direction[2] * direction[2]);
+                if (std::abs(length - 1.0) > 1e-9) {
+                    std::cerr << "World vector should be a unit vector, length was " << length << "\n";
+                    return 1;
+                }
+            }
 
             // Without position errors the remaining error terms still make the
             // delay uncertainty non-zero, so the grid stays available; this

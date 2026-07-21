@@ -16,6 +16,7 @@
 #include "pamguard/dsp/SpectrogramEngine.h"
 #include "pamguard/localisation/BearingLocaliserSelector.h"
 #include "pamguard/localisation/DelayGroupEstimator.h"
+#include "pamguard/localisation/WorldVectors.h"
 #include "pamguard/localisation/FarFieldBearingLocaliser.h"
 
 namespace pamguard::core {
@@ -45,6 +46,13 @@ struct GridBearingResult {
     /** False for a line sub-array, where the reference returns theta alone. */
     bool has_phi = false;
     std::size_t used_pairs = 0;
+    /**
+     * The same direction expressed as unit vectors in the hydrophone array's
+     * xyz frame, via AbstractLocalisation.getWorldVectors. One vector for a
+     * volume sub-array; two for a plane or line, carrying the mirror or
+     * left/right ambiguity that shape cannot resolve.
+     */
+    std::vector<localisation::WorldVector> world_vectors;
 };
 
 struct ClickLocalisationResult {

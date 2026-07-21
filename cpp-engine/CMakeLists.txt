@@ -35,11 +35,13 @@ add_library(pamguard_engine
     src/localisation/CorrelationDelayEstimator.cpp
     src/localisation/DelayGroupEstimator.cpp
     src/localisation/FarFieldBearingLocaliser.cpp
+    src/localisation/JamaMatrix.cpp
     src/localisation/LsqBearingLocaliser.cpp
     src/localisation/MlGridBearingLocaliser.cpp
     src/localisation/PairBearingLocaliser.cpp
     src/localisation/StreamerOrientation.cpp
     src/localisation/WhistleDelayEstimator.cpp
+    src/localisation/WorldVectors.cpp
 )
 
 target_include_directories(pamguard_engine
@@ -275,6 +277,12 @@ add_executable(array_shape_fixture_check
 )
 
 target_link_libraries(array_shape_fixture_check PRIVATE pamguard_engine)
+
+add_executable(world_vector_fixture_check
+    tools/world_vector_fixture_check.cpp
+)
+
+target_link_libraries(world_vector_fixture_check PRIVATE pamguard_engine)
 
 add_executable(ml_grid_bearing_fixture_check
     tools/ml_grid_bearing_fixture_check.cpp
@@ -567,6 +575,11 @@ add_test(
 add_test(
     NAME array_shape_basic_parity
     COMMAND array_shape_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/array-shape.csv
+)
+
+add_test(
+    NAME world_vector_parity
+    COMMAND world_vector_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/world-vector.csv
 )
 
 add_test(

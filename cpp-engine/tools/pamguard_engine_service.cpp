@@ -30,7 +30,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 17;
+constexpr int kResultSchemaVersion = 18;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2093,6 +2093,17 @@ json grid_bearing_to_json(const pamguard::core::GridBearingResult& grid) {
     };
     if (std::isfinite(grid.theta_error_radians)) {
         item["thetaErrorRadians"] = grid.theta_error_radians;
+    }
+    if (!grid.world_vectors.empty()) {
+        item["worldVectors"] = json::array();
+        for (const auto& world : grid.world_vectors) {
+            item["worldVectors"].push_back({
+                {"x", world.direction[0]},
+                {"y", world.direction[1]},
+                {"z", world.direction[2]},
+                {"cone", world.cone},
+            });
+        }
     }
     if (grid.has_phi) {
         item["phiRadians"] = grid.phi_radians;
