@@ -15,6 +15,10 @@ struct StandardMhtChi2Params {
     bool enable_idi = true;
     bool enable_amplitude = true;
     bool enable_length = true;
+    /** Off by default: needs per-click bearings from the localisation path. */
+    bool enable_bearing = false;
+    /** Off by default: needs per-click peak frequency from click features. */
+    bool enable_peak_frequency = false;
     /** StandardMHTChi2Params defaults. */
     double coast_penalty = 10.0;
     double new_track_penalty = 50.0;
@@ -56,6 +60,8 @@ private:
     MhtIdiChi2 idi_chi2_;
     MhtAmplitudeChi2 amplitude_chi2_;
     MhtLengthChi2 length_chi2_;
+    MhtBearingChi2Delta bearing_chi2_;
+    MhtPeakFrequencyChi2 peak_frequency_chi2_;
     double chi2_ = 1.7976931348623157e308;
     int n_coasts_ = 0;
 };

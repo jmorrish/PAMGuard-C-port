@@ -111,6 +111,12 @@ StandardMhtChi2::StandardMhtChi2(const StandardMhtChi2Provider* provider)
     MhtLengthChi2Config length_config;
     length_config.sample_rate_hz = provider_->params().sample_rate_hz;
     length_chi2_ = MhtLengthChi2(length_config);
+    MhtBearingChi2Config bearing_config;
+    bearing_config.sample_rate_hz = provider_->params().sample_rate_hz;
+    bearing_chi2_ = MhtBearingChi2Delta(bearing_config);
+    MhtPeakFrequencyChi2Config peak_frequency_config;
+    peak_frequency_config.sample_rate_hz = provider_->params().sample_rate_hz;
+    peak_frequency_chi2_ = MhtPeakFrequencyChi2(peak_frequency_config);
     // Java field initialiser: Double.MAX_VALUE (not maxChi). The distinction
     // matters for stable-sort tie order in the confirm-all pass.
 }
@@ -141,6 +147,12 @@ void StandardMhtChi2::update(const MhtChi2Unit& detection, const MhtBitset& trac
     }
     if (params.enable_length) {
         raw_chi2 += length_chi2_.update_chi2(detection, in_track, bitcount, kcount);
+    }
+    if (params.enable_bearing) {
+        raw_chi2 += bearing_chi2_.update_chi2(detection, in_track, bitcount, kcount);
+    }
+    if (params.enable_peak_frequency) {
+        raw_chi2 += peak_frequency_chi2_.update_chi2(detection, in_track, bitcount, kcount);
     }
 
     // StandardMHTChi2.calcNCoasts.

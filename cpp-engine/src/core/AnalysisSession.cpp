@@ -446,7 +446,6 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     if (click_train_tracker_) {
         result.click_trains = click_train_tracker_->process(result.clicks);
     }
-    process_mht_click_trains(result);
     if (config_.detector.click_localisation_enabled) {
         for (std::size_t i = 0; i < result.clicks.size(); ++i) {
             const auto& click = result.clicks[i];
@@ -484,6 +483,9 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     if (!result.click_trains.empty() && !result.click_bearings.empty()) {
         result.click_train_bearings = summarize_click_train_bearings(result.click_trains, result.click_bearings);
     }
+    // After localisation so per-click bearings and features are available to
+    // the optional MHT bearing/peak-frequency chi2 variables.
+    process_mht_click_trains(result);
     if (!whistle_peak_detectors_.empty() || !whistle_region_trackers_.empty()) {
         for (const auto& frame : result.spectrogram_frames) {
             retain_whistle_fft_frame(frame);
@@ -668,13 +670,14 @@ void AnalysisSession::process_mht_click_trains(AnalysisResult& result) {
         return;
     }
 
-    for (const auto& click : result.clicks) {
+    for (std::size_t click_index = 0; click_index < result.clicks.size(); ++click_index) {
+        const auto& click = result.clicks[click_index];
         const auto key = click.channel_bitmap != 0 ? click.channel_bitmap : click.trigger_bitmap;
         auto found = mht_train_states_.find(key);
         if (found == mht_train_states_.end()) {
-            detectors::StandardMhtChi2Params chi2_params;
+            auto chi2_params = config_.detector.click_train_mht_chi2;
             chi2_params.sample_rate_hz = static_cast<double>(config_.sample_rate_hz);
-            detectors::MhtKernelParams kernel_params;
+            const auto kernel_params = config_.detector.click_train_mht_kernel;
             MhtTrainState state;
             state.kernel = std::make_unique<detectors::MhtKernel<detectors::MhtChi2Unit>>(
                 std::make_unique<detectors::StandardMhtChi2Provider>(chi2_params, kernel_params), kernel_params);
@@ -713,6 +716,18 @@ void AnalysisSession::process_mht_click_trains(AnalysisResult& result) {
         unit.amplitude_db = 20.0 * std::log10(std::max(peak, 1e-12));
         unit.duration_ms = static_cast<double>(click.duration_samples)
             / static_cast<double>(config_.sample_rate_hz) * 1000.0;
+        for (const auto& features : result.click_features) {
+            if (features.click_index == click_index) {
+                unit.peak_frequency_hz = features.peak_frequency_hz;
+                break;
+            }
+        }
+        for (const auto& bearing : result.click_bearings) {
+            if (bearing.click_index == click_index && bearing.bearing.valid) {
+                unit.bearing_radians = bearing.bearing.azimuth_degrees * 3.141592653589793238462643383279502884 / 180.0;
+                break;
+            }
+        }
 
         state.kernel->add_detection(unit);
         state.start_samples.push_back(click.start_sample);

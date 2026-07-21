@@ -1033,6 +1033,48 @@ components:
                   type: number
                 minClicks:
                   type: integer
+                mht:
+                  type: object
+                  description: MHT tuning, honoured only when algorithm is "mht". Omitted fields keep PAMGuard defaults. At least one chi2 variable must stay enabled.
+                  properties:
+                    enableIdi:
+                      type: boolean
+                    enableAmplitude:
+                      type: boolean
+                    enableLength:
+                      type: boolean
+                    enableBearing:
+                      type: boolean
+                      description: Requires click localisation so per-click bearings exist.
+                    enablePeakFrequency:
+                      type: boolean
+                      description: Requires click features so per-click peak frequency exists.
+                    coastPenalty:
+                      type: number
+                      minimum: 0
+                    newTrackPenalty:
+                      type: number
+                      minimum: 0
+                    newTrackN:
+                      type: integer
+                    maxIci:
+                      type: number
+                      exclusiveMinimum: 0
+                    lowIciExponent:
+                      type: number
+                    longTrackExponent:
+                      type: number
+                    nHold:
+                      type: integer
+                      minimum: 1
+                    nPruneback:
+                      type: integer
+                      minimum: 1
+                    nPrunebackStart:
+                      type: integer
+                    maxCoast:
+                      type: integer
+                      minimum: 1
         whistle:
           type: object
           properties:

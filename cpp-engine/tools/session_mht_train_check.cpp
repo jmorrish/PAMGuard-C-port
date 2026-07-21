@@ -124,6 +124,31 @@ int main() {
         }
 
         {
+            // Per-session MHT parameters: enabling the peak-frequency
+            // variable requires click features, and tightened kernel
+            // parameters must still form trains.
+            auto config = base_config(true);
+            config.detector.click_features_enabled = true;
+            config.detector.click_features.sample_rate_hz = sample_rate_hz;
+            config.detector.click_train_mht_chi2.enable_peak_frequency = true;
+            config.detector.click_train_mht_kernel.n_hold = 10;
+            config.detector.click_train_mht_kernel.max_coast = 2;
+            pamguard::core::AnalysisSession session(config);
+            auto result = session.process(click_train_chunk_at(0));
+            if (result.click_features.size() != result.clicks.size()) {
+                std::cerr << "Expected click features for every click\n";
+                return 1;
+            }
+            const auto flushed = session.flush();
+            result.mht_click_trains.insert(result.mht_click_trains.end(),
+                                           flushed.mht_click_trains.begin(), flushed.mht_click_trains.end());
+            if (result.mht_click_trains.empty()) {
+                std::cerr << "Peak-frequency-enabled MHT produced no click trains\n";
+                return 1;
+            }
+        }
+
+        {
             pamguard::core::AnalysisSession session(base_config(false));
             auto result = session.process(click_train_chunk_at(0));
             const auto flushed = session.flush();

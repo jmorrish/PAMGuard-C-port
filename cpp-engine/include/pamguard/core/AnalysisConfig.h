@@ -9,6 +9,7 @@
 #include "pamguard/detectors/ClickFeatureExtractor.h"
 #include "pamguard/detectors/BasicClickClassifier.h"
 #include "pamguard/detectors/ClickTrainTracker.h"
+#include "pamguard/detectors/StandardMhtChi2.h"
 #include "pamguard/detectors/ConnectedRegionTracker.h"
 #include "pamguard/detectors/WhistlePeakDetector.h"
 #include "pamguard/dsp/WindowFunction.h"
@@ -62,6 +63,8 @@ struct DetectorConfig {
     /** False: PAMGuard-offline-style max-ICI tracker. True: the ported MHT stack. */
     bool click_train_mht = false;
     detectors::ClickTrainConfig click_train;
+    detectors::StandardMhtChi2Params click_train_mht_chi2;
+    detectors::MhtKernelParams click_train_mht_kernel;
     bool whistle_peak_detector_enabled = false;
     detectors::WhistlePeakConfig whistle_peak;
     bool whistle_region_detector_enabled = false;

@@ -1896,6 +1896,40 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
             else if (algorithm != "ici") {
                 throw std::invalid_argument("click.train.algorithm must be \"ici\" or \"mht\"");
             }
+
+            if (config.detector.click_train_mht && click_train.contains("mht")) {
+                const auto& mht = click_train.at("mht");
+                auto& chi2 = config.detector.click_train_mht_chi2;
+                auto& kernel = config.detector.click_train_mht_kernel;
+                chi2.enable_idi = mht.value("enableIdi", chi2.enable_idi);
+                chi2.enable_amplitude = mht.value("enableAmplitude", chi2.enable_amplitude);
+                chi2.enable_length = mht.value("enableLength", chi2.enable_length);
+                chi2.enable_bearing = mht.value("enableBearing", chi2.enable_bearing);
+                chi2.enable_peak_frequency = mht.value("enablePeakFrequency", chi2.enable_peak_frequency);
+                chi2.coast_penalty = mht.value("coastPenalty", chi2.coast_penalty);
+                chi2.new_track_penalty = mht.value("newTrackPenalty", chi2.new_track_penalty);
+                chi2.new_track_n = mht.value("newTrackN", chi2.new_track_n);
+                chi2.max_ici = mht.value("maxIci", chi2.max_ici);
+                chi2.low_ici_exponent = mht.value("lowIciExponent", chi2.low_ici_exponent);
+                chi2.long_track_exponent = mht.value("longTrackExponent", chi2.long_track_exponent);
+                kernel.n_hold = mht.value("nHold", kernel.n_hold);
+                kernel.n_pruneback = mht.value("nPruneback", kernel.n_pruneback);
+                kernel.n_pruneback_start = mht.value("nPrunebackStart", kernel.n_pruneback_start);
+                kernel.max_coast = mht.value("maxCoast", kernel.max_coast);
+
+                if (!(chi2.enable_idi || chi2.enable_amplitude || chi2.enable_length ||
+                      chi2.enable_bearing || chi2.enable_peak_frequency)) {
+                    throw std::invalid_argument("click.train.mht must enable at least one chi2 variable");
+                }
+                if (chi2.max_ici <= 0.0 || !std::isfinite(chi2.max_ici) ||
+                    chi2.coast_penalty < 0.0 || !std::isfinite(chi2.coast_penalty) ||
+                    chi2.new_track_penalty < 0.0 || !std::isfinite(chi2.new_track_penalty)) {
+                    throw std::invalid_argument("click.train.mht penalties must be non-negative and maxIci positive");
+                }
+                if (kernel.n_hold == 0 || kernel.n_pruneback == 0 || kernel.max_coast <= 0) {
+                    throw std::invalid_argument("click.train.mht nHold, nPruneback, and maxCoast must be positive");
+                }
+            }
         }
     }
 
@@ -2379,6 +2413,27 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"trainMaxIciSeconds", config.detector.click_train.max_ici_seconds},
         {"trainMinClicks", config.detector.click_train.min_clicks},
     };
+    if (config.detector.click_train_mht) {
+        const auto& chi2 = config.detector.click_train_mht_chi2;
+        const auto& kernel = config.detector.click_train_mht_kernel;
+        body["click"]["trainMht"] = {
+            {"enableIdi", chi2.enable_idi},
+            {"enableAmplitude", chi2.enable_amplitude},
+            {"enableLength", chi2.enable_length},
+            {"enableBearing", chi2.enable_bearing},
+            {"enablePeakFrequency", chi2.enable_peak_frequency},
+            {"coastPenalty", chi2.coast_penalty},
+            {"newTrackPenalty", chi2.new_track_penalty},
+            {"newTrackN", chi2.new_track_n},
+            {"maxIci", chi2.max_ici},
+            {"lowIciExponent", chi2.low_ici_exponent},
+            {"longTrackExponent", chi2.long_track_exponent},
+            {"nHold", kernel.n_hold},
+            {"nPruneback", kernel.n_pruneback},
+            {"nPrunebackStart", kernel.n_pruneback_start},
+            {"maxCoast", kernel.max_coast},
+        };
+    }
     body["click"]["features"] = {
         {"fftLength", config.detector.click_features.fft_length},
         {"lengthEnergyFraction", config.detector.click_features.length_energy_fraction},
