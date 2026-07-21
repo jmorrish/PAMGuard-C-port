@@ -791,6 +791,22 @@ void AnalysisSession::process_mht_click_trains(AnalysisResult& result) {
                 break;
             }
         }
+        for (const auto& localisation : result.click_localisations) {
+            if (localisation.click_index != click_index) {
+                continue;
+            }
+            // Pair order is the click's channel-pair order, stable across
+            // clicks in a session, which the time-delay variable requires.
+            unit.pair_delays_seconds.reserve(localisation.delays.size());
+            for (const auto& delay : localisation.delays) {
+                unit.pair_delays_seconds.push_back(delay.delay.delay_samples
+                    / static_cast<double>(config_.sample_rate_hz));
+            }
+            break;
+        }
+        if (config_.detector.click_train_mht_chi2.enable_correlation && !click.waveform.empty()) {
+            unit.waveform = std::make_shared<const std::vector<double>>(click.waveform.front());
+        }
 
         state.kernel->add_detection(unit);
         state.start_samples.push_back(click.start_sample);

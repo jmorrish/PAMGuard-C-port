@@ -19,6 +19,12 @@ struct StandardMhtChi2Params {
     bool enable_bearing = false;
     /** Off by default: needs per-click peak frequency from click features. */
     bool enable_peak_frequency = false;
+    /** Off by default: needs per-click pair delays from click localisation. */
+    bool enable_time_delay = false;
+    /** Off by default: needs click waveforms for pairwise correlation. */
+    bool enable_correlation = false;
+    /** FFT length used for the on-demand pairwise click correlation. */
+    std::size_t correlation_fft_length = 512;
     /** StandardMHTChi2Params defaults. */
     double coast_penalty = 10.0;
     double new_track_penalty = 50.0;
@@ -67,6 +73,10 @@ private:
     MhtLengthChi2 length_chi2_;
     MhtBearingChi2Delta bearing_chi2_;
     MhtPeakFrequencyChi2 peak_frequency_chi2_;
+    MhtTimeDelayChi2Delta time_delay_chi2_;
+    MhtCorrelationChi2 correlation_chi2_;
+    /** Previous in-track waveform, for the on-demand pairwise correlation. */
+    std::shared_ptr<const std::vector<double>> last_correlation_waveform_;
     double chi2_ = 1.7976931348623157e308;
     int n_coasts_ = 0;
     bool junk_track_ = false;

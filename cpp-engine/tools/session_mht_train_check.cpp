@@ -149,6 +149,41 @@ int main() {
         }
 
         {
+            // Time-delay and correlation variables enabled end-to-end: both
+            // need per-click localisation delays and waveforms threaded into
+            // the MHT units.
+            auto config = base_config(true);
+            config.detector.click_localisation_enabled = true;
+            config.array.speed_of_sound_mps = 1500.0;
+            config.array.spacing_error_m = 0.02;
+            config.array.hydrophones = {
+                {0, 0.0, 0.0, 0.0, 0.0},
+                {1, 0.0, 3.0, 0.0, 0.0},
+            };
+            config.detector.click_train_mht_chi2.enable_time_delay = true;
+            config.detector.click_train_mht_chi2.enable_correlation = true;
+            pamguard::core::AnalysisSession session(config);
+            auto result = session.process(click_train_chunk_at(0));
+            if (result.click_localisations.empty()) {
+                std::cerr << "Expected click localisations to feed the time-delay variable\n";
+                return 1;
+            }
+            const auto flushed = session.flush();
+            result.mht_click_trains.insert(result.mht_click_trains.end(),
+                                           flushed.mht_click_trains.begin(), flushed.mht_click_trains.end());
+            if (result.mht_click_trains.empty()) {
+                std::cerr << "MHT with time-delay and correlation variables produced no trains\n";
+                return 1;
+            }
+            for (const auto& train : result.mht_click_trains) {
+                if (!std::isfinite(train.chi2)) {
+                    std::cerr << "MHT chi2 should stay finite with all variables enabled\n";
+                    return 1;
+                }
+            }
+        }
+
+        {
             pamguard::core::AnalysisSession session(base_config(false));
             auto result = session.process(click_train_chunk_at(0));
             const auto flushed = session.flush();

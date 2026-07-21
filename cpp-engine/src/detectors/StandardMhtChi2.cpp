@@ -3,9 +3,19 @@
 #include <algorithm>
 #include <cmath>
 
+#include "pamguard/localisation/CorrelationDelayEstimator.h"
+
 namespace pamguard::detectors {
 
 namespace {
+
+/**
+ * The correlation estimator holds an FFT plan, so it is not stateless;
+ * a per-call holder keeps StandardMhtChi2 cheap to clone per branch.
+ */
+struct CorrelationDelayEstimatorHolder {
+    localisation::CorrelationDelayEstimator estimator;
+};
 
 /** PamArrayUtils.median: sorted middle value, averaging the middle pair. */
 double pamguard_median(std::vector<double> values) {
@@ -117,6 +127,12 @@ StandardMhtChi2::StandardMhtChi2(const StandardMhtChi2Provider* provider)
     MhtPeakFrequencyChi2Config peak_frequency_config;
     peak_frequency_config.sample_rate_hz = provider_->params().sample_rate_hz;
     peak_frequency_chi2_ = MhtPeakFrequencyChi2(peak_frequency_config);
+    MhtTimeDelayChi2Config time_delay_config;
+    time_delay_config.sample_rate_hz = provider_->params().sample_rate_hz;
+    time_delay_chi2_ = MhtTimeDelayChi2Delta(time_delay_config);
+    MhtCorrelationChi2Config correlation_config;
+    correlation_config.sample_rate_hz = provider_->params().sample_rate_hz;
+    correlation_chi2_ = MhtCorrelationChi2(correlation_config);
     // Java field initialiser: Double.MAX_VALUE (not maxChi). The distinction
     // matters for stable-sort tie order in the confirm-all pass.
 }
@@ -153,6 +169,30 @@ void StandardMhtChi2::update(const MhtChi2Unit& detection, const MhtBitset& trac
     }
     if (params.enable_peak_frequency) {
         raw_chi2 += peak_frequency_chi2_.update_chi2(detection, in_track, bitcount, kcount);
+    }
+    if (params.enable_time_delay) {
+        raw_chi2 += time_delay_chi2_.update_chi2(detection, detection.pair_delays_seconds,
+                                                 in_track, bitcount, kcount);
+    }
+    if (params.enable_correlation) {
+        // PAMGuard derives the correlation lazily between the two clicks of
+        // the pair; the engine does the same with its own estimator over the
+        // previous in-track waveform. A missing waveform scores as perfect
+        // correlation, which contributes zero rather than corrupting the track.
+        double correlation = 1.0;
+        if (in_track && last_correlation_waveform_ && detection.waveform &&
+            !last_correlation_waveform_->empty() && !detection.waveform->empty()) {
+            CorrelationDelayEstimatorHolder holder;
+            const auto delay = holder.estimator.estimate_delay(
+                *last_correlation_waveform_, *detection.waveform,
+                params.correlation_fft_length,
+                static_cast<double>(params.correlation_fft_length) / 4.0);
+            correlation = std::clamp(delay.delay_score, 1e-6, 1.0);
+        }
+        raw_chi2 += correlation_chi2_.update_chi2(detection, correlation, in_track, bitcount, kcount);
+        if (in_track && detection.waveform) {
+            last_correlation_waveform_ = detection.waveform;
+        }
     }
 
     // StandardMHTChi2.calcNCoasts.

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace pamguard::detectors {
@@ -13,6 +14,14 @@ struct MhtChi2Unit {
     double duration_ms = 0.0;
     double peak_frequency_hz = 0.0;
     double bearing_radians = 0.0;
+    /** Per-pair time delays in seconds, in a stable pair order. */
+    std::vector<double> pair_delays_seconds;
+    /**
+     * First-channel waveform, shared so branch clones stay cheap. Used to
+     * compute correlation between the two clicks of a pair on demand, as
+     * PAMGuard's CorrelationManager does.
+     */
+    std::shared_ptr<const std::vector<double>> waveform;
 };
 
 struct MhtLengthChi2Config {

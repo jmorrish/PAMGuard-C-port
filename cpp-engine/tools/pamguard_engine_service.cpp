@@ -1906,6 +1906,8 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 chi2.enable_length = mht.value("enableLength", chi2.enable_length);
                 chi2.enable_bearing = mht.value("enableBearing", chi2.enable_bearing);
                 chi2.enable_peak_frequency = mht.value("enablePeakFrequency", chi2.enable_peak_frequency);
+                chi2.enable_time_delay = mht.value("enableTimeDelay", chi2.enable_time_delay);
+                chi2.enable_correlation = mht.value("enableCorrelation", chi2.enable_correlation);
                 chi2.coast_penalty = mht.value("coastPenalty", chi2.coast_penalty);
                 chi2.new_track_penalty = mht.value("newTrackPenalty", chi2.new_track_penalty);
                 chi2.new_track_n = mht.value("newTrackN", chi2.new_track_n);
@@ -1921,7 +1923,8 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 kernel.max_coast = mht.value("maxCoast", kernel.max_coast);
 
                 if (!(chi2.enable_idi || chi2.enable_amplitude || chi2.enable_length ||
-                      chi2.enable_bearing || chi2.enable_peak_frequency)) {
+                      chi2.enable_bearing || chi2.enable_peak_frequency ||
+                      chi2.enable_time_delay || chi2.enable_correlation)) {
                     throw std::invalid_argument("click.train.mht must enable at least one chi2 variable");
                 }
                 if (chi2.max_ici <= 0.0 || !std::isfinite(chi2.max_ici) ||
@@ -2453,6 +2456,8 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
             {"enableLength", chi2.enable_length},
             {"enableBearing", chi2.enable_bearing},
             {"enablePeakFrequency", chi2.enable_peak_frequency},
+            {"enableTimeDelay", chi2.enable_time_delay},
+            {"enableCorrelation", chi2.enable_correlation},
             {"coastPenalty", chi2.coast_penalty},
             {"newTrackPenalty", chi2.new_track_penalty},
             {"newTrackN", chi2.new_track_n},

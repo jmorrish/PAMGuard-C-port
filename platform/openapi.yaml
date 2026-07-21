@@ -1049,6 +1049,12 @@ components:
                     enablePeakFrequency:
                       type: boolean
                       description: Requires click features so per-click peak frequency exists.
+                    enableTimeDelay:
+                      type: boolean
+                      description: Requires click localisation so per-click pair delays exist. Contributes nothing for two-hydrophone arrays, where its drop-the-worst-pair rule removes the only term.
+                    enableCorrelation:
+                      type: boolean
+                      description: Correlates consecutive in-track click waveforms on demand; requires the click detector to retain waveforms.
                     coastPenalty:
                       type: number
                       minimum: 0
