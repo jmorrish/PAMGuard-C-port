@@ -12,10 +12,18 @@ import clickDetector.BasicClickIdParameters;
 import clickDetector.ClickParameters;
 import clickDetector.ClickTypeParams;
 import clickTrainDetector.ClickTrainParams;
+import clickTrainDetector.classification.CTClassifierParams;
+import clickTrainDetector.classification.bearingClassifier.BearingClassifierParams;
+import clickTrainDetector.classification.idiClassifier.IDIClassifierParams;
+import clickTrainDetector.classification.simplechi2classifier.Chi2ThresholdParams;
+import clickTrainDetector.classification.standardClassifier.StandardClassifierParams;
+import clickTrainDetector.classification.templateClassifier.TemplateClassifierParams;
 import clickTrainDetector.clickTrainAlgorithms.mht.MHTKernelParams;
 import clickTrainDetector.clickTrainAlgorithms.mht.MHTParams;
 import clickTrainDetector.clickTrainAlgorithms.mht.StandardMHTChi2Params;
 import clickTrainDetector.clickTrainAlgorithms.mht.electricalNoiseFilter.SimpleElectricalNoiseParams;
+import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates;
+import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates.SpectrumTemplateType;
 import fftManager.FFTParameters;
 import whistlesAndMoans.WhistleToneParameters;
 
@@ -290,11 +298,11 @@ public final class PamguardProjectConverter {
                 json.append("\n        \"nPruneback\": ").append(kernel.nPruneback).append(",");
                 json.append("\n        \"nPrunebackStart\": ").append(kernel.nPruneBackStart).append(",");
                 json.append("\n        \"maxCoast\": ").append(kernel.maxCoast);
-                json.append("\n      }\n    }");
-                if (clickTrain != null && clickTrain.ctClassifierParams != null && clickTrain.ctClassifierParams.length > 0) {
-                    System.out.printf("skipped: click train classifier chain (%d classifier(s)) not yet mapped%n",
-                            clickTrain.ctClassifierParams.length);
+                json.append("\n      }");
+                if (clickTrain != null && clickTrain.runClassifier) {
+                    appendClassifierChain(json, clickTrain);
                 }
+                json.append("\n    }");
             }
             json.append("\n  }");
         }
@@ -437,6 +445,24 @@ public final class PamguardProjectConverter {
         chi2.enable = new boolean[]{true, true, false, false, false, true, true};
         mht.chi2Params = chi2;
 
+        ClickTrainParams clickTrain = newWithoutConstructor(ClickTrainParams.class);
+        clickTrain.runClassifier = true;
+        Chi2ThresholdParams pre = new Chi2ThresholdParams();
+        pre.chi2Threshold = 1200.0;
+        pre.minClicks = 6;
+        pre.minTime = 2.5;
+        clickTrain.simpleCTClassifier = pre;
+        IDIClassifierParams idiClassifier = newWithoutConstructor(IDIClassifierParams.class);
+        idiClassifier.useMedianIDI = true;
+        idiClassifier.minMedianIDI = 0.05;
+        idiClassifier.maxMedianIDI = 1.5;
+        idiClassifier.speciesFlag = 3;
+        TemplateClassifierParams templateClassifier = newWithoutConstructor(TemplateClassifierParams.class);
+        templateClassifier.spectrumTemplate = DefualtSpectrumTemplates.getTemplate(SpectrumTemplateType.BEAKED_WHALE);
+        templateClassifier.corrThreshold = 0.6;
+        templateClassifier.speciesFlag = 5;
+        clickTrain.ctClassifierParams = new CTClassifierParams[]{idiClassifier, templateClassifier};
+
         WhistleToneParameters whistle = new WhistleToneParameters();
         whistle.minPixels = 25;
         whistle.minLength = 12;
@@ -460,6 +486,8 @@ public final class PamguardProjectConverter {
                 BasicClickIdParameters.class.getName(), 1, basicClassifier));
         group.addSettings(new PamControlledUnitSettings("MHT Click Train Detector", "Click Train Detector",
                 MHTParams.class.getName(), 1, mht));
+        group.addSettings(new PamControlledUnitSettings("Click Train Detector", "Click Train Detector",
+                ClickTrainParams.class.getName(), 1, clickTrain));
         // A module the engine has no equivalent for, so the converter's
         // skip reporting always has something real to report.
         group.addSettings(new PamControlledUnitSettings("Spectrogram", "User Display",
@@ -529,6 +557,102 @@ public final class PamguardProjectConverter {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    /**
+     * ClickTrainParams.simpleCTClassifier is the pre-classifier; the chain
+     * proper lives in ctClassifierParams. StandardClassifierParams is a
+     * composite holding nested params with an enable array, so it flattens
+     * into the same per-type emitters the engine configures directly.
+     */
+    private static void appendClassifierChain(StringBuilder json, ClickTrainParams clickTrain) {
+        json.append(",\n      \"classifier\": {\n        \"enabled\": true");
+        Chi2ThresholdParams pre = clickTrain.simpleCTClassifier;
+        if (pre != null) {
+            json.append(",\n        \"preClassifier\": { \"chi2Threshold\": ").append(format(pre.chi2Threshold));
+            json.append(", \"minClicks\": ").append(pre.minClicks);
+            json.append(", \"minTimeSeconds\": ").append(format(pre.minTime));
+            json.append(", \"speciesFlag\": ").append(pre.speciesFlag).append(" }");
+        }
+        if (clickTrain.ctClassifierParams != null) {
+            for (CTClassifierParams params : clickTrain.ctClassifierParams) {
+                appendClassifier(json, params);
+            }
+        }
+        json.append("\n      }");
+    }
+
+    private static void appendClassifier(StringBuilder json, CTClassifierParams params) {
+        if (params instanceof IDIClassifierParams) {
+            IDIClassifierParams idi = (IDIClassifierParams) params;
+            json.append(",\n        \"idi\": { \"enabled\": true");
+            json.append(", \"useMedianIdi\": ").append(idi.useMedianIDI);
+            json.append(", \"minMedianIdi\": ").append(format(zeroIfNull(idi.minMedianIDI)));
+            json.append(", \"maxMedianIdi\": ").append(format(zeroIfNull(idi.maxMedianIDI)));
+            json.append(", \"useMeanIdi\": ").append(idi.useMeanIDI);
+            json.append(", \"minMeanIdi\": ").append(format(zeroIfNull(idi.minMeanIDI)));
+            json.append(", \"maxMeanIdi\": ").append(format(zeroIfNull(idi.maxMeanIDI)));
+            json.append(", \"useStdIdi\": ").append(idi.useStdIDI);
+            json.append(", \"minStdIdi\": ").append(format(zeroIfNull(idi.minStdIDI)));
+            json.append(", \"maxStdIdi\": ").append(format(zeroIfNull(idi.maxStdIDI)));
+            json.append(", \"speciesFlag\": ").append(idi.speciesFlag).append(" }");
+        }
+        else if (params instanceof BearingClassifierParams) {
+            BearingClassifierParams bearing = (BearingClassifierParams) params;
+            // PAMGuard stores radians; the engine configures degrees.
+            json.append(",\n        \"bearing\": { \"enabled\": true");
+            json.append(", \"bearingLimMinDegrees\": ").append(format(Math.toDegrees(bearing.bearingLimMin)));
+            json.append(", \"bearingLimMaxDegrees\": ").append(format(Math.toDegrees(bearing.bearingLimMax)));
+            json.append(", \"useMean\": ").append(bearing.useMean);
+            json.append(", \"minMeanBearingDerivativeDegrees\": ").append(format(Math.toDegrees(bearing.minMeanBearingD)));
+            json.append(", \"maxMeanBearingDerivativeDegrees\": ").append(format(Math.toDegrees(bearing.maxMeanBearingD)));
+            json.append(", \"useMedian\": ").append(bearing.useMedian);
+            json.append(", \"minMedianBearingDerivativeDegrees\": ").append(format(Math.toDegrees(bearing.minMedianBearingD)));
+            json.append(", \"maxMedianBearingDerivativeDegrees\": ").append(format(Math.toDegrees(bearing.maxMedianBearingD)));
+            json.append(", \"useStd\": ").append(bearing.useStD);
+            json.append(", \"minStdBearingDerivativeDegrees\": ").append(format(Math.toDegrees(bearing.minStdBearingD)));
+            json.append(", \"maxStdBearingDerivativeDegrees\": ").append(format(Math.toDegrees(bearing.maxStdBearingD)));
+            json.append(", \"speciesFlag\": ").append(bearing.speciesFlag).append(" }");
+        }
+        else if (params instanceof TemplateClassifierParams) {
+            TemplateClassifierParams template = (TemplateClassifierParams) params;
+            json.append(",\n        \"template\": { \"enabled\": true");
+            if (template.spectrumTemplate != null && template.spectrumTemplate.name != null
+                    && !template.spectrumTemplate.name.isEmpty()) {
+                // A named template maps to the engine preset of the same name
+                // (the engine holds PAMGuard's defaults with exact fixture
+                // parity, docs/186); the raw spectrum would also work but the
+                // name keeps the intent visible.
+                json.append(", \"preset\": \"").append(escape(template.spectrumTemplate.name)).append("\"");
+            }
+            else if (template.spectrumTemplate != null && template.spectrumTemplate.waveform != null) {
+                json.append(", \"spectrum\": [");
+                for (int i = 0; i < template.spectrumTemplate.waveform.length; i++) {
+                    if (i > 0) {
+                        json.append(", ");
+                    }
+                    json.append(format(template.spectrumTemplate.waveform[i]));
+                }
+                json.append("], \"sampleRateHz\": ").append(format(template.spectrumTemplate.sR));
+            }
+            json.append(", \"correlationThreshold\": ").append(format(zeroIfNull(template.corrThreshold)));
+            json.append(", \"speciesFlag\": ").append(template.speciesFlag).append(" }");
+        }
+        else if (params instanceof StandardClassifierParams) {
+            StandardClassifierParams standard = (StandardClassifierParams) params;
+            if (standard.ctClassifierParams != null) {
+                for (int i = 0; i < standard.ctClassifierParams.length; i++) {
+                    boolean enabled = standard.enable == null || (i < standard.enable.length && standard.enable[i]);
+                    if (enabled && standard.ctClassifierParams[i] != null) {
+                        appendClassifier(json, standard.ctClassifierParams[i]);
+                    }
+                }
+            }
+        }
+        else {
+            System.out.printf("skipped: click train classifier %s (unmapped type)%n",
+                    params == null ? "<null>" : params.getClass().getName());
+        }
     }
 
     private static void appendRange(StringBuilder json, String key, double[] range) {

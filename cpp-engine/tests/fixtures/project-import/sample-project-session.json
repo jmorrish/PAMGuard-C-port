@@ -66,6 +66,12 @@
         "nPruneback": 5,
         "nPrunebackStart": 7,
         "maxCoast": 4
+      },
+      "classifier": {
+        "enabled": true,
+        "preClassifier": { "chi2Threshold": 1200.0, "minClicks": 6, "minTimeSeconds": 2.5000000000000000, "speciesFlag": 1 },
+        "idi": { "enabled": true, "useMedianIdi": true, "minMedianIdi": 0.050000000000000000, "maxMedianIdi": 1.5000000000000000, "useMeanIdi": false, "minMeanIdi": 0.0, "maxMeanIdi": 0.0, "useStdIdi": false, "minStdIdi": 0.0, "maxStdIdi": 0.0, "speciesFlag": 3 },
+        "template": { "enabled": true, "preset": "Beaked Whale", "correlationThreshold": 0.60000000000000000, "speciesFlag": 5 }
       }
     }
   },
