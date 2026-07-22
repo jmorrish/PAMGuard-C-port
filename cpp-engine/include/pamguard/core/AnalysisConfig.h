@@ -100,6 +100,16 @@ struct DetectorConfig {
     FftConfig fft;
     bool click_detector_enabled = false;
     detectors::ClickDetectorConfig click;
+    /**
+     * PAMGuard's online echo detection gate (ClickParameters.runEchoOnline /
+     * discardEchoes + SimpleEchoParams.maxIntervalSeconds). When running, a
+     * discarded echo never reaches any downstream consumer — features,
+     * classifier, trains, localisation — exactly as the reference's early
+     * return keeps it out of everything.
+     */
+    bool click_echo_enabled = false;
+    bool click_echo_discard = false;
+    double click_echo_max_interval_seconds = 0.1;
     bool click_localisation_enabled = false;
     bool click_features_enabled = false;
     detectors::ClickFeatureConfig click_features;

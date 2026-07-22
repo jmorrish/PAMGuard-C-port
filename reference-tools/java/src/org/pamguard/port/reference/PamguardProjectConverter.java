@@ -11,6 +11,7 @@ import Spectrogram.WindowFunction;
 import clickDetector.BasicClickIdParameters;
 import clickDetector.ClickParameters;
 import clickDetector.ClickTypeParams;
+import clickDetector.echoDetection.SimpleEchoParams;
 import clickTrainDetector.ClickTrainParams;
 import clickTrainDetector.classification.CTClassifierParams;
 import clickTrainDetector.classification.bearingClassifier.BearingClassifierParams;
@@ -116,6 +117,7 @@ public final class PamguardProjectConverter {
         BasicClickIdParameters basicClassifier = null;
         ClickTrainParams clickTrain = null;
         MHTParams mht = null;
+        SimpleEchoParams echoParams = null;
 
         for (PamControlledUnitSettings unit : group.getUnitSettings()) {
             Object settings;
@@ -150,6 +152,9 @@ public final class PamguardProjectConverter {
             }
             else if (settings instanceof MHTParams && mht == null) {
                 mht = (MHTParams) settings;
+            }
+            else if (settings instanceof SimpleEchoParams && echoParams == null) {
+                echoParams = (SimpleEchoParams) settings;
             }
             else {
                 System.out.printf("skipped: %s / %s (%s)%n", unit.getUnitType(), unit.getUnitName(),
@@ -240,6 +245,14 @@ public final class PamguardProjectConverter {
             json.append("    \"postSample\": ").append(click.postSample).append(",\n");
             json.append("    \"minSep\": ").append(click.minSep).append(",\n");
             json.append("    \"maxLength\": ").append(click.maxLength);
+            if (click.runEchoOnline || echoParams != null) {
+                json.append(",\n    \"echo\": { \"runOnline\": ").append(click.runEchoOnline);
+                json.append(", \"discardEchoes\": ").append(click.discardEchoes);
+                if (echoParams != null) {
+                    json.append(", \"maxIntervalSeconds\": ").append(format(echoParams.maxIntervalSeconds));
+                }
+                json.append(" }");
+            }
             if (basicClassifier != null && basicClassifier.clickTypeParams != null
                     && !basicClassifier.clickTypeParams.isEmpty()) {
                 json.append(",\n    \"basicClassifier\": {\n      \"enabled\": true,\n      \"types\": [");
@@ -390,6 +403,8 @@ public final class PamguardProjectConverter {
         fft.channelMap = 0xF;
 
         ClickParameters click = new ClickParameters();
+        click.runEchoOnline = true;
+        click.discardEchoes = false;
         click.dbThreshold = 12.0;
         click.longFilter = 0.00002;
         click.shortFilter = 0.2;
@@ -488,6 +503,10 @@ public final class PamguardProjectConverter {
                 MHTParams.class.getName(), 1, mht));
         group.addSettings(new PamControlledUnitSettings("Click Train Detector", "Click Train Detector",
                 ClickTrainParams.class.getName(), 1, clickTrain));
+        SimpleEchoParams echoSample = new SimpleEchoParams();
+        echoSample.maxIntervalSeconds = 0.08;
+        group.addSettings(new PamControlledUnitSettings("Click Detector", "Echo Detector",
+                SimpleEchoParams.class.getName(), 1, echoSample));
         // A module the engine has no equivalent for, so the converter's
         // skip reporting always has something real to report.
         group.addSettings(new PamControlledUnitSettings("Spectrogram", "User Display",

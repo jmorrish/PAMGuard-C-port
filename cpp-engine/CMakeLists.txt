@@ -296,6 +296,12 @@ add_executable(bearing_localiser_selector_check
 
 target_link_libraries(bearing_localiser_selector_check PRIVATE pamguard_engine)
 
+add_executable(simple_echo_fixture_check
+    tools/simple_echo_fixture_check.cpp
+)
+
+target_link_libraries(simple_echo_fixture_check PRIVATE pamguard_engine)
+
 add_executable(streamer_orientation_fixture_check
     tools/streamer_orientation_fixture_check.cpp
 )
@@ -600,6 +606,11 @@ add_test(
 add_test(
     NAME bearing_localiser_selection
     COMMAND bearing_localiser_selector_check
+)
+
+add_test(
+    NAME simple_echo_parity
+    COMMAND simple_echo_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click/simple-echo.csv
 )
 
 add_test(

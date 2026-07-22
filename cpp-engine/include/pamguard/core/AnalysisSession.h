@@ -9,6 +9,7 @@
 #include "pamguard/core/AudioFrame.h"
 #include "pamguard/detectors/ClickDetectorEngine.h"
 #include "pamguard/detectors/MhtKernel.h"
+#include "pamguard/detectors/SimpleEchoDetector.h"
 #include "pamguard/detectors/MhtSimpleChi2Vars.h"
 #include "pamguard/detectors/WhistleDetectionGrouper.h"
 #include "pamguard/detectors/ConnectedRegionTracker.h"
@@ -304,6 +305,8 @@ private:
      * static; only the earth-frame rotation follows it.
      */
     ArrayOrientation current_orientation_;
+    /** Cross-chunk echo state: the anchor click survives chunk boundaries. */
+    std::optional<detectors::SimpleEchoDetector> echo_detector_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

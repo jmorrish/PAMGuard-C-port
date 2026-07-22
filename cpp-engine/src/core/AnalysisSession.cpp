@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "pamguard/detectors/CtTrainSpectrum.h"
+#include "pamguard/detectors/SimpleEchoDetector.h"
 #include "pamguard/detectors/StandardMhtChi2.h"
 #include "pamguard/detectors/WhistleDetectionGrouper.h"
 #include "pamguard/localisation/ArrayShape.h"
@@ -523,6 +524,10 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
     current_orientation_ = config_.array.orientation;
     if (config_.detector.click_detector_enabled) {
         click_detector_.emplace(config_.detector.click);
+        if (config_.detector.click_echo_enabled && config_.sample_rate_hz != 0) {
+            echo_detector_.emplace(static_cast<double>(config_.sample_rate_hz),
+                                   config_.detector.click_echo_max_interval_seconds);
+        }
     }
     if (config_.detector.click_detector_enabled && config_.detector.click_features_enabled) {
         auto click_feature_config = config_.detector.click_features;
@@ -612,6 +617,23 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     result.spectrogram_frames = spectrogram_.process(chunk);
     if (click_detector_) {
         result.clicks = click_detector_->process(chunk);
+        if (echo_detector_.has_value()) {
+            // PAMGuard's gate sits before amplitude/classification and before
+            // the click is added, so a discarded echo never reaches features,
+            // classifiers, trains, or localisation. Filtering here, straight
+            // after detection, preserves that.
+            std::vector<detectors::ClickDetectionResult> kept;
+            kept.reserve(result.clicks.size());
+            for (auto& click : result.clicks) {
+                const bool echo = echo_detector_->is_echo(click.start_sample);
+                if (echo && config_.detector.click_echo_discard) {
+                    continue;
+                }
+                click.echo = echo;
+                kept.push_back(std::move(click));
+            }
+            result.clicks = std::move(kept);
+        }
     }
     if (click_feature_extractor_) {
         for (std::size_t i = 0; i < result.clicks.size(); ++i) {

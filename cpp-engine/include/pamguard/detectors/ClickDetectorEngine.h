@@ -31,6 +31,13 @@ struct ClickDetectionResult {
     double signal_excess_db = 0.0;
     std::vector<std::size_t> channels;
     std::vector<std::vector<double>> waveform;
+    /**
+     * Set by the session's echo gate (PAMGuard ClickDetection.setEcho) when
+     * online echo detection runs without discarding. Discarded echoes are
+     * removed before any consumer sees them, so a true flag only appears in
+     * flag-only mode.
+     */
+    bool echo = false;
 };
 
 class ClickDetectorEngine {

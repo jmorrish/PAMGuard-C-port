@@ -30,10 +30,12 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 21;
+constexpr int kResultSchemaVersion = 22;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
+    /** True when the session runs online echo detection, adding the echo flag. */
+    bool echo_detection_running = false;
     bool include_spectrogram_complex = false;
     bool include_click_waveforms = false;
     bool include_click_spectra = false;
@@ -1896,6 +1898,17 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         config.detector.click.min_sep = click.value("minSep", config.detector.click.min_sep);
         config.detector.click.max_length = click.value("maxLength", config.detector.click.max_length);
 
+        const auto echo = click.value("echo", json::object());
+        config.detector.click_echo_enabled = echo.value("runOnline", false);
+        config.detector.click_echo_discard = echo.value("discardEchoes", false);
+        config.detector.click_echo_max_interval_seconds =
+            echo.value("maxIntervalSeconds", config.detector.click_echo_max_interval_seconds);
+        if (config.detector.click_echo_enabled &&
+            (!(config.detector.click_echo_max_interval_seconds >= 0.0) ||
+             !std::isfinite(config.detector.click_echo_max_interval_seconds))) {
+            throw std::invalid_argument("click.echo.maxIntervalSeconds must be non-negative and finite");
+        }
+
         config.detector.click_features_enabled = click.value("featuresEnabled", true);
         const auto features = click.value("features", json::object());
         config.detector.click_features.fft_length = features.value("fftLength", config.detector.click_features.fft_length);
@@ -2182,6 +2195,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             {"waveformChannels", click.waveform.size()},
             {"waveformSamples", click.waveform.empty() ? 0 : click.waveform.front().size()},
         };
+        if (options.echo_detection_running) {
+            item["echo"] = click.echo;
+        }
         if (options.include_click_waveforms) {
             item["channels"] = click.channels;
             item["waveform"] = click.waveform;
@@ -2682,6 +2698,9 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"minSep", config.detector.click.min_sep},
         {"maxLength", config.detector.click.max_length},
         {"featuresEnabled", config.detector.click_features_enabled},
+        {"echoRunOnline", config.detector.click_echo_enabled},
+        {"echoDiscard", config.detector.click_echo_discard},
+        {"echoMaxIntervalSeconds", config.detector.click_echo_max_interval_seconds},
         {"basicClassifierEnabled", config.detector.click_basic_classifier_enabled},
         {"basicClassifierTypeCount", config.detector.click_basic_classifier.click_types.size()},
         {"trainEnabled", config.detector.click_train_tracker_enabled},
@@ -3739,6 +3758,7 @@ int main(int argc, char** argv) {
             }
             ResultJsonOptions result_options;
             result_options.sample_rate_hz = config.sample_rate_hz;
+            result_options.echo_detection_running = config.detector.click_echo_enabled;
             result_options.fft_length = config.detector.fft.fft_length;
             result_options.speed_of_sound_mps = config.array.speed_of_sound_mps;
             result_options.include_spectrogram = parse_bool_param(req, "includeSpectrogram", false);
@@ -3765,6 +3785,7 @@ int main(int argc, char** argv) {
             if (!result_archive_dir.empty()) {
                 ResultJsonOptions archive_options;
                 archive_options.sample_rate_hz = config.sample_rate_hz;
+                archive_options.echo_detection_running = config.detector.click_echo_enabled;
                 archive_options.fft_length = config.detector.fft.fft_length;
                 archive_options.speed_of_sound_mps = config.array.speed_of_sound_mps;
                 auto archive_body = result_to_json(result, archive_options);
@@ -3816,6 +3837,7 @@ int main(int argc, char** argv) {
             }
             ResultJsonOptions result_options;
             result_options.sample_rate_hz = config.sample_rate_hz;
+            result_options.echo_detection_running = config.detector.click_echo_enabled;
             result_options.fft_length = config.detector.fft.fft_length;
             result_options.speed_of_sound_mps = config.array.speed_of_sound_mps;
             auto body = result_to_json(result, result_options);
