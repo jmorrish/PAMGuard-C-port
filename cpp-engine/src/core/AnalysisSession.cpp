@@ -149,19 +149,20 @@ std::vector<double> max_delay_samples_from_geometry(const std::vector<ClickPairG
  * mistake array-frame numbers for earth-frame ones.
  */
 std::vector<localisation::WorldVector> earth_frame_vectors(
-    const AnalysisConfig& config, localisation::ArrayShapeType shape,
+    const ArrayOrientation& orientation, localisation::ArrayShapeType shape,
     const std::vector<localisation::WorldVector>& array_frame_vectors) {
-    if (!config.array.orientation.declared || array_frame_vectors.empty()) {
+    if (!orientation.declared || array_frame_vectors.empty()) {
         return {};
     }
     constexpr double kDegreesToRadians = std::numbers::pi / 180.0;
     return localisation::real_world_vectors(shape, array_frame_vectors, true,
-                                            config.array.orientation.heading_degrees * kDegreesToRadians,
-                                            config.array.orientation.pitch_degrees * kDegreesToRadians,
-                                            config.array.orientation.roll_degrees * kDegreesToRadians);
+                                            orientation.heading_degrees * kDegreesToRadians,
+                                            orientation.pitch_degrees * kDegreesToRadians,
+                                            orientation.roll_degrees * kDegreesToRadians);
 }
 
-void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, const std::vector<ClickPairGeometry>& geometry, const AnalysisConfig& config) {
+void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, const std::vector<ClickPairGeometry>& geometry, const AnalysisConfig& config,
+                          const ArrayOrientation& orientation) {
     if (delays.size() != geometry.size()) {
         return;
     }
@@ -212,14 +213,15 @@ void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, c
                 delays[i].pair_bearing_world_vectors = localisation::world_vectors(
                     localisation::ArrayShapeType::Line, pair_axes, {pair_bearing->angle_radians});
                 delays[i].pair_bearing_earth_world_vectors = earth_frame_vectors(
-                    config, localisation::ArrayShapeType::Line, delays[i].pair_bearing_world_vectors);
+                    orientation, localisation::ArrayShapeType::Line, delays[i].pair_bearing_world_vectors);
             }
         }
     }
 }
 
 void attach_lsq_bearing(ClickLocalisationResult& localisation, const std::vector<ClickPairGeometry>& geometry,
-                        std::size_t click_channel_count, const AnalysisConfig& config) {
+                        std::size_t click_channel_count, const AnalysisConfig& config,
+                        const ArrayOrientation& orientation) {
     // The selector decides whether a grid-class localiser applies at all;
     // PAMGuard reserves those for plane and volume sub-arrays and gives a line
     // array only pair bearings.
@@ -267,7 +269,7 @@ void attach_lsq_bearing(ClickLocalisationResult& localisation, const std::vector
         localisation.lsq_bearing.world_vectors = {localisation::WorldVector{
             localisation::planar_unit_vector(lsq->azimuth_radians, lsq->elevation_radians), false}};
         localisation.lsq_bearing.earth_world_vectors = earth_frame_vectors(
-            config, localisation.array_shape, localisation.lsq_bearing.world_vectors);
+            orientation, localisation.array_shape, localisation.lsq_bearing.world_vectors);
     }
 }
 
@@ -280,7 +282,8 @@ void attach_lsq_bearing(ClickLocalisationResult& localisation, const std::vector
 GridBearingResult grid_bearing_for_channels(const AnalysisConfig& config,
                                             const std::vector<std::size_t>& channels,
                                             localisation::BearingLocaliserChoice choice,
-                                            const std::vector<double>& delays_seconds) {
+                                            const std::vector<double>& delays_seconds,
+                                            const ArrayOrientation& orientation) {
     GridBearingResult result;
     if (choice != localisation::BearingLocaliserChoice::Grid || config.sample_rate_hz == 0) {
         return result;
@@ -336,7 +339,7 @@ GridBearingResult grid_bearing_for_channels(const AnalysisConfig& config,
     }
     result.world_vectors = localisation::world_vectors(
         localiser.array_type(), localisation::array_directions(positions, streamer_ids), angles);
-    result.earth_world_vectors = earth_frame_vectors(config, localiser.array_type(), result.world_vectors);
+    result.earth_world_vectors = earth_frame_vectors(orientation, localiser.array_type(), result.world_vectors);
     return result;
 }
 
@@ -517,6 +520,7 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
     : config_(std::move(config)),
       spectrogram_(config_.detector.fft) {
     resolve_streamer_offsets(config_.array);
+    current_orientation_ = config_.array.orientation;
     if (config_.detector.click_detector_enabled) {
         click_detector_.emplace(config_.detector.click);
     }
@@ -595,6 +599,15 @@ const AnalysisConfig& AnalysisSession::config() const noexcept {
 }
 
 AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
+    if (chunk.orientation_declared) {
+        // Attitude sampled at chunk cadence: the declaration holds until the
+        // next one, so a source can report heading as often or as rarely as
+        // it measures it. Geometry itself stays static.
+        current_orientation_.declared = true;
+        current_orientation_.heading_degrees = chunk.orientation_heading_degrees;
+        current_orientation_.pitch_degrees = chunk.orientation_pitch_degrees;
+        current_orientation_.roll_degrees = chunk.orientation_roll_degrees;
+    }
     AnalysisResult result;
     result.spectrogram_frames = spectrogram_.process(chunk);
     if (click_detector_) {
@@ -638,8 +651,8 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
             localisation.delays = click_delay_estimator_.estimate_delays(
                 click.waveform,
                 max_delay_samples_from_geometry(pair_geometry));
-            attach_pair_geometry(localisation.delays, pair_geometry, config_);
-            attach_lsq_bearing(localisation, pair_geometry, click.channels.size(), config_);
+            attach_pair_geometry(localisation.delays, pair_geometry, config_, current_orientation_);
+            attach_lsq_bearing(localisation, pair_geometry, click.channels.size(), config_, current_orientation_);
             {
                 std::vector<double> grid_delays_seconds;
                 grid_delays_seconds.reserve(localisation.delays.size());
@@ -648,7 +661,7 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                 }
                 localisation.grid_bearing = grid_bearing_for_channels(config_, click.channels,
                                                                      localisation.bearing_localiser,
-                                                                     grid_delays_seconds);
+                                                                     grid_delays_seconds, current_orientation_);
             }
             result.click_localisations.push_back(std::move(localisation));
             if (click_bearing_localiser_) {
@@ -845,7 +858,7 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
             pair_delays[0].channel_a = 0;
             pair_delays[0].channel_b = 1;
             pair_delays[0].delay = estimator.get_delay(pair_geometry[0].max_delay_samples);
-            attach_pair_geometry(pair_delays, pair_geometry, config_);
+            attach_pair_geometry(pair_delays, pair_geometry, config_, current_orientation_);
             pair_delays[0].pair_index = delay_result.delays.size();
 
             const auto* hydrophone_a = find_hydrophone(config_.array, channel_a);
@@ -884,7 +897,7 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
                 }
                 delay_result.grid_bearing = grid_bearing_for_channels(config_, whistle_channels,
                                                                      delay_result.bearing_localiser,
-                                                                     grid_delays_seconds);
+                                                                     grid_delays_seconds, current_orientation_);
             }
             if (delay_result.bearing_localiser == localisation::BearingLocaliserChoice::Grid &&
                 whistle_channels.size() >= 4 && lsq_pairs.size() == expected_pairs &&
@@ -906,7 +919,7 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
                         delay_result.lsq_bearing.world_vectors = {localisation::WorldVector{
                             localisation::planar_unit_vector(lsq->azimuth_radians, lsq->elevation_radians), false}};
                         delay_result.lsq_bearing.earth_world_vectors = earth_frame_vectors(
-                            config_, delay_result.array_shape, delay_result.lsq_bearing.world_vectors);
+                            current_orientation_, delay_result.array_shape, delay_result.lsq_bearing.world_vectors);
                         delay_result.bearing_valid = true;
                         delay_result.bearing_radians = lsq->azimuth_radians;
                         delay_result.bearing_error_radians = lsq->azimuth_error_radians;

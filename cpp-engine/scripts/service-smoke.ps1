@@ -369,6 +369,21 @@ try {
         throw "Live click response did not include relatedTrainIds after click train creation"
     }
 
+    # Per-chunk array attitude: the session declares no static orientation, so
+    # no earth-frame vectors so far; declaring one on a chunk adds them.
+    if ($null -ne $third.clickLocalisations -and $third.clickLocalisations.Count -gt 0 -and
+        $null -ne $third.clickLocalisations[0].delays[0].pairBearingEarthWorldVectors) {
+        throw "Earth-frame vectors appeared without any declared orientation"
+    }
+    $attitude = Post-PcmChunk -Uri "$base/sessions/$SessionId/pcm-f32le?startSample=768&headingDegrees=42&pitchDegrees=-7&rollDegrees=11" -Path $pcmPath
+    if ($attitude.clickLocalisations.Count -lt 1) {
+        throw "Attitude chunk produced no click localisations"
+    }
+    $attitudeVectors = $attitude.clickLocalisations[0].delays[0].pairBearingEarthWorldVectors
+    if (@($attitudeVectors).Count -ne 2) {
+        throw "A chunk-declared attitude should add earth-frame vectors to pair bearings, got $(@($attitudeVectors).Count)"
+    }
+
     $status = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId" -Headers $headers
     if (-not $status.runtime -or $status.runtime.createdUnixMs -le 0 -or $status.runtime.lastReceiveUnixMs -le 0) {
         throw "Runtime wall-clock timestamps were not populated"
@@ -394,8 +409,8 @@ try {
         throw "Archive tail query expected two records"
     }
     $fullArchive = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId/archive?limit=10" -Headers $headers
-    if ($fullArchive.count -ne 3) {
-        throw "Archive query expected three records"
+    if ($fullArchive.count -ne 4) {
+        throw "Archive query expected four records (three plain chunks plus the attitude chunk)"
     }
     if ($fullArchive.records[0].schemaVersion -ne 21) {
         throw "Archived result record did not preserve result schema version 21"

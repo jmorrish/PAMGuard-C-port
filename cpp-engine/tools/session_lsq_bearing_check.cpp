@@ -271,6 +271,53 @@ int main() {
                 return 1;
             }
 
+            // Per-chunk attitude: a chunk that declares an orientation
+            // overrides the session's static one, and the declaration holds
+            // for later chunks until replaced.
+            auto chunk_oriented = base_config(4);
+            add_tetrahedron_hydrophones(chunk_oriented);
+            for (auto& hydrophone : chunk_oriented.array.hydrophones) {
+                hydrophone.x_error_m = 0.05;
+                hydrophone.y_error_m = 0.05;
+                hydrophone.z_error_m = 0.05;
+            }
+            pamguard::core::AnalysisSession chunk_session(chunk_oriented);
+            auto attitude_chunk = synthetic_chunk(4);
+            attitude_chunk.orientation_declared = true;
+            attitude_chunk.orientation_heading_degrees = 42.0;
+            attitude_chunk.orientation_pitch_degrees = -7.0;
+            attitude_chunk.orientation_roll_degrees = 11.0;
+            const auto chunk_result = chunk_session.process(attitude_chunk);
+            if (chunk_result.click_localisations.empty() ||
+                chunk_result.click_localisations.front().grid_bearing.earth_world_vectors.empty()) {
+                std::cerr << "A chunk-declared orientation should produce earth vectors\n";
+                return 1;
+            }
+            // The chunk-declared attitude equals the statically-declared one
+            // above, so the earth vectors must agree exactly: same rotation,
+            // reached through the other path.
+            {
+                const auto& via_chunk = chunk_result.click_localisations.front().grid_bearing.earth_world_vectors.front();
+                const auto& via_config = oriented_result.click_localisations.front().grid_bearing.earth_world_vectors.front();
+                for (std::size_t e = 0; e < 3; ++e) {
+                    if (std::abs(via_chunk.direction[e] - via_config.direction[e]) > 1e-12) {
+                        std::cerr << "Chunk-declared and config-declared orientation should rotate identically\n";
+                        return 1;
+                    }
+                }
+            }
+            // And it persists: the next chunk carries no declaration but the
+            // session keeps the last attitude rather than dropping to none.
+            auto follow_chunk = synthetic_chunk(4);
+            const auto frames = follow_chunk.interleaved_pcm.size() / follow_chunk.channel_count;
+            follow_chunk.start_sample = static_cast<std::int64_t>(frames);
+            const auto follow_result = chunk_session.process(follow_chunk);
+            if (follow_result.click_localisations.empty() ||
+                follow_result.click_localisations.front().grid_bearing.earth_world_vectors.empty()) {
+                std::cerr << "A declared attitude should persist across later chunks until replaced\n";
+                return 1;
+            }
+
             // A two-channel line sub-array selects the pair localiser, so no
             // grid bearing should appear at all.
             auto line_config = base_config(2);

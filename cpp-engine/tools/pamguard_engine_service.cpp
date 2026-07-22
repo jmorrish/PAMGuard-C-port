@@ -3657,6 +3657,26 @@ int main(int argc, char** argv) {
             chunk.time_unix_ms = time_ms;
             chunk.sample_rate_hz = config.sample_rate_hz;
             chunk.channel_count = config.channel_count;
+            // Optional per-chunk array attitude. All three angles travel
+            // together so a partial declaration cannot silently mix a new
+            // heading with a stale pitch or roll.
+            const bool has_heading = req.has_param("headingDegrees");
+            const bool has_pitch = req.has_param("pitchDegrees");
+            const bool has_roll = req.has_param("rollDegrees");
+            if (has_heading || has_pitch || has_roll) {
+                if (!(has_heading && has_pitch && has_roll)) {
+                    throw std::invalid_argument("headingDegrees, pitchDegrees, and rollDegrees must be supplied together");
+                }
+                chunk.orientation_declared = true;
+                chunk.orientation_heading_degrees = std::stod(req.get_param_value("headingDegrees"));
+                chunk.orientation_pitch_degrees = std::stod(req.get_param_value("pitchDegrees"));
+                chunk.orientation_roll_degrees = std::stod(req.get_param_value("rollDegrees"));
+                if (!std::isfinite(chunk.orientation_heading_degrees) ||
+                    !std::isfinite(chunk.orientation_pitch_degrees) ||
+                    !std::isfinite(chunk.orientation_roll_degrees)) {
+                    throw std::invalid_argument("headingDegrees, pitchDegrees, and rollDegrees must be finite");
+                }
+            }
             chunk.interleaved_pcm.resize(frame_count * config.channel_count);
 
             const auto* bytes = reinterpret_cast<const unsigned char*>(req.body.data());

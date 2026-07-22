@@ -298,6 +298,12 @@ private:
         std::vector<std::size_t> channels;
     };
     std::unordered_map<std::size_t, WhistleGroupState> whistle_group_states_;
+    /**
+     * The array attitude in force: the session's static orientation until a
+     * chunk declares one, then the most recent declaration. Geometry stays
+     * static; only the earth-frame rotation follows it.
+     */
+    ArrayOrientation current_orientation_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

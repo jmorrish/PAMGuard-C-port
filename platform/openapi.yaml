@@ -240,6 +240,23 @@ paths:
           schema:
             type: integer
             format: int64
+        - name: headingDegrees
+          in: query
+          description: >-
+            Optional array attitude for this chunk, overriding the session's static
+            array.orientation from here on (a declaration holds until replaced). All three
+            angles must be supplied together so a new heading cannot silently combine with a
+            stale pitch or roll. Same conventions as array.orientation.
+          schema:
+            type: number
+        - name: pitchDegrees
+          in: query
+          schema:
+            type: number
+        - name: rollDegrees
+          in: query
+          schema:
+            type: number
         - name: includeSpectrogram
           in: query
           schema:
