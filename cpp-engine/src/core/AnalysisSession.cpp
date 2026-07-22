@@ -562,6 +562,13 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
         }
         click_bearing_localiser_.emplace(std::move(bearing_config));
     }
+    {
+        detectors::SpectrogramNoiseReducer reducer(config_.detector.whistle_noise);
+        if (reducer.active() &&
+            (config_.detector.whistle_peak_detector_enabled || config_.detector.whistle_region_detector_enabled)) {
+            whistle_noise_reducer_.emplace(config_.detector.whistle_noise);
+        }
+    }
     if (config_.detector.whistle_peak_detector_enabled) {
         auto whistle_config = config_.detector.whistle_peak;
         whistle_config.fft_length = config_.detector.fft.fft_length;
@@ -712,7 +719,26 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     process_mht_click_trains(result);
     classify_ici_click_trains(result);
     if (!whistle_peak_detectors_.empty() || !whistle_region_trackers_.empty()) {
-        for (const auto& frame : result.spectrogram_frames) {
+        for (const auto& raw_frame : result.spectrogram_frames) {
+            // PAMGuard's whistle chain is FFT -> SpectrogramNoiseProcess ->
+            // WhistleToneConnectProcess, and WhistleDelays correlates on the
+            // noise process's OUTPUT block, so the reduced slice feeds both
+            // the detectors and the retained FFT history.
+            dsp::SpectrogramFrame frame = raw_frame;
+            if (whistle_noise_reducer_.has_value() && frame.bins.size() >= 2) {
+                const std::size_t half = frame.bins.size() - 1;
+                std::vector<std::complex<double>> packed(half);
+                packed[0] = {frame.bins[0].real(), frame.bins[half].real()};
+                for (std::size_t bin = 1; bin < half; ++bin) {
+                    packed[bin] = frame.bins[bin];
+                }
+                const auto reduced = whistle_noise_reducer_->process(frame.channel, packed);
+                frame.bins[0] = {reduced[0].real(), 0.0};
+                frame.bins[half] = {reduced[0].imag(), 0.0};
+                for (std::size_t bin = 1; bin < half; ++bin) {
+                    frame.bins[bin] = reduced[bin];
+                }
+            }
             retain_whistle_fft_frame(frame);
             const auto magnitude_squared = pamguard_packed_magnitude_squared(frame.bins);
             std::vector<detectors::WhistlePeak> frame_peaks;

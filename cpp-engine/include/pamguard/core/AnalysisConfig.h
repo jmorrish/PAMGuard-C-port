@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "pamguard/detectors/ClickDetectorEngine.h"
+#include "pamguard/detectors/SpectrogramNoiseReducer.h"
 #include "pamguard/detectors/ClickFeatureExtractor.h"
 #include "pamguard/detectors/BasicClickClassifier.h"
 #include "pamguard/detectors/ClickTrainTracker.h"
@@ -132,6 +133,13 @@ struct DetectorConfig {
     detectors::CtTemplateClassifierConfig click_train_template_classifier;
     /** FFT length for the train average spectrum the template classifier reads. */
     std::size_t click_train_average_spectrum_fft_length = 256;
+    /**
+     * PAMGuard's spectrogram noise reduction chain, feeding the whistle path
+     * exactly as SpectrogramNoiseProcess sits between the FFT and
+     * WhistleToneConnectProcess. When active it also feeds the retained FFT
+     * history, because WhistleDelays correlates on the noise-reduced block.
+     */
+    detectors::SpectrogramNoiseConfig whistle_noise;
     bool whistle_peak_detector_enabled = false;
     detectors::WhistlePeakConfig whistle_peak;
     bool whistle_region_detector_enabled = false;

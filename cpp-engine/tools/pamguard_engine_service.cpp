@@ -2089,6 +2089,30 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         config.detector.whistle_peak.search_bin1 = whistle.value("searchBin1", config.detector.whistle_peak.search_bin1);
         config.detector.whistle_peak.warmup_slices = whistle.value("warmupSlices", config.detector.whistle_peak.warmup_slices);
     }
+    {
+        const auto noise = whistle.value("noise", json::object());
+        auto& noise_config = config.detector.whistle_noise;
+        noise_config.run_median_filter = noise.value("medianFilter", false);
+        noise_config.median_filter_length = noise.value("medianFilterLength", noise_config.median_filter_length);
+        noise_config.run_average_subtraction = noise.value("averageSubtraction", false);
+        noise_config.average_update_constant = noise.value("updateConstant", noise_config.average_update_constant);
+        noise_config.run_kernel_smoothing = noise.value("kernelSmoothing", false);
+        noise_config.run_threshold = noise.value("threshold", false);
+        noise_config.threshold_db = noise.value("thresholdDb", noise_config.threshold_db);
+        noise_config.threshold_final_output = noise.value("finalOutput", noise_config.threshold_final_output);
+        if (noise_config.run_median_filter && noise_config.median_filter_length <= 0) {
+            throw std::invalid_argument("whistle.noise.medianFilterLength must be positive");
+        }
+        if (noise_config.run_average_subtraction &&
+            (!(noise_config.average_update_constant > 0.0) || noise_config.average_update_constant >= 1.0)) {
+            throw std::invalid_argument("whistle.noise.updateConstant must be in (0, 1)");
+        }
+        if (noise_config.run_threshold &&
+            (!std::isfinite(noise_config.threshold_db) || noise_config.threshold_final_output < 0 ||
+             noise_config.threshold_final_output > 2)) {
+            throw std::invalid_argument("whistle.noise.thresholdDb must be finite and finalOutput 0..2");
+        }
+    }
     if (config.detector.whistle_region_detector_enabled) {
         config.detector.whistle_region.min_pixels = whistle.value("minPixels", config.detector.whistle_region.min_pixels);
         config.detector.whistle_region.min_length = whistle.value("minLength", config.detector.whistle_region.min_length);
@@ -2758,6 +2782,10 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"searchBin0", config.detector.whistle_peak.search_bin0},
         {"searchBin1", config.detector.whistle_peak.search_bin1},
         {"warmupSlices", config.detector.whistle_peak.warmup_slices},
+        {"noiseMedianFilter", config.detector.whistle_noise.run_median_filter},
+        {"noiseAverageSubtraction", config.detector.whistle_noise.run_average_subtraction},
+        {"noiseKernelSmoothing", config.detector.whistle_noise.run_kernel_smoothing},
+        {"noiseThreshold", config.detector.whistle_noise.run_threshold},
         {"minPixels", config.detector.whistle_region.min_pixels},
         {"minLength", config.detector.whistle_region.min_length},
         {"connectType", config.detector.whistle_region.connect_type},

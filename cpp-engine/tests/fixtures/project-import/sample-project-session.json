@@ -86,6 +86,7 @@
     "maxCrossLength": 6,
     "connectType": 8,
     "fragmentationMethod": 3,
-    "keepShapeStubs": true
+    "keepShapeStubs": true,
+    "noise": { "medianFilter": true, "medianFilterLength": 41, "averageSubtraction": true, "updateConstant": 0.030000000000000000, "kernelSmoothing": false, "threshold": true, "thresholdDb": 9.0, "finalOutput": 2 }
   }
 }

@@ -26,6 +26,8 @@ import clickTrainDetector.clickTrainAlgorithms.mht.electricalNoiseFilter.SimpleE
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates;
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates.SpectrumTemplateType;
 import fftManager.FFTParameters;
+import spectrogramNoiseReduction.SpectrogramNoiseSettings;
+import spectrogramNoiseReduction.medianFilter.MedianFilterParams;
 import whistlesAndMoans.WhistleToneParameters;
 
 import java.io.File;
@@ -340,7 +342,9 @@ public final class PamguardProjectConverter {
                 json.append("    \"maxCrossLength\": ").append(whistle.maxCrossLength).append(",\n");
                 json.append("    \"connectType\": ").append(whistle.getConnectType()).append(",\n");
                 json.append("    \"fragmentationMethod\": ").append(whistle.fragmentationMethod).append(",\n");
-                json.append("    \"keepShapeStubs\": ").append(whistle.keepShapeStubs).append("\n  }");
+                json.append("    \"keepShapeStubs\": ").append(whistle.keepShapeStubs);
+                appendNoiseSettings(json, whistle.getSpecNoiseSettings());
+                json.append("\n  }");
             }
         }
 
@@ -485,6 +489,25 @@ public final class PamguardProjectConverter {
         whistle.keepShapeStubs = true;
         whistle.setMinFrequency(2000.0);
         whistle.setMaxFrequency(20000.0);
+        SpectrogramNoiseSettings noiseSettings = new SpectrogramNoiseSettings();
+        noiseSettings.setRunMethod(0, true);
+        noiseSettings.setRunMethod(1, true);
+        noiseSettings.setRunMethod(2, false);
+        noiseSettings.setRunMethod(3, true);
+        MedianFilterParams medianNoise = new MedianFilterParams();
+        medianNoise.filterLength = 41;
+        spectrogramNoiseReduction.averageSubtraction.AverageSubtractionParameters averageNoise =
+                new spectrogramNoiseReduction.averageSubtraction.AverageSubtractionParameters();
+        averageNoise.updateConstant = 0.03;
+        spectrogramNoiseReduction.threshold.ThresholdParams thresholdNoise =
+                new spectrogramNoiseReduction.threshold.ThresholdParams();
+        thresholdNoise.thresholdDB = 9.0;
+        thresholdNoise.finalOutput = 2;
+        noiseSettings.addSettings(medianNoise);
+        noiseSettings.addSettings(averageNoise);
+        noiseSettings.addSettings(null);
+        noiseSettings.addSettings(thresholdNoise);
+        whistle.setSpecNoiseSettings(noiseSettings);
 
         PamSettingsGroup group = new PamSettingsGroup(1782950400000L);
         group.addSettings(new PamControlledUnitSettings("Data Acquisition", "Sound Acquisition",
@@ -672,6 +695,37 @@ public final class PamguardProjectConverter {
             System.out.printf("skipped: click train classifier %s (unmapped type)%n",
                     params == null ? "<null>" : params.getClass().getName());
         }
+    }
+
+    /**
+     * SpectrogramNoiseSettings rides inside WhistleToneParameters: runMethod
+     * flags parallel to SpectrogramNoiseProcess's fixed method order (median,
+     * average, kernel, threshold), with per-method settings in the same order.
+     */
+    private static void appendNoiseSettings(StringBuilder json, SpectrogramNoiseSettings noise) {
+        if (noise == null || noise.isRunMethod() == null) {
+            return;
+        }
+        json.append(",\n    \"noise\": {");
+        json.append(" \"medianFilter\": ").append(noise.isRunMethod(0));
+        if (noise.getSettings(0) instanceof MedianFilterParams) {
+            json.append(", \"medianFilterLength\": ")
+                    .append(((MedianFilterParams) noise.getSettings(0)).filterLength);
+        }
+        json.append(", \"averageSubtraction\": ").append(noise.isRunMethod(1));
+        if (noise.getSettings(1) instanceof spectrogramNoiseReduction.averageSubtraction.AverageSubtractionParameters) {
+            json.append(", \"updateConstant\": ").append(format(
+                    ((spectrogramNoiseReduction.averageSubtraction.AverageSubtractionParameters) noise.getSettings(1)).updateConstant));
+        }
+        json.append(", \"kernelSmoothing\": ").append(noise.isRunMethod(2));
+        json.append(", \"threshold\": ").append(noise.isRunMethod(3));
+        if (noise.getSettings(3) instanceof spectrogramNoiseReduction.threshold.ThresholdParams) {
+            spectrogramNoiseReduction.threshold.ThresholdParams threshold =
+                    (spectrogramNoiseReduction.threshold.ThresholdParams) noise.getSettings(3);
+            json.append(", \"thresholdDb\": ").append(format(threshold.thresholdDB));
+            json.append(", \"finalOutput\": ").append(threshold.finalOutput);
+        }
+        json.append(" }");
     }
 
     private static void appendRange(StringBuilder json, String key, double[] range) {

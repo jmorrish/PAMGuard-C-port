@@ -307,6 +307,8 @@ private:
     ArrayOrientation current_orientation_;
     /** Cross-chunk echo state: the anchor click survives chunk boundaries. */
     std::optional<detectors::SimpleEchoDetector> echo_detector_;
+    /** Per-channel state lives inside; one reducer serves the session. */
+    std::optional<detectors::SpectrogramNoiseReducer> whistle_noise_reducer_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

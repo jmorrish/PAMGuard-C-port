@@ -366,6 +366,48 @@ int main() {
             }
         }
 
+        {
+            // Noise reduction sits in the whistle path: an absurd threshold
+            // zeroes every bin before the peak detector, so the same signal
+            // that produced regions above now produces none. This pins the
+            // reducer's placement, not its maths (the parity fixture does
+            // that).
+            auto muted = base_config(true);
+            muted.detector.whistle_noise.run_threshold = true;
+            muted.detector.whistle_noise.threshold_db = 200.0;
+            muted.detector.whistle_noise.threshold_final_output =
+                pamguard::detectors::SpectrogramNoiseConfig::kOutputRaw;
+            pamguard::core::AnalysisSession muted_session(muted);
+            auto muted_result = muted_session.process(synthetic_chunk());
+            const auto muted_flush = muted_session.flush();
+            muted_result.whistle_regions.insert(muted_result.whistle_regions.end(),
+                                                muted_flush.whistle_regions.begin(),
+                                                muted_flush.whistle_regions.end());
+            if (!muted_result.whistle_regions.empty()) {
+                std::cerr << "A 200 dB noise threshold should mute every whistle region, got "
+                          << muted_result.whistle_regions.size() << "\n";
+                return 1;
+            }
+
+            // And a permissive threshold leaves the signal detectable, so the
+            // muting above is the threshold at work rather than a broken path.
+            auto open_config = base_config(true);
+            open_config.detector.whistle_noise.run_threshold = true;
+            open_config.detector.whistle_noise.threshold_db = -100.0;
+            open_config.detector.whistle_noise.threshold_final_output =
+                pamguard::detectors::SpectrogramNoiseConfig::kOutputRaw;
+            pamguard::core::AnalysisSession open_session(open_config);
+            auto open_result = open_session.process(synthetic_chunk());
+            const auto open_flush = open_session.flush();
+            open_result.whistle_regions.insert(open_result.whistle_regions.end(),
+                                               open_flush.whistle_regions.begin(),
+                                               open_flush.whistle_regions.end());
+            if (open_result.whistle_regions.empty()) {
+                std::cerr << "A -100 dB noise threshold should leave whistle regions detectable\n";
+                return 1;
+            }
+        }
+
         std::cout << "Session whistle delay wiring passed\n";
         return 0;
     }

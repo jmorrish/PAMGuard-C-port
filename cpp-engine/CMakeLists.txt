@@ -25,6 +25,7 @@ add_library(pamguard_engine
     src/detectors/MhtSimpleChi2Vars.cpp
     src/detectors/StandardMhtChi2.cpp
     src/detectors/ConnectedRegionTracker.cpp
+    src/detectors/SpectrogramNoiseReducer.cpp
     src/detectors/WhistlePeakDetector.cpp
     src/dsp/RealFft.cpp
     src/dsp/SpectrogramEngine.cpp
@@ -295,6 +296,12 @@ add_executable(bearing_localiser_selector_check
 )
 
 target_link_libraries(bearing_localiser_selector_check PRIVATE pamguard_engine)
+
+add_executable(spectrogram_noise_fixture_check
+    tools/spectrogram_noise_fixture_check.cpp
+)
+
+target_link_libraries(spectrogram_noise_fixture_check PRIVATE pamguard_engine)
 
 add_executable(simple_echo_fixture_check
     tools/simple_echo_fixture_check.cpp
@@ -606,6 +613,11 @@ add_test(
 add_test(
     NAME bearing_localiser_selection
     COMMAND bearing_localiser_selector_check
+)
+
+add_test(
+    NAME spectrogram_noise_parity
+    COMMAND spectrogram_noise_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/whistle/spectrogram-noise.csv
 )
 
 add_test(
