@@ -1,0 +1,51 @@
+{
+  "sessionId": "sample-project-import",
+  "sampleRateHz": 96000.0,
+  "channelCount": 4,
+  "array": {
+    "id": "converter-sample-array",
+    "speedOfSoundMps": 1502.0,
+    "speedOfSoundErrorMps": 3.0,
+    "streamers": [
+      { "id": 0, "xM": 10.0, "yM": 5.0, "zM": 0.0, "headingDegrees": 15.0, "pitchDegrees": -3.0, "rollDegrees": 2.0 }
+    ],
+    "hydrophones": [
+      { "channel": 0, "xM": 0.0, "yM": 0.0, "zM": 0.0, "xErrorM": 0.050000000000000000, "yErrorM": 0.050000000000000000, "zErrorM": 0.050000000000000000, "sensitivityDb": -201.0, "streamerId": 0 },
+      { "channel": 1, "xM": 2.0, "yM": 0.0, "zM": 0.0, "xErrorM": 0.050000000000000000, "yErrorM": 0.050000000000000000, "zErrorM": 0.050000000000000000, "sensitivityDb": -201.0, "streamerId": 0 },
+      { "channel": 2, "xM": 0.0, "yM": 3.0, "zM": 0.0, "xErrorM": 0.050000000000000000, "yErrorM": 0.050000000000000000, "zErrorM": 0.050000000000000000, "sensitivityDb": -201.0, "streamerId": 0 },
+      { "channel": 3, "xM": 0.50000000000000000, "yM": 1.0, "zM": 2.5000000000000000, "xErrorM": 0.050000000000000000, "yErrorM": 0.050000000000000000, "zErrorM": 0.050000000000000000, "sensitivityDb": -201.0, "streamerId": 0 }
+    ]
+  },
+  "fft": {
+    "length": 512,
+    "hop": 256,
+    "windowType": 2,
+    "channels": [0, 1, 2, 3]
+  },
+  "click": {
+    "enabled": true,
+    "localisation": true,
+    "channelBitmap": 15,
+    "triggerBitmap": 15,
+    "minTriggerChannels": 2,
+    "thresholdDb": 12.0,
+    "longFilter": 2.0000000000000000e-05,
+    "shortFilter": 0.20000000000000000,
+    "preSample": 30,
+    "postSample": 50,
+    "minSep": 80,
+    "maxLength": 512
+  },
+  "whistle": {
+    "enabled": true,
+    "regionEnabled": true,
+    "searchBin0": 11,
+    "searchBin1": 107,
+    "minPixels": 25,
+    "minLength": 12,
+    "maxCrossLength": 6,
+    "connectType": 8,
+    "fragmentationMethod": 3,
+    "keepShapeStubs": true
+  }
+}

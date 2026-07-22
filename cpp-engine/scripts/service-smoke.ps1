@@ -522,6 +522,36 @@ try {
         throw "Archive detection CSV export did not include expected click rows"
     }
 
+    # Project import end to end: the session JSON produced by
+    # PamguardProjectConverter from a real .psfx must be accepted by the live
+    # engine as-is (plus the owner/tenant metadata this smoke's service
+    # enforces, which a PAMGuard settings file has no notion of).
+    $importJsonPath = Join-Path $PSScriptRoot "..\tests\fixtures\project-import\sample-project-session.json"
+    if (Test-Path $importJsonPath) {
+        $imported = Get-Content $importJsonPath -Raw | ConvertFrom-Json
+        $imported | Add-Member -NotePropertyName ownerId -NotePropertyValue "smoke-owner"
+        $imported | Add-Member -NotePropertyName tenantId -NotePropertyValue "smoke-tenant"
+        $importBody = $imported | ConvertTo-Json -Depth 10
+        $importCreate = Invoke-RestMethod -Method Post -Uri "$base/sessions" -Headers $headers -ContentType "application/json" -Body $importBody
+        if (-not $importCreate.created) {
+            throw "Converted PAMGuard project session was not created"
+        }
+        $importStatus = Invoke-RestMethod -Method Get -Uri "$base/sessions/$($imported.sessionId)" -Headers $headers
+        if ($importStatus.channelCount -ne 4 -or $importStatus.sampleRateHz -ne 96000) {
+            throw "Imported session did not round-trip the .psfx acquisition settings"
+        }
+        if ($importStatus.fft.length -ne 512 -or $importStatus.fft.hop -ne 256) {
+            throw "Imported session did not round-trip the .psfx FFT settings"
+        }
+        $importRemoved = Invoke-RestMethod -Method Delete -Uri "$base/sessions/$($imported.sessionId)" -Headers $headers
+        if (-not $importRemoved.removed) {
+            throw "Imported session delete did not report removed=true"
+        }
+    }
+    else {
+        throw "Project import fixture not found at $importJsonPath"
+    }
+
     $flush = Invoke-RestMethod -Method Post -Uri "$base/sessions/$SessionId/flush" -Headers $headers
     if (-not $flush.flushed) {
         throw "Session flush did not report flushed=true"
