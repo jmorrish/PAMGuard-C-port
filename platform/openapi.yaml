@@ -98,6 +98,82 @@ paths:
           description: Ingest status file is not configured or not present
         "500":
           description: Ingest status file is present but cannot be read as JSON
+  /jobs:
+    post:
+      summary: Queue an offline WAV analysis job
+      description: >-
+        Enabled when PAMGUARD_JOB_AUDIO_DIR is set. wavFile is relative to that directory and
+        must resolve inside it. session is the same body /sessions accepts; sampleRateHz and
+        channelCount come from the WAV unless pinned, and a pinned mismatch fails the job.
+        Results are archived under sessionId "job-<jobId>" and served by the ordinary
+        /sessions/{sessionId}/archive endpoints.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wavFile]
+              properties:
+                jobId:
+                  type: string
+                wavFile:
+                  type: string
+                session:
+                  type: object
+      responses:
+        "201":
+          description: Job queued
+        "400":
+          description: Bad path, missing file, or unparseable session config
+        "404":
+          description: Job queue not enabled
+        "409":
+          description: Job id already exists
+    get:
+      summary: List offline jobs
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Jobs with states (queued/running/completed/failed/cancelled) and detection counters
+  /jobs/{jobId}:
+    get:
+      summary: Get one offline job's state, progress, and counters
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job status
+        "404":
+          description: Unknown job
+    delete:
+      summary: Cancel a queued job, request cancellation of a running one, or remove a finished record
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cancellation or removal outcome
+        "404":
+          description: Unknown job
   /sessions:
     get:
       summary: List low-level C++ engine sessions

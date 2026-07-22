@@ -10,6 +10,8 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <condition_variable>
+#include <deque>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
@@ -22,6 +24,7 @@
 #include <json.hpp>
 
 #include "pamguard/core/SessionManager.h"
+#include "pamguard/io/WavReader.h"
 #include "pamguard/detectors/CtSpectrumTemplates.h"
 #include "pamguard/dsp/WindowFunction.h"
 
@@ -1789,6 +1792,107 @@ void validate_analysis_config(const pamguard::core::AnalysisConfig& config) {
     }
 }
 
+/**
+ * Offline batch jobs (WP7): a queued WAV analysis run through the same
+ * session machinery, results archived under the job id like any session's,
+ * so the existing archive/query/export endpoints serve job output.
+ *
+ * Enabled only when PAMGUARD_JOB_AUDIO_DIR is set; job WAV paths resolve
+ * strictly inside that directory, so the HTTP surface cannot read arbitrary
+ * files.
+ */
+struct OfflineJob {
+    std::string job_id;
+    std::string wav_file;
+    json session_body;
+    std::string state = "queued"; // queued | running | completed | failed | cancelled
+    std::string error;
+    std::uint64_t total_frames = 0;
+    std::uint64_t processed_frames = 0;
+    std::uint64_t chunks = 0;
+    std::uint64_t clicks = 0;
+    std::uint64_t click_trains = 0;
+    std::uint64_t whistle_regions = 0;
+    std::int64_t created_unix_ms = 0;
+    std::int64_t started_unix_ms = 0;
+    std::int64_t finished_unix_ms = 0;
+    bool cancel_requested = false;
+};
+
+struct JobQueueState {
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::map<std::string, OfflineJob> jobs;
+    std::deque<std::string> pending;
+    bool shutting_down = false;
+};
+
+std::filesystem::path job_audio_dir_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_JOB_AUDIO_DIR");
+    return raw == nullptr ? std::filesystem::path() : std::filesystem::path(raw);
+}
+
+std::size_t job_workers_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_JOB_WORKERS");
+    if (raw == nullptr) {
+        return 1;
+    }
+    const auto value = std::stoul(raw);
+    return value == 0 ? 1 : static_cast<std::size_t>(value);
+}
+
+std::int64_t now_unix_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+/**
+ * Resolve a job WAV path strictly inside the configured audio root. Rejects
+ * absolute paths and anything whose canonical form escapes the root, which
+ * closes the path-traversal door the endpoint would otherwise open.
+ */
+std::filesystem::path resolve_job_wav(const std::filesystem::path& audio_root, const std::string& wav_file) {
+    const std::filesystem::path relative(wav_file);
+    if (relative.is_absolute()) {
+        throw std::invalid_argument("wavFile must be relative to the job audio directory");
+    }
+    const auto root = std::filesystem::weakly_canonical(audio_root);
+    const auto candidate = std::filesystem::weakly_canonical(audio_root / relative);
+    const auto root_text = root.generic_string();
+    const auto candidate_text = candidate.generic_string();
+    if (candidate_text.size() < root_text.size() || candidate_text.compare(0, root_text.size(), root_text) != 0) {
+        throw std::invalid_argument("wavFile escapes the job audio directory");
+    }
+    return candidate;
+}
+
+json job_to_json(const OfflineJob& job) {
+    json body = {
+        {"jobId", job.job_id},
+        {"wavFile", job.wav_file},
+        {"state", job.state},
+        {"totalFrames", job.total_frames},
+        {"processedFrames", job.processed_frames},
+        {"chunks", job.chunks},
+        {"clicks", job.clicks},
+        {"clickTrains", job.click_trains},
+        {"whistleRegions", job.whistle_regions},
+        {"createdUnixMs", job.created_unix_ms},
+        {"sessionId", std::string("job-") + job.job_id},
+    };
+    if (job.started_unix_ms != 0) {
+        body["startedUnixMs"] = job.started_unix_ms;
+    }
+    if (job.finished_unix_ms != 0) {
+        body["finishedUnixMs"] = job.finished_unix_ms;
+    }
+    if (!job.error.empty()) {
+        body["error"] = job.error;
+    }
+    return body;
+}
+
 pamguard::core::AnalysisConfig parse_config(const json& body) {
     pamguard::core::AnalysisConfig config;
     config.session_id = body.at("sessionId").get<std::string>();
@@ -3010,6 +3114,10 @@ int main(int argc, char** argv) {
     const auto cors_origin = cors_origin_from_environment();
     const auto api_key = api_key_from_environment();
 
+    const auto job_audio_dir = job_audio_dir_from_environment();
+    const auto job_workers = job_workers_from_environment();
+    JobQueueState job_state;
+
     pamguard::core::SessionManager manager;
     std::mutex configs_mutex;
     std::mutex archive_mutex;
@@ -3071,6 +3179,8 @@ int main(int argc, char** argv) {
             {"sessions", manager.session_count()},
             {"maxSessions", max_sessions},
             {"resultSchemaVersion", kResultSchemaVersion},
+            {"jobQueueEnabled", !job_audio_dir.empty()},
+            {"jobWorkers", job_audio_dir.empty() ? 0 : job_workers},
             {"maxPcmBodyBytes", max_pcm_body_bytes},
             {"maxArchiveQueryRecords", max_archive_query_records},
             {"httpThreads", http_threads},
@@ -3660,6 +3770,111 @@ int main(int argc, char** argv) {
         }
     });
 
+    server.Post("/jobs", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (job_audio_dir.empty()) {
+            json_response(res, {{"error", "offline jobs are not enabled; set PAMGUARD_JOB_AUDIO_DIR"}}, 404);
+            return;
+        }
+        try {
+            const auto body = json::parse(req.body);
+            OfflineJob job;
+            job.job_id = body.value("jobId", std::string());
+            if (job.job_id.empty()) {
+                job.job_id = std::to_string(now_unix_ms());
+            }
+            job.wav_file = body.at("wavFile").get<std::string>();
+            job.session_body = body.value("session", json::object());
+            job.created_unix_ms = now_unix_ms();
+            // Fail fast on unreadable paths and unparseable configs so a bad
+            // job is a 400 now, not a failed record later.
+            const auto wav_path = resolve_job_wav(job_audio_dir, job.wav_file);
+            if (!std::filesystem::exists(wav_path)) {
+                throw std::invalid_argument("wavFile does not exist under the job audio directory");
+            }
+            {
+                std::lock_guard lock(job_state.mutex);
+                if (job_state.jobs.count(job.job_id) != 0) {
+                    json_response(res, {{"error", "job already exists"}, {"jobId", job.job_id}}, 409);
+                    return;
+                }
+                job_state.jobs.emplace(job.job_id, job);
+                job_state.pending.push_back(job.job_id);
+            }
+            job_state.cv.notify_one();
+            json_response(res, job_to_json(job), 201);
+        }
+        catch (const std::exception& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+        }
+    });
+
+    server.Get("/jobs", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        json jobs = json::array();
+        std::size_t queued = 0;
+        std::size_t running = 0;
+        {
+            std::lock_guard lock(job_state.mutex);
+            for (const auto& [_, job] : job_state.jobs) {
+                jobs.push_back(job_to_json(job));
+                queued += job.state == "queued" ? 1 : 0;
+                running += job.state == "running" ? 1 : 0;
+            }
+        }
+        json_response(res, {{"enabled", !job_audio_dir.empty()},
+                            {"count", jobs.size()},
+                            {"queued", queued},
+                            {"running", running},
+                            {"jobs", std::move(jobs)}});
+    });
+
+    server.Get(R"(/jobs/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        const auto job_id = req.matches[1].str();
+        std::lock_guard lock(job_state.mutex);
+        const auto found = job_state.jobs.find(job_id);
+        if (found == job_state.jobs.end()) {
+            json_response(res, {{"error", "unknown job"}}, 404);
+            return;
+        }
+        json_response(res, job_to_json(found->second));
+    });
+
+    server.Delete(R"(/jobs/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        const auto job_id = req.matches[1].str();
+        std::lock_guard lock(job_state.mutex);
+        const auto found = job_state.jobs.find(job_id);
+        if (found == job_state.jobs.end()) {
+            json_response(res, {{"error", "unknown job"}}, 404);
+            return;
+        }
+        if (found->second.state == "queued") {
+            found->second.state = "cancelled";
+            found->second.finished_unix_ms = now_unix_ms();
+            json_response(res, {{"jobId", job_id}, {"state", "cancelled"}});
+            return;
+        }
+        if (found->second.state == "running") {
+            // Cancellation lands between chunks, so the state flips when the
+            // worker notices; the response reports the request, not the flip.
+            found->second.cancel_requested = true;
+            json_response(res, {{"jobId", job_id}, {"state", "running"}, {"cancelRequested", true}});
+            return;
+        }
+        job_state.jobs.erase(found);
+        json_response(res, {{"jobId", job_id}, {"removed", true}});
+    });
+
     server.Post(R"(/sessions/([^/]+)/pcm-f32le)", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
             return;
@@ -3916,12 +4131,178 @@ int main(int argc, char** argv) {
     if (max_pcm_body_bytes > 0) {
         std::cout << "PCM request body limit enabled at " << max_pcm_body_bytes << " bytes\n";
     }
+    std::vector<std::thread> job_worker_threads;
+    if (!job_audio_dir.empty()) {
+        for (std::size_t worker = 0; worker < job_workers; ++worker) {
+            job_worker_threads.emplace_back([&job_state, &job_audio_dir, &result_archive_dir, &archive_mutex] {
+                for (;;) {
+                    std::string job_id;
+                    {
+                        std::unique_lock lock(job_state.mutex);
+                        job_state.cv.wait(lock, [&] { return job_state.shutting_down || !job_state.pending.empty(); });
+                        if (job_state.shutting_down) {
+                            return;
+                        }
+                        job_id = job_state.pending.front();
+                        job_state.pending.pop_front();
+                        auto found = job_state.jobs.find(job_id);
+                        if (found == job_state.jobs.end() || found->second.state != "queued") {
+                            continue;
+                        }
+                        found->second.state = "running";
+                        found->second.started_unix_ms = now_unix_ms();
+                    }
+
+                    std::string failure;
+                    OfflineJob snapshot;
+                    {
+                        std::lock_guard lock(job_state.mutex);
+                        snapshot = job_state.jobs[job_id];
+                    }
+                    try {
+                        const auto wav_path = resolve_job_wav(job_audio_dir, snapshot.wav_file);
+                        pamguard::io::WavReader reader;
+                        const auto wav = reader.read_all(wav_path);
+                        if (wav.sample_rate_hz == 0 || wav.channel_count == 0) {
+                            throw std::runtime_error("WAV file has no readable audio");
+                        }
+
+                        json session_body = snapshot.session_body;
+                        // Acquisition facts come from the file unless the job
+                        // pins them; a pinned mismatch is an error, not a
+                        // silent resample.
+                        if (!session_body.contains("sampleRateHz")) {
+                            session_body["sampleRateHz"] = wav.sample_rate_hz;
+                        }
+                        if (!session_body.contains("channelCount")) {
+                            session_body["channelCount"] = wav.channel_count;
+                        }
+                        session_body["sessionId"] = std::string("job-") + job_id;
+                        auto config = parse_config(session_body);
+                        if (config.sample_rate_hz != wav.sample_rate_hz ||
+                            config.channel_count != wav.channel_count) {
+                            throw std::runtime_error("session config sample rate/channel count do not match the WAV file");
+                        }
+
+                        const std::uint64_t total_frames = wav.interleaved_pcm.size() / wav.channel_count;
+                        {
+                            std::lock_guard lock(job_state.mutex);
+                            job_state.jobs[job_id].total_frames = total_frames;
+                        }
+
+                        pamguard::core::AnalysisSession session(config);
+                        const std::string archive_session_id = std::string("job-") + job_id;
+                        const std::uint64_t chunk_frames = wav.sample_rate_hz; // one second
+                        std::uint64_t frame_cursor = 0;
+                        bool cancelled = false;
+                        while (frame_cursor < total_frames) {
+                            {
+                                std::lock_guard lock(job_state.mutex);
+                                if (job_state.jobs[job_id].cancel_requested || job_state.shutting_down) {
+                                    cancelled = true;
+                                    break;
+                                }
+                            }
+                            const auto frames = std::min<std::uint64_t>(chunk_frames, total_frames - frame_cursor);
+                            pamguard::core::AudioChunk chunk;
+                            chunk.start_sample = frame_cursor;
+                            chunk.sample_rate_hz = wav.sample_rate_hz;
+                            chunk.channel_count = wav.channel_count;
+                            chunk.time_unix_ms = static_cast<std::int64_t>(frame_cursor * 1000ULL / wav.sample_rate_hz);
+                            const auto begin = frame_cursor * wav.channel_count;
+                            chunk.interleaved_pcm.assign(wav.interleaved_pcm.begin() + static_cast<std::ptrdiff_t>(begin),
+                                                         wav.interleaved_pcm.begin() + static_cast<std::ptrdiff_t>(begin + frames * wav.channel_count));
+                            const auto result = session.process(chunk);
+
+                            if (!result_archive_dir.empty()) {
+                                ResultJsonOptions archive_options;
+                                archive_options.sample_rate_hz = config.sample_rate_hz;
+                                archive_options.fft_length = config.detector.fft.fft_length;
+                                archive_options.speed_of_sound_mps = config.array.speed_of_sound_mps;
+                                archive_options.echo_detection_running = config.detector.click_echo_enabled;
+                                auto archive_body = result_to_json(result, archive_options);
+                                archive_body["sessionId"] = archive_session_id;
+                                archive_body["sourceId"] = std::string("job:") + snapshot.wav_file;
+                                archive_body["inputFrames"] = frames;
+                                archive_body["startSample"] = frame_cursor;
+                                archive_body["timeMs"] = chunk.time_unix_ms;
+                                std::lock_guard archive_lock(archive_mutex);
+                                append_result_archive(result_archive_dir, archive_session_id, archive_body);
+                                append_detection_event_archive(result_archive_dir, archive_session_id, archive_body);
+                            }
+
+                            std::lock_guard lock(job_state.mutex);
+                            auto& live = job_state.jobs[job_id];
+                            live.processed_frames = frame_cursor + frames;
+                            live.chunks += 1;
+                            live.clicks += result.clicks.size();
+                            live.click_trains += result.click_trains.size();
+                            live.whistle_regions += result.whistle_regions.size();
+                            frame_cursor += frames;
+                        }
+
+                        if (!cancelled) {
+                            const auto flushed = session.flush();
+                            if (!result_archive_dir.empty()) {
+                                ResultJsonOptions archive_options;
+                                archive_options.sample_rate_hz = config.sample_rate_hz;
+                                archive_options.fft_length = config.detector.fft.fft_length;
+                                archive_options.speed_of_sound_mps = config.array.speed_of_sound_mps;
+                                archive_options.echo_detection_running = config.detector.click_echo_enabled;
+                                auto archive_body = result_to_json(flushed, archive_options);
+                                archive_body["sessionId"] = archive_session_id;
+                                archive_body["sourceId"] = std::string("job:") + snapshot.wav_file;
+                                archive_body["flush"] = true;
+                                std::lock_guard archive_lock(archive_mutex);
+                                append_result_archive(result_archive_dir, archive_session_id, archive_body);
+                                append_detection_event_archive(result_archive_dir, archive_session_id, archive_body);
+                            }
+                            std::lock_guard lock(job_state.mutex);
+                            auto& live = job_state.jobs[job_id];
+                            live.clicks += flushed.clicks.size();
+                            live.click_trains += flushed.click_trains.size();
+                            live.whistle_regions += flushed.whistle_regions.size();
+                        }
+
+                        std::lock_guard lock(job_state.mutex);
+                        auto& live = job_state.jobs[job_id];
+                        live.state = cancelled ? "cancelled" : "completed";
+                        live.finished_unix_ms = now_unix_ms();
+                    }
+                    catch (const std::exception& error) {
+                        std::lock_guard lock(job_state.mutex);
+                        auto& live = job_state.jobs[job_id];
+                        live.state = "failed";
+                        live.error = error.what();
+                        live.finished_unix_ms = now_unix_ms();
+                    }
+                }
+            });
+        }
+        std::cout << "Offline job queue enabled: audio dir " << job_audio_dir.string()
+                  << ", " << job_workers << " worker(s)\n";
+    }
+
     if (http_threads > 0) {
         std::cout << "HTTP worker thread pool set to " << http_threads << "\n";
     }
+    const auto stop_job_workers = [&job_state, &job_worker_threads] {
+        {
+            std::lock_guard lock(job_state.mutex);
+            job_state.shutting_down = true;
+        }
+        job_state.cv.notify_all();
+        for (auto& thread : job_worker_threads) {
+            if (thread.joinable()) {
+                thread.join();
+            }
+        }
+    };
     if (!server.listen("0.0.0.0", port)) {
         std::cerr << "Failed to listen on port " << port << "\n";
+        stop_job_workers();
         return 1;
     }
+    stop_job_workers();
     return 0;
 }

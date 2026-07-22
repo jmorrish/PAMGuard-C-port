@@ -753,11 +753,16 @@ if(WIN32)
             NAME service_load_smoke_foundation
             COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/service-load-smoke.ps1 -Port 18182 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service> -Sessions 4 -Chunks 2
         )
+        add_test(
+            NAME service_job_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/service-job-smoke.ps1 -Port 18189 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service>
+        )
         set_tests_properties(
             service_smoke_http
             service_smoke_api_key
             service_smoke_api_key_file
             service_load_smoke_foundation
+            service_job_smoke
             PROPERTIES TIMEOUT 90
         )
     endif()
