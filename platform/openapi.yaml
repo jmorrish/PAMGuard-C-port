@@ -98,6 +98,28 @@ paths:
           description: Ingest status file is not configured or not present
         "500":
           description: Ingest status file is present but cannot be read as JSON
+  /sessions/{sessionId}/audio/index:
+    get:
+      summary: List a session's archived audio chunks
+      description: >-
+        Enabled when PAMGUARD_AUDIO_ARCHIVE_DIR is set. Each record carries startSample,
+        frames, timeMs, byte offsets, and the acquisition facts; the contiguous flag is false
+        when startSample discontinuities (dropouts/gaps) exist. Replay the audio via POST /jobs
+        with audioSession.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audio index records with totalFrames and contiguity
+        "404":
+          description: Audio archive not enabled
   /jobs:
     post:
       summary: Queue an offline WAV analysis job
@@ -116,12 +138,18 @@ paths:
           application/json:
             schema:
               type: object
-              required: [wavFile]
+              required: []
               properties:
                 jobId:
                   type: string
                 wavFile:
                   type: string
+                  description: Exactly one of wavFile or audioSession is required.
+                audioSession:
+                  type: string
+                  description: >-
+                    Replay this session's archived audio instead of a WAV, preserving the
+                    original chunk boundaries, start samples, timestamps, and gaps.
                 session:
                   type: object
       responses:

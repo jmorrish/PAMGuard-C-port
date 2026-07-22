@@ -24,7 +24,8 @@ if (-not (Test-Path $serviceExe)) {
 $root = Join-Path ([System.IO.Path]::GetTempPath()) ("pamguard-job-smoke-" + [System.Guid]::NewGuid().ToString("N"))
 $audioDir = Join-Path $root "audio"
 $archiveDir = Join-Path $root "archive"
-New-Item -ItemType Directory -Force -Path $audioDir, $archiveDir | Out-Null
+$audioArchiveDir = Join-Path $root "audio-archive"
+New-Item -ItemType Directory -Force -Path $audioDir, $archiveDir, $audioArchiveDir | Out-Null
 
 # --- write a 3-second 48 kHz mono 16-bit WAV with transients every 4800 samples ---
 $sampleRate = 48000
@@ -64,6 +65,7 @@ $process = $null
 try {
     $env:PAMGUARD_JOB_AUDIO_DIR = $audioDir
     $env:PAMGUARD_RESULT_ARCHIVE_DIR = $archiveDir
+    $env:PAMGUARD_AUDIO_ARCHIVE_DIR = $audioArchiveDir
     Remove-Item Env:\PAMGUARD_API_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:\PAMGUARD_API_KEY_FILE -ErrorAction SilentlyContinue
     Remove-Item Env:\PAMGUARD_REQUIRE_SESSION_METADATA -ErrorAction SilentlyContinue
@@ -141,7 +143,72 @@ try {
     $removed = Invoke-RestMethod -Method Delete -Uri "$base/jobs/run-b"
     if (-not $removed.removed) { throw "Completed job delete did not remove the record" }
 
-    Write-Host "Job smoke passed: clicks=$($jobA.clicks) chunks=$($jobA.chunks) archiveRecords=$($archive.count) deterministic=true"
+    # --- audio archive + replay: post live PCM, then replay it as a job ---
+    if (-not $health.audioArchiveEnabled) { throw "Health did not report the audio archive enabled" }
+    $liveSession = @{
+        sessionId = "live-rec"
+        sampleRateHz = $sampleRate
+        channelCount = 1
+        fft = @{ length = 512; hop = 256; windowType = "Hann"; channels = @(0) }
+        click = $session.click
+    } | ConvertTo-Json -Depth 10
+    $null = Invoke-RestMethod -Method Post -Uri "$base/sessions" -ContentType "application/json" -Body $liveSession
+
+    # Feed the same audio as the WAV, as raw f32le, in two chunks with a
+    # deliberate one-chunk gap so the index's continuity flag has something
+    # to report.
+    $chunkFrames = $sampleRate
+    $f32 = New-Object byte[] ($chunkFrames * 4)
+    $rng2 = New-Object System.Random(7)
+    $liveClicks = 0
+    function Post-Chunk([long]$StartSample) {
+        for ($f = 0; $f -lt $chunkFrames; $f++) {
+            $g = $StartSample + $f
+            $v = 0.01 * ($rng2.NextDouble() - 0.5)
+            if (($g % 4800) -lt 6) {
+                $sign = 1.0
+                if (($g % 2) -ne 0) { $sign = -1.0 }
+                $v += 0.8 * $sign
+            }
+            [BitConverter]::GetBytes([float]$v).CopyTo($f32, $f * 4)
+        }
+        $request = [System.Net.HttpWebRequest]::Create("$base/sessions/live-rec/pcm-f32le?startSample=$StartSample")
+        $request.Method = "POST"
+        $request.ContentType = "application/octet-stream"
+        $request.ContentLength = $f32.Length
+        $stream = $request.GetRequestStream()
+        $stream.Write($f32, 0, $f32.Length)
+        $stream.Dispose()
+        $response = $request.GetResponse()
+        $readerX = New-Object System.IO.StreamReader($response.GetResponseStream())
+        $bodyX = $readerX.ReadToEnd() | ConvertFrom-Json
+        $readerX.Dispose(); $response.Dispose()
+        return $bodyX
+    }
+    $r1 = Post-Chunk 0
+    $r2 = Post-Chunk (2 * $chunkFrames)   # gap: chunk at 1x skipped
+    $liveClicks = @($r1.clicks).Count + @($r2.clicks).Count
+    if ($liveClicks -lt 10) { throw "Live recording session detected too few clicks ($liveClicks)" }
+
+    $audioIndex = Invoke-RestMethod -Method Get -Uri "$base/sessions/live-rec/audio/index"
+    if ($audioIndex.count -ne 2 -or $audioIndex.totalFrames -ne (2 * $chunkFrames)) {
+        throw "Audio index should hold the two posted chunks"
+    }
+    if ($audioIndex.contiguous) { throw "Audio index should report the deliberate gap as non-contiguous" }
+
+    # Replay the archived audio through a job with the same detector config;
+    # the original chunk boundaries, start samples, and gap are preserved, so
+    # the click count matches the live run exactly.
+    $replayBody = @{ jobId = "replay-1"; audioSession = "live-rec"; session = $session } | ConvertTo-Json -Depth 10
+    $null = Invoke-RestMethod -Method Post -Uri "$base/jobs" -ContentType "application/json" -Body $replayBody
+    $replay = Wait-Job2 "replay-1"
+    if ($replay.state -ne "completed") { throw "Replay job did not complete: $($replay.state) $($replay.error)" }
+    if ($replay.clicks -ne $liveClicks) {
+        throw "Replay clicks ($($replay.clicks)) did not match the live run ($liveClicks)"
+    }
+    if ($replay.chunks -ne 2) { throw "Replay should preserve the original two chunk boundaries" }
+
+    Write-Host "Job smoke passed: clicks=$($jobA.clicks) chunks=$($jobA.chunks) archiveRecords=$($archive.count) deterministic=true replayClicks=$($replay.clicks)"
     exit 0
 }
 finally {
@@ -150,5 +217,6 @@ finally {
     }
     $env:PAMGUARD_JOB_AUDIO_DIR = $oldJobDir
     $env:PAMGUARD_RESULT_ARCHIVE_DIR = $oldArchive
+    Remove-Item Env:\PAMGUARD_AUDIO_ARCHIVE_DIR -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }

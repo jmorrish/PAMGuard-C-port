@@ -1792,6 +1792,92 @@ void validate_analysis_config(const pamguard::core::AnalysisConfig& config) {
     }
 }
 
+std::filesystem::path audio_archive_dir_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_AUDIO_ARCHIVE_DIR");
+    return raw == nullptr ? std::filesystem::path() : std::filesystem::path(raw);
+}
+
+/**
+ * Audio archive (WP3): the exact f32le bytes each session analysed, append-
+ * only, with an NDJSON index of {startSample, frames, timeMs, byteOffset,
+ * byteLength} per chunk. Gaps and overlaps stay visible as startSample
+ * discontinuities in the index, and replay feeds the same bytes through the
+ * same chunk boundaries — the strongest form of the determinism acceptance.
+ */
+std::filesystem::path audio_archive_data_path(const std::filesystem::path& dir, const std::string& session_id) {
+    return dir / (safe_session_filename(session_id) + ".f32le");
+}
+
+std::filesystem::path audio_archive_index_path(const std::filesystem::path& dir, const std::string& session_id) {
+    return dir / (safe_session_filename(session_id) + ".audio.ndjson");
+}
+
+void append_audio_archive(const std::filesystem::path& dir, const std::string& session_id,
+                          const std::string& pcm_bytes, std::uint64_t start_sample, std::uint64_t frames,
+                          std::int64_t time_ms, std::uint32_t sample_rate_hz, std::size_t channel_count) {
+    std::filesystem::create_directories(dir);
+    const auto data_path = audio_archive_data_path(dir, session_id);
+    const auto index_path = audio_archive_index_path(dir, session_id);
+    std::ofstream data(data_path, std::ios::binary | std::ios::app);
+    if (!data) {
+        throw std::runtime_error("failed to open audio archive data file");
+    }
+    data.seekp(0, std::ios::end);
+    const std::uint64_t offset = static_cast<std::uint64_t>(data.tellp());
+    data.write(pcm_bytes.data(), static_cast<std::streamsize>(pcm_bytes.size()));
+    data.flush();
+    std::ofstream index(index_path, std::ios::app);
+    if (!index) {
+        throw std::runtime_error("failed to open audio archive index file");
+    }
+    const json record = {
+        {"startSample", start_sample},
+        {"frames", frames},
+        {"timeMs", time_ms},
+        {"byteOffset", offset},
+        {"byteLength", pcm_bytes.size()},
+        {"sampleRateHz", sample_rate_hz},
+        {"channelCount", channel_count},
+    };
+    index << record.dump() << "\n";
+}
+
+struct AudioIndexRecord {
+    std::uint64_t start_sample = 0;
+    std::uint64_t frames = 0;
+    std::int64_t time_ms = 0;
+    std::uint64_t byte_offset = 0;
+    std::uint64_t byte_length = 0;
+    std::uint32_t sample_rate_hz = 0;
+    std::size_t channel_count = 0;
+};
+
+std::vector<AudioIndexRecord> read_audio_archive_index(const std::filesystem::path& dir,
+                                                       const std::string& session_id) {
+    std::vector<AudioIndexRecord> records;
+    std::ifstream index(audio_archive_index_path(dir, session_id));
+    if (!index) {
+        return records;
+    }
+    std::string line;
+    while (std::getline(index, line)) {
+        if (line.empty()) {
+            continue;
+        }
+        const auto record = json::parse(line);
+        AudioIndexRecord entry;
+        entry.start_sample = record.value("startSample", 0ULL);
+        entry.frames = record.value("frames", 0ULL);
+        entry.time_ms = record.value("timeMs", static_cast<std::int64_t>(0));
+        entry.byte_offset = record.value("byteOffset", 0ULL);
+        entry.byte_length = record.value("byteLength", 0ULL);
+        entry.sample_rate_hz = record.value("sampleRateHz", 0U);
+        entry.channel_count = record.value("channelCount", static_cast<std::size_t>(0));
+        records.push_back(entry);
+    }
+    return records;
+}
+
 /**
  * Offline batch jobs (WP7): a queued WAV analysis run through the same
  * session machinery, results archived under the job id like any session's,
@@ -1804,6 +1890,8 @@ void validate_analysis_config(const pamguard::core::AnalysisConfig& config) {
 struct OfflineJob {
     std::string job_id;
     std::string wav_file;
+    /** When set, replay the archived audio of this session instead of a WAV. */
+    std::string audio_session;
     json session_body;
     std::string state = "queued"; // queued | running | completed | failed | cancelled
     std::string error;
@@ -1871,6 +1959,7 @@ json job_to_json(const OfflineJob& job) {
     json body = {
         {"jobId", job.job_id},
         {"wavFile", job.wav_file},
+        {"audioSession", job.audio_session},
         {"state", job.state},
         {"totalFrames", job.total_frames},
         {"processedFrames", job.processed_frames},
@@ -3115,6 +3204,8 @@ int main(int argc, char** argv) {
     const auto api_key = api_key_from_environment();
 
     const auto job_audio_dir = job_audio_dir_from_environment();
+    const auto audio_archive_dir = audio_archive_dir_from_environment();
+    std::mutex audio_archive_mutex;
     const auto job_workers = job_workers_from_environment();
     JobQueueState job_state;
 
@@ -3180,6 +3271,7 @@ int main(int argc, char** argv) {
             {"maxSessions", max_sessions},
             {"resultSchemaVersion", kResultSchemaVersion},
             {"jobQueueEnabled", !job_audio_dir.empty()},
+            {"audioArchiveEnabled", !audio_archive_dir.empty()},
             {"jobWorkers", job_audio_dir.empty() ? 0 : job_workers},
             {"maxPcmBodyBytes", max_pcm_body_bytes},
             {"maxArchiveQueryRecords", max_archive_query_records},
@@ -3770,6 +3862,46 @@ int main(int argc, char** argv) {
         }
     });
 
+    server.Get(R"(/sessions/([^/]+)/audio/index)", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (audio_archive_dir.empty()) {
+            json_response(res, {{"error", "audio archive is not enabled; set PAMGUARD_AUDIO_ARCHIVE_DIR"}}, 404);
+            return;
+        }
+        const auto session_id = req.matches[1].str();
+        std::vector<AudioIndexRecord> records;
+        {
+            std::lock_guard audio_lock(audio_archive_mutex);
+            records = read_audio_archive_index(audio_archive_dir, session_id);
+        }
+        json items = json::array();
+        std::uint64_t total_frames = 0;
+        bool contiguous = true;
+        std::uint64_t expected = 0;
+        for (std::size_t i = 0; i < records.size(); ++i) {
+            const auto& record = records[i];
+            items.push_back({
+                {"startSample", record.start_sample},
+                {"frames", record.frames},
+                {"timeMs", record.time_ms},
+                {"byteOffset", record.byte_offset},
+                {"byteLength", record.byte_length},
+            });
+            total_frames += record.frames;
+            if (i > 0 && record.start_sample != expected) {
+                contiguous = false;
+            }
+            expected = record.start_sample + record.frames;
+        }
+        json_response(res, {{"sessionId", session_id},
+                            {"count", records.size()},
+                            {"totalFrames", total_frames},
+                            {"contiguous", contiguous},
+                            {"records", std::move(items)}});
+    });
+
     server.Post("/jobs", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
             return;
@@ -3785,14 +3917,28 @@ int main(int argc, char** argv) {
             if (job.job_id.empty()) {
                 job.job_id = std::to_string(now_unix_ms());
             }
-            job.wav_file = body.at("wavFile").get<std::string>();
+            job.wav_file = body.value("wavFile", std::string());
+            job.audio_session = body.value("audioSession", std::string());
             job.session_body = body.value("session", json::object());
             job.created_unix_ms = now_unix_ms();
-            // Fail fast on unreadable paths and unparseable configs so a bad
-            // job is a 400 now, not a failed record later.
-            const auto wav_path = resolve_job_wav(job_audio_dir, job.wav_file);
-            if (!std::filesystem::exists(wav_path)) {
-                throw std::invalid_argument("wavFile does not exist under the job audio directory");
+            if (job.wav_file.empty() == job.audio_session.empty()) {
+                throw std::invalid_argument("exactly one of wavFile or audioSession is required");
+            }
+            // Fail fast on unreadable sources so a bad job is a 400 now, not
+            // a failed record later.
+            if (!job.wav_file.empty()) {
+                const auto wav_path = resolve_job_wav(job_audio_dir, job.wav_file);
+                if (!std::filesystem::exists(wav_path)) {
+                    throw std::invalid_argument("wavFile does not exist under the job audio directory");
+                }
+            }
+            else {
+                if (audio_archive_dir.empty()) {
+                    throw std::invalid_argument("audioSession replay needs PAMGUARD_AUDIO_ARCHIVE_DIR");
+                }
+                if (!std::filesystem::exists(audio_archive_index_path(audio_archive_dir, job.audio_session))) {
+                    throw std::invalid_argument("no archived audio for that session");
+                }
             }
             {
                 std::lock_guard lock(job_state.mutex);
@@ -4047,6 +4193,11 @@ int main(int argc, char** argv) {
                 append_result_archive(result_archive_dir, session_id, archive_body);
                 append_detection_event_archive(result_archive_dir, session_id, archive_body);
             }
+            if (!audio_archive_dir.empty()) {
+                std::lock_guard audio_lock(audio_archive_mutex);
+                append_audio_archive(audio_archive_dir, session_id, req.body, start_sample, frame_count, time_ms,
+                                     config.sample_rate_hz, config.channel_count);
+            }
             json_response(res, body);
         }
         catch (const std::exception& error) {
@@ -4134,7 +4285,8 @@ int main(int argc, char** argv) {
     std::vector<std::thread> job_worker_threads;
     if (!job_audio_dir.empty()) {
         for (std::size_t worker = 0; worker < job_workers; ++worker) {
-            job_worker_threads.emplace_back([&job_state, &job_audio_dir, &result_archive_dir, &archive_mutex] {
+            job_worker_threads.emplace_back([&job_state, &job_audio_dir, &result_archive_dir, &archive_mutex,
+                                             &audio_archive_dir, &audio_archive_mutex] {
                 for (;;) {
                     std::string job_id;
                     {
@@ -4160,11 +4312,29 @@ int main(int argc, char** argv) {
                         snapshot = job_state.jobs[job_id];
                     }
                     try {
-                        const auto wav_path = resolve_job_wav(job_audio_dir, snapshot.wav_file);
-                        pamguard::io::WavReader reader;
-                        const auto wav = reader.read_all(wav_path);
+                        pamguard::io::WavData wav;
+                        std::vector<AudioIndexRecord> replay_index;
+                        if (!snapshot.wav_file.empty()) {
+                            const auto wav_path = resolve_job_wav(job_audio_dir, snapshot.wav_file);
+                            pamguard::io::WavReader reader;
+                            wav = reader.read_all(wav_path);
+                        }
+                        else {
+                            // Replay: decode the archived f32le back into the
+                            // same doubles the original session analysed.
+                            {
+                                std::lock_guard audio_lock(audio_archive_mutex);
+                                replay_index = read_audio_archive_index(audio_archive_dir, snapshot.audio_session);
+                            }
+                            if (replay_index.empty() || replay_index.front().channel_count == 0 ||
+                                replay_index.front().sample_rate_hz == 0) {
+                                throw std::runtime_error("archived audio index is empty or missing acquisition facts");
+                            }
+                            wav.sample_rate_hz = replay_index.front().sample_rate_hz;
+                            wav.channel_count = static_cast<std::uint16_t>(replay_index.front().channel_count);
+                        }
                         if (wav.sample_rate_hz == 0 || wav.channel_count == 0) {
-                            throw std::runtime_error("WAV file has no readable audio");
+                            throw std::runtime_error("audio source has no readable audio");
                         }
 
                         json session_body = snapshot.session_body;
@@ -4184,7 +4354,13 @@ int main(int argc, char** argv) {
                             throw std::runtime_error("session config sample rate/channel count do not match the WAV file");
                         }
 
-                        const std::uint64_t total_frames = wav.interleaved_pcm.size() / wav.channel_count;
+                        std::uint64_t total_frames = wav.interleaved_pcm.size() / wav.channel_count;
+                        if (!replay_index.empty()) {
+                            total_frames = 0;
+                            for (const auto& record : replay_index) {
+                                total_frames += record.frames;
+                            }
+                        }
                         {
                             std::lock_guard lock(job_state.mutex);
                             job_state.jobs[job_id].total_frames = total_frames;
@@ -4194,8 +4370,18 @@ int main(int argc, char** argv) {
                         const std::string archive_session_id = std::string("job-") + job_id;
                         const std::uint64_t chunk_frames = wav.sample_rate_hz; // one second
                         std::uint64_t frame_cursor = 0;
+                        std::size_t replay_cursor = 0;
+                        std::ifstream replay_data;
+                        if (!replay_index.empty()) {
+                            replay_data.open(audio_archive_data_path(audio_archive_dir, snapshot.audio_session),
+                                             std::ios::binary);
+                            if (!replay_data) {
+                                throw std::runtime_error("archived audio data file is missing");
+                            }
+                        }
                         bool cancelled = false;
-                        while (frame_cursor < total_frames) {
+                        while (replay_index.empty() ? frame_cursor < total_frames
+                                                    : replay_cursor < replay_index.size()) {
                             {
                                 std::lock_guard lock(job_state.mutex);
                                 if (job_state.jobs[job_id].cancel_requested || job_state.shutting_down) {
@@ -4203,15 +4389,43 @@ int main(int argc, char** argv) {
                                     break;
                                 }
                             }
-                            const auto frames = std::min<std::uint64_t>(chunk_frames, total_frames - frame_cursor);
                             pamguard::core::AudioChunk chunk;
-                            chunk.start_sample = frame_cursor;
-                            chunk.sample_rate_hz = wav.sample_rate_hz;
-                            chunk.channel_count = wav.channel_count;
-                            chunk.time_unix_ms = static_cast<std::int64_t>(frame_cursor * 1000ULL / wav.sample_rate_hz);
-                            const auto begin = frame_cursor * wav.channel_count;
-                            chunk.interleaved_pcm.assign(wav.interleaved_pcm.begin() + static_cast<std::ptrdiff_t>(begin),
-                                                         wav.interleaved_pcm.begin() + static_cast<std::ptrdiff_t>(begin + frames * wav.channel_count));
+                            std::uint64_t frames = 0;
+                            if (replay_index.empty()) {
+                                frames = std::min<std::uint64_t>(chunk_frames, total_frames - frame_cursor);
+                                chunk.start_sample = frame_cursor;
+                                chunk.sample_rate_hz = wav.sample_rate_hz;
+                                chunk.channel_count = wav.channel_count;
+                                chunk.time_unix_ms = static_cast<std::int64_t>(frame_cursor * 1000ULL / wav.sample_rate_hz);
+                                const auto begin = frame_cursor * wav.channel_count;
+                                chunk.interleaved_pcm.assign(
+                                    wav.interleaved_pcm.begin() + static_cast<std::ptrdiff_t>(begin),
+                                    wav.interleaved_pcm.begin() + static_cast<std::ptrdiff_t>(begin + frames * wav.channel_count));
+                            }
+                            else {
+                                // Replay preserves the ORIGINAL chunk
+                                // boundaries, start samples, and timestamps —
+                                // the same bytes through the same cuts.
+                                const auto& record = replay_index[replay_cursor];
+                                frames = record.frames;
+                                chunk.start_sample = record.start_sample;
+                                chunk.sample_rate_hz = wav.sample_rate_hz;
+                                chunk.channel_count = wav.channel_count;
+                                chunk.time_unix_ms = record.time_ms;
+                                std::vector<char> bytes(record.byte_length);
+                                replay_data.seekg(static_cast<std::streamoff>(record.byte_offset));
+                                replay_data.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+                                if (replay_data.gcount() != static_cast<std::streamsize>(bytes.size())) {
+                                    throw std::runtime_error("archived audio data file is truncated");
+                                }
+                                const auto sample_count = record.byte_length / sizeof(float);
+                                chunk.interleaved_pcm.resize(sample_count);
+                                const auto* raw = reinterpret_cast<const unsigned char*>(bytes.data());
+                                for (std::size_t i = 0; i < sample_count; ++i) {
+                                    chunk.interleaved_pcm[i] = read_float_le(raw + i * sizeof(float));
+                                }
+                                ++replay_cursor;
+                            }
                             const auto result = session.process(chunk);
 
                             if (!result_archive_dir.empty()) {
