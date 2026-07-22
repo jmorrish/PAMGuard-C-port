@@ -543,6 +543,12 @@ try {
         if ($importStatus.fft.length -ne 512 -or $importStatus.fft.hop -ne 256) {
             throw "Imported session did not round-trip the .psfx FFT settings"
         }
+        if ($importStatus.click.basicClassifierTypeCount -ne 2) {
+            throw "Imported session did not round-trip the .psfx click classifier types"
+        }
+        if ($importStatus.click.trainAlgorithm -ne "mht") {
+            throw "Imported session did not round-trip the .psfx MHT click train configuration"
+        }
         $importRemoved = Invoke-RestMethod -Method Delete -Uri "$base/sessions/$($imported.sessionId)" -Headers $headers
         if (-not $importRemoved.removed) {
             throw "Imported session delete did not report removed=true"

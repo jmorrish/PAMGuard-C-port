@@ -23,6 +23,8 @@ That turns "blocked on a file" into "blocked on nothing" for the version in hand
 | `PamArray` + `Hydrophone` + `Streamer` | `array`: speed of sound ± error, hydrophones (coordinates, per-axis errors, sensitivity, streamer id), streamers (position, heading/pitch/roll) |
 | `FFTParameters` | `fft`: length, hop, window (PAMGuard's `WindowFunction` integer passes straight through — the engine accepts 0..5 natively), channels from the channel map |
 | `ClickParameters` | `click`: threshold, both filters, pre/post samples, min separation, max length, trigger bitmap, min trigger channels, channel bitmap |
+| `BasicClickIdParameters` + `ClickTypeParams` | `click.basicClassifier.types[]`: species code, discard, criterion selections, both energy bands, peak frequency search/range/width, mean frequency ranges, click length — field for field onto the engine keys `docs/155` defined |
+| `MHTParams` (its own settings unit — `MHTClickTrainAlgorithm.getSettingsReference` returns it, not a field of `ClickTrainParams`) | `click.train.mht`: kernel (nHold, pruneback, maxCoast), chi2 scalars (maxICI, penalties, exponents, newTrackN), electrical noise filter, and the seven per-variable enables — mapped from the `enable[]` array by `createChi2Vars` order (IDI, Amplitude, Bearing, Correlation, TimeDelay, Length, PeakFrequency) |
 | `WhistleToneParameters` | `whistle`: min pixels/length, max cross length, connect type, fragmentation method, shape stubs, and search bins derived from the frequency limits via the FFT length and sample rate |
 
 Whistle settings without FFT settings are reported as unmappable rather than guessed: the frequency-to-bin conversion needs the FFT length.
@@ -37,7 +39,7 @@ Reading real files was never blocked: Java deserialisation does not run construc
 
 `generate-project-import-fixture.ps1` writes `sample-project.psfx` and converts it to `sample-project-session.json`, both checked in under `tests/fixtures/project-import/`.
 
-The HTTP smoke then closes the loop end to end: it loads the converted JSON, adds the owner/tenant metadata the smoke's service enforces (a PAMGuard settings file has no notion of tenancy), POSTs it to the live engine, asserts creation succeeds and the acquisition and FFT settings **round-trip** through the session status endpoint, and deletes the session. A `.psfx` written by PAMGuard's real writer therefore drives a real engine session with no hand-editing beyond deployment metadata.
+The HTTP smoke then closes the loop end to end: it loads the converted JSON, adds the owner/tenant metadata the smoke's service enforces (a PAMGuard settings file has no notion of tenancy), POSTs it to the live engine, asserts creation succeeds and the acquisition, FFT, classifier (two types), and MHT train (`trainAlgorithm: "mht"`) settings **round-trip** through the session status endpoint, and deletes the session. A `.psfx` written by PAMGuard's real writer therefore drives a real engine session with no hand-editing beyond deployment metadata.
 
 Full CTest suite passes `72/72`.
 
@@ -45,6 +47,6 @@ Full CTest suite passes `72/72`.
 
 **Pinned to `2.02.18b`** — the local tree. A `.psfx` from a different PAMGuard build may fail to deserialise (exit 3), and that brittleness is a property of Java serialisation PAMGuard itself lives with; `docs/182`'s demonstration that the repo's old sample `.psf` fails against this very build still stands. Extending the support matrix to another version needs a file from that version — that much genuinely does require external input, but it is now a *compatibility test* away, not a *feature* away.
 
-The mapping covers the modules the engine implements. PAMGuard settings the engine has no equivalent for — displays, binary storage, database, GPS — are reported and skipped by design. Click classifier and click-train settings are not yet mapped: their engine config exists (`docs/155`, `docs/173`), and extending the converter to them is mechanical, but each mapping deserves its own verification rather than a bulk pass.
+The mapping covers the modules the engine implements. PAMGuard settings the engine has no equivalent for — displays, binary storage, database, GPS — are reported and skipped by design. The click-train **classifier chain** (`ClickTrainParams.ctClassifierParams`) is reported as skipped rather than mapped — its engine config exists (`docs/187`), and it is the one remaining mechanical extension. The sample's porpoise click type exercises the mapping with values from the real `ClickTypeParams(code, STANDARD_PORPOISE)` constructor, so the classifier fixture is PAMGuard's own preset, not hand-typed numbers.
 
 The sample `.psfx` is representative, not exhaustive: one streamer, identity channel-to-hydrophone mapping. PAMGuard's acquisition-side channel remapping is not modelled — the converter assumes the identity mapping the engine uses, and says so in a comment where it assigns channels.

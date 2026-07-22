@@ -8,7 +8,14 @@ import PamController.PSFXReadWriter;
 import PamController.PamControlledUnitSettings;
 import PamController.PamSettingsGroup;
 import Spectrogram.WindowFunction;
+import clickDetector.BasicClickIdParameters;
 import clickDetector.ClickParameters;
+import clickDetector.ClickTypeParams;
+import clickTrainDetector.ClickTrainParams;
+import clickTrainDetector.clickTrainAlgorithms.mht.MHTKernelParams;
+import clickTrainDetector.clickTrainAlgorithms.mht.MHTParams;
+import clickTrainDetector.clickTrainAlgorithms.mht.StandardMHTChi2Params;
+import clickTrainDetector.clickTrainAlgorithms.mht.electricalNoiseFilter.SimpleElectricalNoiseParams;
 import fftManager.FFTParameters;
 import whistlesAndMoans.WhistleToneParameters;
 
@@ -98,6 +105,9 @@ public final class PamguardProjectConverter {
         FFTParameters fft = null;
         ClickParameters click = null;
         WhistleToneParameters whistle = null;
+        BasicClickIdParameters basicClassifier = null;
+        ClickTrainParams clickTrain = null;
+        MHTParams mht = null;
 
         for (PamControlledUnitSettings unit : group.getUnitSettings()) {
             Object settings;
@@ -123,6 +133,15 @@ public final class PamguardProjectConverter {
             }
             else if (settings instanceof WhistleToneParameters && whistle == null) {
                 whistle = (WhistleToneParameters) settings;
+            }
+            else if (settings instanceof BasicClickIdParameters && basicClassifier == null) {
+                basicClassifier = (BasicClickIdParameters) settings;
+            }
+            else if (settings instanceof ClickTrainParams && clickTrain == null) {
+                clickTrain = (ClickTrainParams) settings;
+            }
+            else if (settings instanceof MHTParams && mht == null) {
+                mht = (MHTParams) settings;
             }
             else {
                 System.out.printf("skipped: %s / %s (%s)%n", unit.getUnitType(), unit.getUnitName(),
@@ -212,7 +231,72 @@ public final class PamguardProjectConverter {
             json.append("    \"preSample\": ").append(click.preSample).append(",\n");
             json.append("    \"postSample\": ").append(click.postSample).append(",\n");
             json.append("    \"minSep\": ").append(click.minSep).append(",\n");
-            json.append("    \"maxLength\": ").append(click.maxLength).append("\n  }");
+            json.append("    \"maxLength\": ").append(click.maxLength);
+            if (basicClassifier != null && basicClassifier.clickTypeParams != null
+                    && !basicClassifier.clickTypeParams.isEmpty()) {
+                json.append(",\n    \"basicClassifier\": {\n      \"enabled\": true,\n      \"types\": [");
+                for (int i = 0; i < basicClassifier.clickTypeParams.size(); i++) {
+                    ClickTypeParams type = basicClassifier.clickTypeParams.get(i);
+                    if (i > 0) {
+                        json.append(",");
+                    }
+                    json.append("\n        { \"speciesCode\": ").append(type.getSpeciesCode());
+                    json.append(", \"discard\": ").append(type.getDiscard());
+                    json.append(", \"whichSelections\": ").append(type.whichSelections);
+                    appendRange(json, "band1FreqHz", type.band1Freq);
+                    appendRange(json, "band2FreqHz", type.band2Freq);
+                    appendRange(json, "band1EnergyDb", type.band1Energy);
+                    appendRange(json, "band2EnergyDb", type.band2Energy);
+                    json.append(", \"bandEnergyDifferenceDb\": ").append(format(type.bandEnergyDifference));
+                    appendRange(json, "peakFrequencySearchHz", type.peakFrequencySearch);
+                    appendRange(json, "peakFrequencyRangeHz", type.peakFrequencyRange);
+                    appendRange(json, "peakWidthHz", type.peakWidth);
+                    json.append(", \"widthEnergyFraction\": ").append(format(type.widthEnergyFraction));
+                    appendRange(json, "meanSumRangeHz", type.meanSumRange);
+                    appendRange(json, "meanSelectionRangeHz", type.meanSelRange);
+                    appendRange(json, "clickLengthMs", type.clickLength);
+                    json.append(", \"lengthEnergyFraction\": ").append(format(type.lengthEnergyFraction));
+                    json.append(" }");
+                }
+                json.append("\n      ]\n    }");
+            }
+            if (mht != null && mht.chi2Params instanceof StandardMHTChi2Params && mht.mhtKernal != null) {
+                StandardMHTChi2Params chi2 = (StandardMHTChi2Params) mht.chi2Params;
+                MHTKernelParams kernel = mht.mhtKernal;
+                json.append(",\n    \"train\": {\n      \"enabled\": true,\n      \"algorithm\": \"mht\",\n      \"mht\": {");
+                // StandardMHTChi2.createChi2Vars order: IDI, Amplitude,
+                // Bearing, Correlation, TimeDelay, Length, PeakFrequency —
+                // the enable array is parallel to it.
+                boolean[] enable = chi2.enable;
+                json.append("\n        \"enableIdi\": ").append(enableAt(enable, 0)).append(",");
+                json.append("\n        \"enableAmplitude\": ").append(enableAt(enable, 1)).append(",");
+                json.append("\n        \"enableBearing\": ").append(enableAt(enable, 2)).append(",");
+                json.append("\n        \"enableCorrelation\": ").append(enableAt(enable, 3)).append(",");
+                json.append("\n        \"enableTimeDelay\": ").append(enableAt(enable, 4)).append(",");
+                json.append("\n        \"enableLength\": ").append(enableAt(enable, 5)).append(",");
+                json.append("\n        \"enablePeakFrequency\": ").append(enableAt(enable, 6)).append(",");
+                json.append("\n        \"maxIci\": ").append(format(chi2.maxICI)).append(",");
+                json.append("\n        \"coastPenalty\": ").append(format(chi2.coastPenalty)).append(",");
+                json.append("\n        \"newTrackPenalty\": ").append(format(chi2.newTrackPenalty)).append(",");
+                json.append("\n        \"newTrackN\": ").append(chi2.newTrackN).append(",");
+                json.append("\n        \"lowIciExponent\": ").append(format(chi2.lowICIExponent)).append(",");
+                json.append("\n        \"longTrackExponent\": ").append(format(chi2.longTrackExponent)).append(",");
+                json.append("\n        \"useElectricalNoiseFilter\": ").append(chi2.useElectricNoiseFilter).append(",");
+                SimpleElectricalNoiseParams noise = chi2.electricalNoiseParams == null
+                        ? new SimpleElectricalNoiseParams() : chi2.electricalNoiseParams;
+                json.append("\n        \"electricalNoiseMinChi2\": ").append(format(noise.minChi2)).append(",");
+                json.append("\n        \"electricalNoiseNDataUnits\": ").append(noise.nDataUnits).append(",");
+                json.append("\n        \"nHold\": ").append(kernel.nHold).append(",");
+                json.append("\n        \"nPruneback\": ").append(kernel.nPruneback).append(",");
+                json.append("\n        \"nPrunebackStart\": ").append(kernel.nPruneBackStart).append(",");
+                json.append("\n        \"maxCoast\": ").append(kernel.maxCoast);
+                json.append("\n      }\n    }");
+                if (clickTrain != null && clickTrain.ctClassifierParams != null && clickTrain.ctClassifierParams.length > 0) {
+                    System.out.printf("skipped: click train classifier chain (%d classifier(s)) not yet mapped%n",
+                            clickTrain.ctClassifierParams.length);
+                }
+            }
+            json.append("\n  }");
         }
 
         if (whistle != null) {
@@ -309,6 +393,50 @@ public final class PamguardProjectConverter {
         click.minTriggerChannels = 2;
         setPrivateInt(click, "channelBitmap", 0xF);
 
+        BasicClickIdParameters basicClassifier = new BasicClickIdParameters();
+        ClickTypeParams porpoise = new ClickTypeParams(2, ClickTypeParams.STANDARD_PORPOISE);
+        basicClassifier.clickTypeParams.add(porpoise);
+        ClickTypeParams custom = new ClickTypeParams(7);
+        custom.whichSelections = ClickTypeParams.ENABLE_ENERGYBAND | ClickTypeParams.ENABLE_CLICKLENGTH;
+        custom.band1Freq = new double[]{20000.0, 40000.0};
+        custom.band2Freq = new double[]{5000.0, 15000.0};
+        custom.band1Energy = new double[]{6.0, 96.0};
+        custom.band2Energy = new double[]{0.0, 90.0};
+        custom.bandEnergyDifference = 6.0;
+        custom.clickLength = new double[]{0.03, 0.6};
+        custom.lengthEnergyFraction = 0.95;
+        custom.setDiscard(true);
+        basicClassifier.clickTypeParams.add(custom);
+
+        // MHTParams' field initialisers construct the real chi2 var list, whose
+        // constructors are safe headlessly (the MHT fixture exporters already
+        // construct them), but the enclosing defaults come from field
+        // initialisers rather than a constructor body, so plain construction
+        // works; the sample then overrides the values the converter maps.
+        MHTParams mht = newWithoutConstructor(MHTParams.class);
+        MHTKernelParams kernel = new MHTKernelParams();
+        kernel.nHold = 25;
+        kernel.nPruneback = 5;
+        kernel.nPruneBackStart = 7;
+        kernel.maxCoast = 4;
+        mht.mhtKernal = kernel;
+        StandardMHTChi2Params chi2 = newWithoutConstructor(StandardMHTChi2Params.class);
+        chi2.maxICI = 0.5;
+        chi2.coastPenalty = 12.0;
+        chi2.newTrackPenalty = 60.0;
+        chi2.newTrackN = 4;
+        chi2.lowICIExponent = 0.15;
+        chi2.longTrackExponent = 0.12;
+        chi2.useElectricNoiseFilter = true;
+        SimpleElectricalNoiseParams noise = new SimpleElectricalNoiseParams();
+        noise.minChi2 = 0.00002;
+        noise.nDataUnits = 25;
+        chi2.electricalNoiseParams = noise;
+        // createChi2Vars order: IDI, Amplitude, Bearing, Correlation,
+        // TimeDelay, Length, PeakFrequency.
+        chi2.enable = new boolean[]{true, true, false, false, false, true, true};
+        mht.chi2Params = chi2;
+
         WhistleToneParameters whistle = new WhistleToneParameters();
         whistle.minPixels = 25;
         whistle.minLength = 12;
@@ -328,6 +456,10 @@ public final class PamguardProjectConverter {
                 ClickParameters.class.getName(), 1, click));
         group.addSettings(new PamControlledUnitSettings("WhistlesMoans", "Whistle and Moan Detector",
                 WhistleToneParameters.class.getName(), 1, whistle));
+        group.addSettings(new PamControlledUnitSettings("Click Detector", "Basic Click Identifier",
+                BasicClickIdParameters.class.getName(), 1, basicClassifier));
+        group.addSettings(new PamControlledUnitSettings("MHT Click Train Detector", "Click Train Detector",
+                MHTParams.class.getName(), 1, mht));
         // A module the engine has no equivalent for, so the converter's
         // skip reporting always has something real to report.
         group.addSettings(new PamControlledUnitSettings("Spectrogram", "User Display",
@@ -397,6 +529,18 @@ public final class PamguardProjectConverter {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    private static void appendRange(StringBuilder json, String key, double[] range) {
+        if (range == null || range.length < 2) {
+            return;
+        }
+        json.append(", \"").append(key).append("\": [").append(format(range[0])).append(", ")
+                .append(format(range[1])).append("]");
+    }
+
+    private static boolean enableAt(boolean[] enable, int index) {
+        return enable != null && index < enable.length && enable[index];
     }
 
     private static String bitmapChannels(int bitmap) {

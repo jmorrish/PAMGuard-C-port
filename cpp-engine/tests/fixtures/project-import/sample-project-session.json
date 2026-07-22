@@ -34,7 +34,40 @@
     "preSample": 30,
     "postSample": 50,
     "minSep": 80,
-    "maxLength": 512
+    "maxLength": 512,
+    "basicClassifier": {
+      "enabled": true,
+      "types": [
+        { "speciesCode": 2, "discard": false, "whichSelections": 13, "band1FreqHz": [100000.0, 150000.0], "band2FreqHz": [40000.0, 90000.0], "band1EnergyDb": [0.0, 500.0], "band2EnergyDb": [0.0, 500.0], "bandEnergyDifferenceDb": 5.0, "peakFrequencySearchHz": [20000.0, 250000.0], "peakFrequencyRangeHz": [100000.0, 150000.0], "peakWidthHz": [0.0, 0.0], "widthEnergyFraction": 0.0, "meanSumRangeHz": [20000.0, 250000.0], "meanSelectionRangeHz": [100000.0, 150000.0], "clickLengthMs": [0.0, 0.0], "lengthEnergyFraction": 0.0 },
+        { "speciesCode": 7, "discard": true, "whichSelections": 17, "band1FreqHz": [20000.0, 40000.0], "band2FreqHz": [5000.0, 15000.0], "band1EnergyDb": [6.0, 96.0], "band2EnergyDb": [0.0, 90.0], "bandEnergyDifferenceDb": 6.0, "peakFrequencySearchHz": [0.0, 0.0], "peakFrequencyRangeHz": [0.0, 0.0], "peakWidthHz": [0.0, 0.0], "widthEnergyFraction": 0.0, "meanSumRangeHz": [0.0, 0.0], "meanSelectionRangeHz": [0.0, 0.0], "clickLengthMs": [0.030000000000000000, 0.60000000000000000], "lengthEnergyFraction": 0.95000000000000000 }
+      ]
+    },
+    "train": {
+      "enabled": true,
+      "algorithm": "mht",
+      "mht": {
+        "enableIdi": true,
+        "enableAmplitude": true,
+        "enableBearing": false,
+        "enableCorrelation": false,
+        "enableTimeDelay": false,
+        "enableLength": true,
+        "enablePeakFrequency": true,
+        "maxIci": 0.50000000000000000,
+        "coastPenalty": 12.0,
+        "newTrackPenalty": 60.0,
+        "newTrackN": 4,
+        "lowIciExponent": 0.15000000000000000,
+        "longTrackExponent": 0.12000000000000000,
+        "useElectricalNoiseFilter": true,
+        "electricalNoiseMinChi2": 2.0000000000000000e-05,
+        "electricalNoiseNDataUnits": 25,
+        "nHold": 25,
+        "nPruneback": 5,
+        "nPrunebackStart": 7,
+        "maxCoast": 4
+      }
+    }
   },
   "whistle": {
     "enabled": true,
