@@ -30,7 +30,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 20;
+constexpr int kResultSchemaVersion = 21;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -1810,6 +1810,18 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         config.array.wobble_radians < 0.0 || !std::isfinite(config.array.wobble_radians)) {
         throw std::invalid_argument("array.speedOfSoundErrorMps, timingErrorSeconds, spacingErrorM, and wobbleRadians must be non-negative and finite");
     }
+    if (array.contains("orientation")) {
+        const auto& orientation = array.at("orientation");
+        config.array.orientation.declared = true;
+        config.array.orientation.heading_degrees = orientation.value("headingDegrees", 0.0);
+        config.array.orientation.pitch_degrees = orientation.value("pitchDegrees", 0.0);
+        config.array.orientation.roll_degrees = orientation.value("rollDegrees", 0.0);
+        if (!std::isfinite(config.array.orientation.heading_degrees) ||
+            !std::isfinite(config.array.orientation.pitch_degrees) ||
+            !std::isfinite(config.array.orientation.roll_degrees)) {
+            throw std::invalid_argument("array.orientation headingDegrees, pitchDegrees, and rollDegrees must be finite");
+        }
+    }
     if (array.contains("streamers")) {
         for (const auto& streamer : array.at("streamers")) {
             pamguard::core::ArrayStreamer item;
@@ -2110,6 +2122,9 @@ json grid_bearing_to_json(const pamguard::core::GridBearingResult& grid) {
     if (!grid.world_vectors.empty()) {
         item["worldVectors"] = world_vectors_to_json(grid.world_vectors);
     }
+    if (!grid.earth_world_vectors.empty()) {
+        item["earthWorldVectors"] = world_vectors_to_json(grid.earth_world_vectors);
+    }
     if (grid.has_phi) {
         item["phiRadians"] = grid.phi_radians;
         item["phiDegrees"] = grid.phi_radians * kRadiansToDegrees;
@@ -2217,6 +2232,10 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 if (!delay.pair_bearing_world_vectors.empty()) {
                     delay_item["pairBearingWorldVectors"] = world_vectors_to_json(delay.pair_bearing_world_vectors);
                 }
+                if (!delay.pair_bearing_earth_world_vectors.empty()) {
+                    delay_item["pairBearingEarthWorldVectors"] =
+                        world_vectors_to_json(delay.pair_bearing_earth_world_vectors);
+                }
             }
             loc["delays"].push_back(std::move(delay_item));
         }
@@ -2236,6 +2255,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             }
             if (!localisation.lsq_bearing.world_vectors.empty()) {
                 lsq_item["worldVectors"] = world_vectors_to_json(localisation.lsq_bearing.world_vectors);
+            }
+            if (!localisation.lsq_bearing.earth_world_vectors.empty()) {
+                lsq_item["earthWorldVectors"] = world_vectors_to_json(localisation.lsq_bearing.earth_world_vectors);
             }
             loc["lsqBearing"] = std::move(lsq_item);
         }
@@ -2576,6 +2598,10 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
                 if (!delay.pair_bearing_world_vectors.empty()) {
                     delay_item["pairBearingWorldVectors"] = world_vectors_to_json(delay.pair_bearing_world_vectors);
                 }
+                if (!delay.pair_bearing_earth_world_vectors.empty()) {
+                    delay_item["pairBearingEarthWorldVectors"] =
+                        world_vectors_to_json(delay.pair_bearing_earth_world_vectors);
+                }
             }
             item["delays"].push_back(std::move(delay_item));
         }
@@ -2607,6 +2633,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             }
             if (!whistle_delay.lsq_bearing.world_vectors.empty()) {
                 lsq_item["worldVectors"] = world_vectors_to_json(whistle_delay.lsq_bearing.world_vectors);
+            }
+            if (!whistle_delay.lsq_bearing.earth_world_vectors.empty()) {
+                lsq_item["earthWorldVectors"] = world_vectors_to_json(whistle_delay.lsq_bearing.earth_world_vectors);
             }
             item["lsqBearing"] = std::move(lsq_item);
         }

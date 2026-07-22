@@ -1,6 +1,7 @@
 package org.pamguard.port.reference;
 
 import Jama.Matrix;
+import pamMaths.PamQuaternion;
 import pamMaths.PamVector;
 
 import java.io.File;
@@ -32,6 +33,14 @@ public final class WorldVectorFixtureExporter {
 
     private static final double[][] LINEAR_ARRAY_GEOMETRY = {{0, 1, 0}, {1, 0, 0}, {0, 0, 1}};
 
+    /**
+     * getRealWorldVectors rotates by GpsData.getQuaternion(), which is
+     * new PamQuaternion(toRadians(heading), toRadians(pitch), toRadians(roll)).
+     * Null means no origin position, where the reference returns the vectors
+     * unrotated.
+     */
+    private static double[] arrayOrientationDeg = null;
+
     private static final class VectorCase {
         String name;
         double[][] positions;
@@ -55,10 +64,11 @@ public final class WorldVectorFixtureExporter {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 1) {
-            System.err.println("Usage: WorldVectorFixtureExporter <output.csv>");
+        if (args.length < 1 || args.length > 2) {
+            System.err.println("Usage: WorldVectorFixtureExporter <output.csv> [array|earth]");
             System.exit(2);
         }
+        boolean earthFrame = args.length == 2 && args[1].equals("earth");
 
         Locale.setDefault(Locale.ROOT);
         File output = new File(args[0]);
@@ -67,6 +77,9 @@ public final class WorldVectorFixtureExporter {
         try (PrintWriter writer = new PrintWriter(output)) {
             writer.println("case,arrayType,nAxes,nVectors,cone,v0x,v0y,v0z,v1x,v1y,v1z");
             for (VectorCase vectorCase : caseCatalogue()) {
+                // Each case gets a distinct orientation in earth mode so a
+                // dropped rotation cannot pass by coincidence.
+                arrayOrientationDeg = earthFrame ? orientationFor(vectorCase.name) : null;
                 PamVector[] positions = new PamVector[vectorCase.positions.length];
                 for (int i = 0; i < positions.length; i++) {
                     positions[i] = new PamVector(vectorCase.positions[i]);
@@ -75,6 +88,7 @@ public final class WorldVectorFixtureExporter {
                 PamVector[] axes = vectorCase.dropAxes ? new PamVector[0] : arrayDirections(positions);
 
                 PamVector[] vectors = getWorldVectors(arrayType, axes, vectorCase.angles);
+                vectors = getRealWorldVectors(arrayType, vectors);
                 boolean cone = vectors.length > 0 && vectors[0].isCone();
 
                 double[] flat = new double[6];
@@ -180,6 +194,30 @@ public final class WorldVectorFixtureExporter {
         vecs[1] = new PamVector(rotatedPointer.getColumnPackedCopy());
         vecs[1].setCone(true);
         return vecs;
+    }
+
+    /** AbstractLocalisation.getRealWorldVectors. */
+    private static PamVector[] getRealWorldVectors(int arrayType, PamVector[] worldVectors) {
+        if (arrayOrientationDeg == null) {
+            return worldVectors;
+        }
+        PamQuaternion direction = new PamQuaternion(Math.toRadians(arrayOrientationDeg[0]),
+                Math.toRadians(arrayOrientationDeg[1]), Math.toRadians(arrayOrientationDeg[2]));
+        for (int i = 0; i < worldVectors.length; i++) {
+            boolean cone = worldVectors[i].isCone();
+            worldVectors[i] = PamVector.rotateVector(worldVectors[i], direction);
+            worldVectors[i].setCone(cone);
+            if (arrayType == ARRAY_TYPE_LINE) {
+                worldVectors[i].setCone(true);
+            }
+        }
+        return worldVectors;
+    }
+
+    /** A distinct orientation per case, keyed by name so both sides agree. */
+    private static double[] orientationFor(String name) {
+        int hash = Math.abs(name.hashCode());
+        return new double[]{(hash % 71) * 5.0 - 175.0, (hash % 23) * 3.0 - 33.0, (hash % 17) * 4.0 - 32.0};
     }
 
     private static int arrayShape(PamVector[] positions) throws Exception {

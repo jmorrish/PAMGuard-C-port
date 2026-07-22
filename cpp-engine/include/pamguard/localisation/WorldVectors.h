@@ -62,4 +62,27 @@ struct WorldVector {
  */
 [[nodiscard]] std::array<double, 3> planar_unit_vector(double azimuth_radians, double elevation_radians);
 
+/**
+ * Port of PAMGuard AbstractLocalisation.getRealWorldVectors: the array-frame
+ * vectors rotated into an **earth frame** by the array's orientation.
+ *
+ * The reference takes that orientation from `GpsData.getQuaternion()`, which
+ * is `new PamQuaternion(toRadians(heading), toRadians(pitch), toRadians(roll))`
+ * — the same construction streamer orientation uses (`docs/193`), so the same
+ * clockwise-heading and pitch-roll-heading conventions apply.
+ *
+ * Faithful detail: where the reference finds no origin position it returns the
+ * **unrotated** vectors, so an undeclared orientation leaves them in the array
+ * frame rather than failing. Pass `orientation_declared = false` for that.
+ *
+ * A line sub-array's vectors are forced to cones here, as the reference does
+ * after rotating.
+ */
+[[nodiscard]] std::vector<WorldVector> real_world_vectors(ArrayShapeType shape,
+                                                          const std::vector<WorldVector>& array_frame_vectors,
+                                                          bool orientation_declared,
+                                                          double heading_radians,
+                                                          double pitch_radians,
+                                                          double roll_radians);
+
 } // namespace pamguard::localisation

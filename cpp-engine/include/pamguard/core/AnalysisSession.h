@@ -38,6 +38,8 @@ struct LsqBearingResult {
      * vector; the ambiguity a plane sub-array carries is not expressed here.
      */
     std::vector<localisation::WorldVector> world_vectors;
+    /** The same vectors rotated into the earth frame; empty when the array declares no orientation. */
+    std::vector<localisation::WorldVector> earth_world_vectors;
 };
 
 /**
@@ -62,6 +64,8 @@ struct GridBearingResult {
      * left/right ambiguity that shape cannot resolve.
      */
     std::vector<localisation::WorldVector> world_vectors;
+    /** The same vectors rotated into the earth frame; empty when the array declares no orientation. */
+    std::vector<localisation::WorldVector> earth_world_vectors;
 };
 
 struct ClickLocalisationResult {

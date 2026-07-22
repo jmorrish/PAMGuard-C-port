@@ -4,6 +4,7 @@
 #include <numbers>
 
 #include "pamguard/localisation/JamaMatrix.h"
+#include "pamguard/localisation/StreamerOrientation.h"
 
 namespace pamguard::localisation {
 
@@ -71,6 +72,25 @@ Matrix3 coordinate_matrix(const std::vector<Vec3>& array_axes, bool flip_z) {
 }
 
 } // namespace
+
+std::vector<WorldVector> real_world_vectors(ArrayShapeType shape,
+                                            const std::vector<WorldVector>& array_frame_vectors,
+                                            bool orientation_declared,
+                                            double heading_radians,
+                                            double pitch_radians,
+                                            double roll_radians) {
+    std::vector<WorldVector> out = array_frame_vectors;
+    for (auto& vector : out) {
+        if (orientation_declared) {
+            vector.direction = rotate_by_streamer_orientation(vector.direction, heading_radians, pitch_radians,
+                                                              roll_radians);
+        }
+        if (shape == ArrayShapeType::Line) {
+            vector.cone = true;
+        }
+    }
+    return out;
+}
 
 std::array<double, 3> planar_unit_vector(double azimuth_radians, double elevation_radians) {
     return from_head_and_slant(kPi / 2.0 - azimuth_radians, elevation_radians);

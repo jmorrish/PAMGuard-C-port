@@ -142,6 +142,25 @@ std::vector<double> max_delay_samples_from_geometry(const std::vector<ClickPairG
     return max_delays;
 }
 
+/**
+ * AbstractLocalisation.getRealWorldVectors over the session's declared array
+ * orientation. With none declared the reference returns the array-frame
+ * vectors unrotated; the engine reports nothing instead, so a consumer cannot
+ * mistake array-frame numbers for earth-frame ones.
+ */
+std::vector<localisation::WorldVector> earth_frame_vectors(
+    const AnalysisConfig& config, localisation::ArrayShapeType shape,
+    const std::vector<localisation::WorldVector>& array_frame_vectors) {
+    if (!config.array.orientation.declared || array_frame_vectors.empty()) {
+        return {};
+    }
+    constexpr double kDegreesToRadians = std::numbers::pi / 180.0;
+    return localisation::real_world_vectors(shape, array_frame_vectors, true,
+                                            config.array.orientation.heading_degrees * kDegreesToRadians,
+                                            config.array.orientation.pitch_degrees * kDegreesToRadians,
+                                            config.array.orientation.roll_degrees * kDegreesToRadians);
+}
+
 void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, const std::vector<ClickPairGeometry>& geometry, const AnalysisConfig& config) {
     if (delays.size() != geometry.size()) {
         return;
@@ -192,6 +211,8 @@ void attach_pair_geometry(std::vector<localisation::ChannelPairDelay>& delays, c
                 // that axis — giving the left/right pair explicitly.
                 delays[i].pair_bearing_world_vectors = localisation::world_vectors(
                     localisation::ArrayShapeType::Line, pair_axes, {pair_bearing->angle_radians});
+                delays[i].pair_bearing_earth_world_vectors = earth_frame_vectors(
+                    config, localisation::ArrayShapeType::Line, delays[i].pair_bearing_world_vectors);
             }
         }
     }
@@ -245,6 +266,8 @@ void attach_lsq_bearing(ClickLocalisationResult& localisation, const std::vector
         // angles are already in the array's xyz frame.
         localisation.lsq_bearing.world_vectors = {localisation::WorldVector{
             localisation::planar_unit_vector(lsq->azimuth_radians, lsq->elevation_radians), false}};
+        localisation.lsq_bearing.earth_world_vectors = earth_frame_vectors(
+            config, localisation.array_shape, localisation.lsq_bearing.world_vectors);
     }
 }
 
@@ -313,6 +336,7 @@ GridBearingResult grid_bearing_for_channels(const AnalysisConfig& config,
     }
     result.world_vectors = localisation::world_vectors(
         localiser.array_type(), localisation::array_directions(positions, streamer_ids), angles);
+    result.earth_world_vectors = earth_frame_vectors(config, localiser.array_type(), result.world_vectors);
     return result;
 }
 
@@ -881,6 +905,8 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
                         delay_result.lsq_bearing.used_pairs = lsq_pairs.size();
                         delay_result.lsq_bearing.world_vectors = {localisation::WorldVector{
                             localisation::planar_unit_vector(lsq->azimuth_radians, lsq->elevation_radians), false}};
+                        delay_result.lsq_bearing.earth_world_vectors = earth_frame_vectors(
+                            config_, delay_result.array_shape, delay_result.lsq_bearing.world_vectors);
                         delay_result.bearing_valid = true;
                         delay_result.bearing_radians = lsq->azimuth_radians;
                         delay_result.bearing_error_radians = lsq->azimuth_error_radians;

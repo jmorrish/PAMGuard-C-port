@@ -583,6 +583,11 @@ add_test(
 )
 
 add_test(
+    NAME earth_vector_parity
+    COMMAND world_vector_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/earth-vector.csv earth
+)
+
+add_test(
     NAME ml_grid_bearing_parity
     COMMAND ml_grid_bearing_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/ml-grid-bearing.csv
 )

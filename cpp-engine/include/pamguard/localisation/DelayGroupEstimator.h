@@ -26,6 +26,8 @@ struct ChannelPairDelay {
      * left/right ambiguity the pair cannot resolve.
      */
     std::vector<WorldVector> pair_bearing_world_vectors;
+    /** The same vectors rotated into the earth frame; empty when the array declares no orientation. */
+    std::vector<WorldVector> pair_bearing_earth_world_vectors;
     TimeDelayData delay;
 };
 

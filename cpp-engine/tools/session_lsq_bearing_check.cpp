@@ -209,6 +209,68 @@ int main() {
                 return 1;
             }
 
+            // No declared array orientation means no earth-frame vectors: the
+            // engine reports nothing rather than passing array-frame numbers
+            // off as earth-frame ones.
+            if (!grid.earth_world_vectors.empty()) {
+                std::cerr << "An array with no declared orientation should report no earth vectors\n";
+                return 1;
+            }
+
+            // With one declared, every localiser's vectors gain an earth-frame
+            // counterpart of the same length, still unit length.
+            auto oriented = base_config(4);
+            add_tetrahedron_hydrophones(oriented);
+            for (auto& hydrophone : oriented.array.hydrophones) {
+                hydrophone.x_error_m = 0.05;
+                hydrophone.y_error_m = 0.05;
+                hydrophone.z_error_m = 0.05;
+            }
+            oriented.array.orientation.declared = true;
+            oriented.array.orientation.heading_degrees = 42.0;
+            oriented.array.orientation.pitch_degrees = -7.0;
+            oriented.array.orientation.roll_degrees = 11.0;
+            pamguard::core::AnalysisSession oriented_session(oriented);
+            const auto oriented_result = oriented_session.process(synthetic_chunk(4));
+            if (oriented_result.click_localisations.empty()) {
+                std::cerr << "Oriented session produced no localisations\n";
+                return 1;
+            }
+            const auto& oriented_localisation = oriented_result.click_localisations.front();
+            if (oriented_localisation.grid_bearing.earth_world_vectors.size() !=
+                oriented_localisation.grid_bearing.world_vectors.size()) {
+                std::cerr << "Earth vectors should match the array-frame vector count\n";
+                return 1;
+            }
+            if (oriented_localisation.grid_bearing.earth_world_vectors.empty()) {
+                std::cerr << "A declared orientation should produce earth vectors\n";
+                return 1;
+            }
+            {
+                const auto& earth = oriented_localisation.grid_bearing.earth_world_vectors.front().direction;
+                const auto& array_frame = oriented_localisation.grid_bearing.world_vectors.front().direction;
+                const double length = std::sqrt(earth[0] * earth[0] + earth[1] * earth[1] + earth[2] * earth[2]);
+                if (std::abs(length - 1.0) > 1e-9) {
+                    std::cerr << "Earth vector should stay a unit vector, length was " << length << "\n";
+                    return 1;
+                }
+                // A rotation this large must actually move the vector, or the
+                // orientation is being dropped somewhere in the wiring.
+                const double moved = std::abs(earth[0] - array_frame[0]) + std::abs(earth[1] - array_frame[1]) +
+                                     std::abs(earth[2] - array_frame[2]);
+                if (moved < 1e-6) {
+                    std::cerr << "A 42-degree heading should rotate the vector away from the array frame\n";
+                    return 1;
+                }
+            }
+            if (!oriented_localisation.delays.empty() &&
+                oriented_localisation.delays.front().pair_bearing_valid &&
+                oriented_localisation.delays.front().pair_bearing_earth_world_vectors.size() !=
+                    oriented_localisation.delays.front().pair_bearing_world_vectors.size()) {
+                std::cerr << "Pair bearing earth vectors should match the array-frame vector count\n";
+                return 1;
+            }
+
             // A two-channel line sub-array selects the pair localiser, so no
             // grid bearing should appear at all.
             auto line_config = base_config(2);

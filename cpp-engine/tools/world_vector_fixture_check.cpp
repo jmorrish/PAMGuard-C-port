@@ -2,6 +2,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <cstdint>
 #include <map>
 #include <numbers>
 #include <sstream>
@@ -55,6 +56,30 @@ std::map<std::string, VectorCase> case_catalogue() {
     };
 }
 
+/**
+ * Java's String.hashCode, so the C++ check derives each case's orientation the
+ * same way the exporter does rather than repeating a table of angles that
+ * could drift out of step. Signed 32-bit overflow is the defined behaviour
+ * here, so the accumulator is unsigned and reinterpreted.
+ */
+std::int32_t java_string_hash(const std::string& text) {
+    std::uint32_t hash = 0;
+    for (const char character : text) {
+        hash = hash * 31u + static_cast<std::uint32_t>(static_cast<unsigned char>(character));
+    }
+    return static_cast<std::int32_t>(hash);
+}
+
+/** Matches WorldVectorFixtureExporter.orientationFor. */
+std::array<double, 3> orientation_for(const std::string& name) {
+    const std::int32_t hash = std::abs(java_string_hash(name));
+    return {
+        static_cast<double>(hash % 71) * 5.0 - 175.0,
+        static_cast<double>(hash % 23) * 3.0 - 33.0,
+        static_cast<double>(hash % 17) * 4.0 - 32.0,
+    };
+}
+
 std::vector<std::string> split(const std::string& text, char delimiter) {
     std::vector<std::string> cells;
     std::stringstream stream(text);
@@ -105,10 +130,13 @@ std::vector<VectorRow> read_fixture(const std::string& path) {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cerr << "Usage: world_vector_fixture_check <fixture.csv>\n";
+    if (argc < 2 || argc > 3) {
+        std::cerr << "Usage: world_vector_fixture_check <fixture.csv> [array|earth]\n";
         return 2;
     }
+    // "earth" replays getRealWorldVectors: the array-frame vectors rotated by
+    // a per-case array orientation.
+    const bool earth_frame = argc == 3 && std::string(argv[2]) == "earth";
 
     try {
         const auto fixture = read_fixture(argv[1]);
@@ -139,7 +167,13 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
-            const auto vectors = pamguard::localisation::world_vectors(shape, axes, vector_case.angles);
+            auto vectors = pamguard::localisation::world_vectors(shape, axes, vector_case.angles);
+            if (earth_frame) {
+                constexpr double deg = std::numbers::pi / 180.0;
+                const auto orientation = orientation_for(row.name);
+                vectors = pamguard::localisation::real_world_vectors(
+                    shape, vectors, true, orientation[0] * deg, orientation[1] * deg, orientation[2] * deg);
+            }
             if (vectors.size() != row.vector_count) {
                 std::cerr << "Case " << row.name << " vector count mismatch: fixture=" << row.vector_count
                           << " ported=" << vectors.size() << "\n";
@@ -217,7 +251,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        std::cout << "World vector parity passed\n";
+        std::cout << (earth_frame ? "Earth vector parity passed\n" : "World vector parity passed\n");
         std::cout << "cases=" << fixture.size() << " max_abs_error=" << max_abs_error << "\n";
         return 0;
     }

@@ -115,8 +115,8 @@ try {
     if (-not $healthy) {
         throw "Service did not become healthy"
     }
-    if ($lastHealth.resultSchemaVersion -ne 20) {
-        throw "Health endpoint did not report result schema version 20"
+    if ($lastHealth.resultSchemaVersion -ne 21) {
+        throw "Health endpoint did not report result schema version 21"
     }
     if (-not $lastHealth.ingestStatusEnabled) {
         throw "Health endpoint did not report enabled ingest status projection"
@@ -316,8 +316,8 @@ try {
     }
 
     $first = Post-PcmChunk -Uri "$base/sessions/$SessionId/pcm-f32le?startSample=0" -Path $pcmPath
-    if ($first.schemaVersion -ne 20) {
-        throw "PCM response did not report result schema version 20"
+    if ($first.schemaVersion -ne 21) {
+        throw "PCM response did not report result schema version 21"
     }
     if ($first.sampleContinuity -ne "first" -or $first.nextExpectedStartSample -ne 256) {
         throw "First PCM continuity mismatch"
@@ -397,8 +397,8 @@ try {
     if ($fullArchive.count -ne 3) {
         throw "Archive query expected three records"
     }
-    if ($fullArchive.records[0].schemaVersion -ne 20) {
-        throw "Archived result record did not preserve result schema version 20"
+    if ($fullArchive.records[0].schemaVersion -ne 21) {
+        throw "Archived result record did not preserve result schema version 21"
     }
     $filteredArchive = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId/archive?startSampleFrom=256&startSampleTo=256&limit=10" -Headers $headers
     if ($filteredArchive.count -ne 1 -or $filteredArchive.records[0].startSample -ne 256) {

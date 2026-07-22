@@ -59,8 +59,23 @@ struct ArrayStreamer {
     double roll_degrees = 0.0;
 };
 
+/**
+ * The array's orientation in the world, which PAMGuard reads from GPS as
+ * `GpsData.getQuaternion()` and uses to turn array-frame directions into earth
+ * frame ones. Undeclared means directions stay in the array frame, matching
+ * the reference's behaviour when it finds no origin position.
+ */
+struct ArrayOrientation {
+    bool declared = false;
+    double heading_degrees = 0.0;
+    double pitch_degrees = 0.0;
+    double roll_degrees = 0.0;
+};
+
 struct ArrayConfiguration {
     std::string id;
+    /** World-relative orientation of the whole array; see ArrayOrientation. */
+    ArrayOrientation orientation;
     std::vector<ArrayHydrophone> hydrophones;
     std::vector<ArrayStreamer> streamers;
     double speed_of_sound_mps = 1500.0;
