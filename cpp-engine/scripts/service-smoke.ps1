@@ -384,6 +384,24 @@ try {
         throw "A chunk-declared attitude should add earth-frame vectors to pair bearings, got $(@($attitudeVectors).Count)"
     }
 
+    # Shared-session subscribers: a viewer that never posted PCM reads the
+    # same results through the feed, incrementally by sequence number.
+    $feedAll = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId/results" -Headers $headers
+    if ($feedAll.count -lt 4 -or $feedAll.latestSeq -lt 4) {
+        throw "Result feed should hold the four posted chunks, got count=$($feedAll.count) latest=$($feedAll.latestSeq)"
+    }
+    if (@($feedAll.results[0].clicks).Count -lt 1) {
+        throw "Feed results should carry the same click payloads the poster saw"
+    }
+    $feedTail = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId/results?sinceSeq=$($feedAll.latestSeq - 1)" -Headers $headers
+    if ($feedTail.count -ne 1 -or $feedTail.results[0].seq -ne $feedAll.latestSeq) {
+        throw "Incremental feed read should return exactly the newest result"
+    }
+    $feedNone = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId/results?sinceSeq=$($feedAll.latestSeq)" -Headers $headers
+    if ($feedNone.count -ne 0) {
+        throw "A caught-up subscriber should receive nothing"
+    }
+
     $status = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId" -Headers $headers
     if (-not $status.runtime -or $status.runtime.createdUnixMs -le 0 -or $status.runtime.lastReceiveUnixMs -le 0) {
         throw "Runtime wall-clock timestamps were not populated"

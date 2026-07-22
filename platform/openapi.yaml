@@ -98,6 +98,34 @@ paths:
           description: Ingest status file is not configured or not present
         "500":
           description: Ingest status file is present but cannot be read as JSON
+  /sessions/{sessionId}/results:
+    get:
+      summary: Poll a session's live result feed (shared-session subscribers)
+      description: >-
+        Returns result bodies newer than sinceSeq from a bounded per-session ring
+        (PAMGUARD_RESULT_FEED_DEPTH, default 16), each stamped with a monotonically increasing
+        seq; latestSeq tells the caller where to resume. Any number of viewers share one engine
+        session this way. A viewer further behind than the ring depth loses the gap detectably
+        (seq jump) and recovers via the archive.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sinceSeq
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Results newer than sinceSeq, with latestSeq and feedDepth
+        "404":
+          description: Unknown session
   /sessions/{sessionId}/audio/index:
     get:
       summary: List a session's archived audio chunks

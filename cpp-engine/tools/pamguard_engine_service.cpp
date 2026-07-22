@@ -1792,6 +1792,27 @@ void validate_analysis_config(const pamguard::core::AnalysisConfig& config) {
     }
 }
 
+/**
+ * Live result feed (WP7 "multiple subscribers can watch one shared session"):
+ * a per-session ring of the most recent result bodies, each stamped with a
+ * monotonically increasing sequence number. Any number of viewers poll
+ * GET /sessions/{id}/results?sinceSeq=K and receive everything newer than K —
+ * the engine session itself stays shared, one detector state per source, and
+ * viewers cost a ring lookup, not a session.
+ */
+struct SessionResultFeed {
+    std::uint64_t next_sequence = 1;
+    std::deque<std::pair<std::uint64_t, json>> recent;
+};
+
+std::size_t result_feed_depth_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_RESULT_FEED_DEPTH");
+    if (raw == nullptr) {
+        return 16;
+    }
+    return static_cast<std::size_t>(std::stoul(raw));
+}
+
 std::filesystem::path audio_archive_dir_from_environment() {
     const char* raw = std::getenv("PAMGUARD_AUDIO_ARCHIVE_DIR");
     return raw == nullptr ? std::filesystem::path() : std::filesystem::path(raw);
@@ -3206,6 +3227,9 @@ int main(int argc, char** argv) {
     const auto job_audio_dir = job_audio_dir_from_environment();
     const auto audio_archive_dir = audio_archive_dir_from_environment();
     std::mutex audio_archive_mutex;
+    const auto result_feed_depth = result_feed_depth_from_environment();
+    std::mutex result_feed_mutex;
+    std::unordered_map<std::string, SessionResultFeed> result_feeds;
     const auto job_workers = job_workers_from_environment();
     JobQueueState job_state;
 
@@ -3272,6 +3296,7 @@ int main(int argc, char** argv) {
             {"resultSchemaVersion", kResultSchemaVersion},
             {"jobQueueEnabled", !job_audio_dir.empty()},
             {"audioArchiveEnabled", !audio_archive_dir.empty()},
+            {"resultFeedDepth", result_feed_depth},
             {"jobWorkers", job_audio_dir.empty() ? 0 : job_workers},
             {"maxPcmBodyBytes", max_pcm_body_bytes},
             {"maxArchiveQueryRecords", max_archive_query_records},
@@ -3596,6 +3621,10 @@ int main(int argc, char** argv) {
         }
         const auto session_id = req.matches[1].str();
         const bool removed = manager.remove_session(session_id);
+        {
+            std::lock_guard feed_lock(result_feed_mutex);
+            result_feeds.erase(session_id);
+        }
         std::string source_id;
         std::string owner_id;
         std::string tenant_id;
@@ -3860,6 +3889,41 @@ int main(int argc, char** argv) {
         catch (const std::exception& error) {
             json_response(res, {{"error", error.what()}}, 400);
         }
+    });
+
+    server.Get(R"(/sessions/([^/]+)/results)", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        const auto session_id = req.matches[1].str();
+        {
+            std::lock_guard lock(configs_mutex);
+            if (configs.find(session_id) == configs.end()) {
+                json_response(res, {{"error", "unknown session"}}, 404);
+                return;
+            }
+        }
+        const auto since = parse_uint64_param(req, "sinceSeq", 0);
+        json results = json::array();
+        std::uint64_t latest = 0;
+        {
+            std::lock_guard lock(result_feed_mutex);
+            const auto found = result_feeds.find(session_id);
+            if (found != result_feeds.end()) {
+                latest = found->second.next_sequence - 1;
+                for (const auto& [sequence, result_body] : found->second.recent) {
+                    if (sequence > since) {
+                        results.push_back(result_body);
+                    }
+                }
+            }
+        }
+        json_response(res, {{"sessionId", session_id},
+                            {"sinceSeq", since},
+                            {"latestSeq", latest},
+                            {"feedDepth", result_feed_depth},
+                            {"count", results.size()},
+                            {"results", std::move(results)}});
     });
 
     server.Get(R"(/sessions/([^/]+)/audio/index)", [&](const httplib::Request& req, httplib::Response& res) {
@@ -4197,6 +4261,18 @@ int main(int argc, char** argv) {
                 std::lock_guard audio_lock(audio_archive_mutex);
                 append_audio_archive(audio_archive_dir, session_id, req.body, start_sample, frame_count, time_ms,
                                      config.sample_rate_hz, config.channel_count);
+            }
+            if (result_feed_depth > 0) {
+                std::lock_guard feed_lock(result_feed_mutex);
+                auto& feed = result_feeds[session_id];
+                const auto sequence = feed.next_sequence++;
+                json feed_body = body;
+                feed_body["seq"] = sequence;
+                body["seq"] = sequence;
+                feed.recent.emplace_back(sequence, std::move(feed_body));
+                while (feed.recent.size() > result_feed_depth) {
+                    feed.recent.pop_front();
+                }
             }
             json_response(res, body);
         }
