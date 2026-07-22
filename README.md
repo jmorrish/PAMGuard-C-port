@@ -44,6 +44,7 @@ Honesty section. These are recorded decisions or genuinely blocked items, not ov
    - Time-varying array **geometry** (towed-array deformation), **geographic position** (`LatLong`), and sub-chunk attitude interpolation — all need a live GPS/attitude feed. Static geometry, static + per-chunk attitude, and earth-frame vectors are done.
 4. **Scale:** throughput is now measured — 50 detector-loaded live sessions sustain **26.7× realtime** (p95 chunk latency 48 ms) on one workstation via `service-throughput-bench.ps1` ([docs/207](docs/207-throughput-benchmark.md)). Multi-hour soak, archive-enabled throughput, and concurrent-client runs remain unmeasured.
 5. Bearings are directions, not positions: there is no target-motion analysis or 3D localisation.
+6. **Security:** a structured self-review is on record with fixes applied and accepted risks stated ([docs/212](docs/212-security-review.md)) — an *independent* review before internet-facing deployment remains the right call. TLS terminates at your ingress, not in the service.
 
 ---
 

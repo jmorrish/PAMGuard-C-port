@@ -3066,17 +3066,34 @@ void json_response(httplib::Response& res, const json& body, int status = 200) {
     res.set_content(body.dump(), "application/json");
 }
 
+/**
+ * Constant-time equality so the comparison's timing does not leak how much of
+ * a guessed key matched. Length still short-circuits: leaking the key LENGTH
+ * is acceptable, leaking a prefix is not.
+ */
+bool constant_time_equals(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    unsigned char difference = 0;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        difference |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
+    }
+    return difference == 0;
+}
+
 bool request_authorized(const httplib::Request& req, const std::string& api_key) {
     if (api_key.empty()) {
         return true;
     }
-    if (req.has_header("X-API-Key") && req.get_header_value("X-API-Key") == api_key) {
+    if (req.has_header("X-API-Key") && constant_time_equals(req.get_header_value("X-API-Key"), api_key)) {
         return true;
     }
     if (req.has_header("Authorization")) {
         const std::string authorization = req.get_header_value("Authorization");
         constexpr std::string_view bearer = "Bearer ";
-        if (authorization.rfind(bearer, 0) == 0 && authorization.substr(bearer.size()) == api_key) {
+        if (authorization.rfind(bearer, 0) == 0 &&
+            constant_time_equals(authorization.substr(bearer.size()), api_key)) {
             return true;
         }
     }
@@ -3270,6 +3287,14 @@ int main(int argc, char** argv) {
     }
 
     httplib::Server server;
+    // A global body-size ceiling: without one, any JSON endpoint would accept
+    // an arbitrarily large body before parsing. The PCM cap (when configured)
+    // still applies its own, tighter check with a clear 413.
+    const std::size_t payload_ceiling = max_pcm_body_bytes > 0
+        ? max_pcm_body_bytes + (1u << 20)
+        : (static_cast<std::size_t>(256) << 20);
+    server.set_payload_max_length(payload_ceiling);
+
     if (http_threads > 0) {
         server.new_task_queue = [http_threads] {
             return new httplib::ThreadPool(http_threads);
