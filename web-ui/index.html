@@ -461,6 +461,24 @@
       opacity: 0.75;
       font-size: 0.86rem;
     }
+
+    .delay-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.84rem;
+      opacity: 0.9;
+    }
+
+    .delay-control input[type="range"] {
+      width: 130px;
+      accent-color: #7ed957;
+    }
+
+    .delay-control label {
+      margin: 0;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -873,7 +891,12 @@
           </div>
           <div class="spectrogram-panel">
             <div class="spectrogram-head">
-              <strong>Spectrogram preview</strong>
+              <strong>Spectrogram</strong>
+              <span class="delay-control">
+                <label for="displayDelay">Display delay</label>
+                <input id="displayDelay" type="range" min="0.3" max="5" step="0.1" value="1">
+                <span id="displayDelayValue">1.0 s</span>
+              </span>
               <span id="spectrogramMeta">Waiting for PCM</span>
             </div>
             <canvas id="spectrogramCanvas" width="900" height="240"></canvas>
@@ -1665,16 +1688,18 @@
       maxDb: -Infinity,
       totalSlices: 0,
       sampleRateHz: 0,
-      // Interpolated scrolling: the display cursor advances continuously at
-      // the FFT column rate (measured from arriving frames) and the
-      // waterfall is drawn at a fractional offset, so it glides between
-      // chunk arrivals instead of stepping.
+      // Interpolated scrolling: the display cursor runs BEHIND the live
+      // edge by a user-set delay and tracks it with a gentle rate
+      // correction (a delay-locked loop, ±30% max skew), so arrival jitter
+      // smaller than the delay is fully absorbed — the image never freezes
+      // at the live edge and never jump-snaps.
       columnRateHz: 0,
       displayedCols: 0,
+      delaySeconds: 1.0,
       lastRafTime: 0,
       rafId: null
     };
-    const liveWaterfallWidth = 1200; // columns of history kept offscreen
+    const liveWaterfallWidth = 2400; // columns of history kept offscreen
 
     function ensureLiveCanvas(bins) {
       if (live.canvas && live.bins === bins) {
@@ -1742,9 +1767,14 @@
           live.columnRateHz = live.sampleRateHz / hop;
         }
       }
-      if (live.displayedCols === 0) {
-        live.displayedCols = live.totalSlices;
+      if (live.displayedCols === 0 && live.columnRateHz > 0) {
+        // Start the cursor a full delay behind the live edge.
+        live.displayedCols = Math.max(0, live.totalSlices - live.delaySeconds * live.columnRateHz);
       }
+    }
+
+    function liveTargetLagCols() {
+      return Math.max(2, live.delaySeconds * live.columnRateHz);
     }
 
     function drawLiveView() {
@@ -1754,9 +1784,12 @@
       const canvas = $("spectrogramCanvas");
       const ctx = canvas.getContext("2d");
       resizeCanvas(canvas);
-      // Reserve ~0.3 s of columns at the buffer's right edge so the window
-      // ending at the display cursor always has source pixels to read.
-      const reserve = Math.max(2, Math.ceil(live.columnRateHz * 0.3));
+      // Reserve the delay's worth of columns (plus margin) at the buffer's
+      // right edge so the window ending at the display cursor always has
+      // source pixels to read.
+      const reserve = Math.min(
+        Math.ceil(liveTargetLagCols() + live.columnRateHz * 0.5) + 2,
+        Math.floor(live.canvas.width / 2));
       const windowCols = Math.max(1, live.canvas.width - reserve);
       // The window ends at the display cursor; its source x is how far the
       // cursor lags the buffer's right edge, inside the reserve.
@@ -1771,7 +1804,7 @@
                     0, 0, canvas.width, canvas.height);
       const nyquistKhz = live.sampleRateHz > 0 ? (live.sampleRateHz / 2000).toFixed(1) : "?";
       $("spectrogramMeta").textContent =
-        `Live 0–${nyquistKhz} kHz · ${live.bins} bins · ${live.totalSlices} slices · auto gain`;
+        `Live 0–${nyquistKhz} kHz · ${live.bins} bins · delay ${live.delaySeconds.toFixed(1)} s · auto gain`;
     }
 
     function liveRafLoop(now) {
@@ -1779,14 +1812,22 @@
         live.rafId = liveViewActive ? requestAnimationFrame(liveRafLoop) : null;
         return;
       }
-      const dt = live.lastRafTime > 0 ? (now - live.lastRafTime) / 1000 : 0;
+      // Cap dt so a backgrounded tab resumes with a bounded step.
+      const dt = live.lastRafTime > 0 ? Math.min((now - live.lastRafTime) / 1000, 0.5) : 0;
       live.lastRafTime = now;
-      const reserveCols = live.columnRateHz * 0.3;
-      // Advance at the true column rate, never past the newest data; after
-      // a stall-then-burst, snap to within the reserve and glide on.
-      live.displayedCols = Math.min(live.displayedCols + live.columnRateHz * dt, live.totalSlices);
-      if (live.totalSlices - live.displayedCols > reserveCols) {
-        live.displayedCols = live.totalSlices - reserveCols * 0.5;
+      if (live.columnRateHz > 0 && live.displayedCols > 0) {
+        const targetLag = liveTargetLagCols();
+        const lag = live.totalSlices - live.displayedCols;
+        // Delay-locked loop: skew the display rate by up to ±30% toward the
+        // target lag. Jitter smaller than the delay is absorbed entirely —
+        // no freezing at the live edge, no snapping.
+        const skew = Math.max(-0.3, Math.min(0.3, (lag - targetLag) / targetLag));
+        const rate = live.columnRateHz * (1 + skew);
+        live.displayedCols = Math.min(live.displayedCols + rate * dt, live.totalSlices);
+        // Only a gross disturbance (tab slept, stream outage) re-anchors.
+        if (lag > targetLag * 3 + live.columnRateHz) {
+          live.displayedCols = live.totalSlices - targetLag;
+        }
       }
       drawLiveView();
       live.rafId = requestAnimationFrame(liveRafLoop);
@@ -1921,6 +1962,12 @@
         }
       }, 150);
     }
+
+    $("displayDelay").addEventListener("input", () => {
+      live.delaySeconds = Number($("displayDelay").value);
+      $("displayDelayValue").textContent = `${live.delaySeconds.toFixed(1)} s`;
+      // The delay-locked loop converges to the new lag smoothly on its own.
+    });
 
     $("captureRefreshButton").addEventListener("click", refreshCaptureDevices);
 
