@@ -57,6 +57,9 @@ struct Options {
      * means the full spectrum at full resolution. */
     bool preview = false;
     std::size_t preview_bins = 0;
+    /** Ask the engine to include click waveforms in responses (feeds the
+     * web UI's click detector display via the result feed). */
+    bool click_waveforms = false;
 };
 
 struct Endpoint {
@@ -97,6 +100,7 @@ void usage() {
         << "  --audio-filter <ffmpeg-filter>  Optional FFmpeg -af filter for channel mapping/filtering\n"
         << "  --preview-bins <n>              Ask the engine for spectrogram preview frames per chunk\n"
         << "                                  (0 = full spectrum; feeds live viewers via the result feed)\n"
+        << "  --click-waveforms               Ask the engine to include click waveforms in responses\n"
         << "  --ffmpeg-input-option <arg>     Extra FFmpeg input option token before -i; repeat as needed\n"
         << "  --allow-existing-session        Continue if --session-config finds the session already exists\n"
         << "  --resume-from-engine            Start from the engine session runtime.expectedStartSample\n"
@@ -182,6 +186,9 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "--preview-bins") {
             options.preview = true;
             options.preview_bins = static_cast<std::size_t>(std::stoull(require_value(i, argc, argv, arg)));
+        }
+        else if (arg == "--click-waveforms") {
+            options.click_waveforms = true;
         }
         else if (arg == "--ffmpeg-input-option") {
             options.ffmpeg_input_options.push_back(require_value(i, argc, argv, arg));
@@ -553,6 +560,9 @@ int main(int argc, char** argv) {
             if (options.preview_bins > 0) {
                 endpoint.extra_query += "&spectrogramMaxBins=" + std::to_string(options.preview_bins);
             }
+        }
+        if (options.click_waveforms) {
+            endpoint.extra_query += "&includeClickWaveforms=true";
         }
         std::uint64_t start_sample = options.start_sample;
         std::size_t chunks_posted = 0;

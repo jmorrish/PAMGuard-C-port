@@ -464,6 +464,63 @@
   }
 
   .hint { font-size: 12px; color: var(--text-dim); margin: 4px 0 0; }
+
+  /* ---------------- click detector display ---------------- */
+  .click-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+    gap: 12px;
+  }
+
+  .click-scatters, .click-side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .click-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+
+  .click-panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .click-panel-head strong { font-size: 13px; }
+  .click-panel-head span { color: var(--text-dim); font-size: 12px; font-family: var(--mono); }
+
+  canvas.click-scatter {
+    width: 100%;
+    height: 170px;
+    display: block;
+    border-radius: 6px;
+    background: #0a1310;
+    cursor: crosshair;
+  }
+
+  #clickWaveCanvas {
+    width: 100%;
+    height: 150px;
+    display: block;
+    border-radius: 6px;
+    background: #0a1310;
+  }
+
+  #wignerCanvas {
+    width: 100%;
+    height: 260px;
+    display: block;
+    border-radius: 6px;
+    background: #071514;
+  }
 </style>
 </head>
 <body>
@@ -498,6 +555,7 @@
       <button>Display</button>
       <div class="menu-items">
         <button data-tab-jump="spectrogram">Spectrogram</button>
+        <button data-tab-jump="clicks">Click detector</button>
         <button data-tab-jump="detections">Detections</button>
         <button data-tab-jump="archive">Archive</button>
         <button data-tab-jump="console">Console</button>
@@ -598,6 +656,7 @@
     <main class="displays">
       <nav class="tabbar">
         <button data-tab="spectrogram" class="active">Spectrogram</button>
+        <button data-tab="clicks">Click detector</button>
         <button data-tab="detections">Detections</button>
         <button data-tab="archive">Archive</button>
         <button data-tab="console">Console</button>
@@ -615,6 +674,62 @@
             <span id="spectrogramMeta">Waiting for audio</span>
           </div>
           <canvas id="spectrogramCanvas" width="1200" height="480"></canvas>
+        </div>
+      </section>
+
+      <section class="tab-page" id="tab-clicks">
+        <div class="click-grid">
+          <div class="click-scatters">
+            <div class="click-panel">
+              <div class="click-panel-head">
+                <strong>Bearing — time</strong>
+                <span id="btMeta">needs ≥2 channels with localisation</span>
+              </div>
+              <canvas id="btCanvas" class="click-scatter" data-plot="bearing"></canvas>
+            </div>
+            <div class="click-panel">
+              <div class="click-panel-head">
+                <strong>Signal excess — time</strong>
+                <span id="ampMeta">no clicks yet</span>
+              </div>
+              <canvas id="ampCanvas" class="click-scatter" data-plot="amplitude"></canvas>
+            </div>
+            <div class="click-panel">
+              <div class="click-panel-head">
+                <strong>Inter-click interval — time</strong>
+                <span id="iciMeta">log scale, 1 ms – 3 s</span>
+              </div>
+              <canvas id="iciCanvas" class="click-scatter" data-plot="ici"></canvas>
+            </div>
+          </div>
+          <div class="click-side">
+            <div class="click-panel">
+              <div class="click-panel-head">
+                <strong>Selected click — waveform</strong>
+                <span id="clickSelMeta">click a point to select</span>
+              </div>
+              <canvas id="clickWaveCanvas"></canvas>
+            </div>
+            <div class="click-panel">
+              <div class="click-panel-head">
+                <strong>Wigner-Ville</strong>
+                <span id="wignerMeta"></span>
+              </div>
+              <canvas id="wignerCanvas"></canvas>
+            </div>
+            <div class="click-panel-head" style="margin-top: 6px;">
+              <span id="clickStoreMeta">0 clicks stored</span>
+              <span class="delay-control">
+                <label for="clickWindowSeconds">Window</label>
+                <select id="clickWindowSeconds">
+                  <option value="30">30 s</option>
+                  <option value="60" selected>60 s</option>
+                  <option value="180">3 min</option>
+                  <option value="600">10 min</option>
+                </select>
+              </span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1276,6 +1391,7 @@
       $("mMatchedTemplate").textContent = Array.isArray(result.matchedTemplateClassifications)
         ? result.matchedTemplateClassifications.filter((entry) => entry.classified).length : 0;
       $("mContinuity").textContent = result.sampleContinuity || "n/a";
+      ingestClicks(result);
       renderMonitoring(result);
       renderContourSummaries(result.whistleRegions || []);
       // In live mode the scrolling waterfall owns the canvas; otherwise a
@@ -1978,6 +2094,9 @@
         appendLiveFrames(result.spectrogram);
         ensureLiveRaf();
       }
+      // Clicks are sparse; ingest every result (deduplicated) so the click
+      // detector display misses nothing between metric repaints.
+      ingestClicks(result);
       const now = performance.now();
       if (now - lastMetricsPaint > 500) {
         lastMetricsPaint = now;
@@ -2289,6 +2408,358 @@
     document.querySelectorAll("[data-close]").forEach((button) => {
       button.addEventListener("click", () => $(button.dataset.close).close());
     });
+
+    // ================= click detector display ==============================
+    // PAMGuard's click display family: bearing-time, amplitude-time, ICI,
+    // and a waveform + Wigner-Ville panel for a selected click. Clicks are
+    // accumulated client-side from live results (deduplicated by start
+    // sample, reset when a session restarts from zero).
+
+    const clickStore = [];
+    let lastClickStartSample = -1;
+    let selectedClick = null;
+    const scatterHitMaps = {};
+
+    function clickSampleRate() {
+      return live.sampleRateHz || Number($("sampleRate").value) || 48000;
+    }
+
+    function ingestClicks(result) {
+      const clicks = Array.isArray(result.clicks) ? result.clicks : [];
+      if (!clicks.length) {
+        return;
+      }
+      const locs = Array.isArray(result.clickLocalisations) ? result.clickLocalisations : [];
+      const bearingByIndex = new Map();
+      for (const loc of locs) {
+        let bearing = null;
+        for (const delay of loc.delays || []) {
+          if (typeof delay.pairBearingDegrees === "number") {
+            bearing = delay.pairBearingDegrees;
+            break;
+          }
+        }
+        if (bearing === null && loc.lsqBearing && typeof loc.lsqBearing.bearingDegrees === "number") {
+          bearing = loc.lsqBearing.bearingDegrees;
+        }
+        bearingByIndex.set(loc.clickIndex, bearing);
+      }
+      const sr = clickSampleRate();
+      let added = false;
+      clicks.forEach((click, index) => {
+        if (typeof click.startSample !== "number") {
+          return;
+        }
+        if (click.startSample < lastClickStartSample) {
+          // Session restarted from an earlier sample: begin a fresh store.
+          clickStore.length = 0;
+          lastClickStartSample = -1;
+          selectedClick = null;
+        }
+        if (click.startSample <= lastClickStartSample) {
+          return; // duplicate delivery via feed + metrics paths
+        }
+        lastClickStartSample = click.startSample;
+        const prev = clickStore.length ? clickStore[clickStore.length - 1] : null;
+        const entry = {
+          startSample: click.startSample,
+          t: click.startSample / sr,
+          durationSamples: click.durationSamples,
+          amplitudeDb: click.signalExcessDb,
+          bearingDeg: bearingByIndex.has(index) ? bearingByIndex.get(index) : null,
+          iciSeconds: prev ? (click.startSample - prev.startSample) / sr : null,
+          waveform: Array.isArray(click.waveform) && click.waveform.length ? click.waveform[0] : null,
+          echo: click.echo === true
+        };
+        clickStore.push(entry);
+        if (!selectedClick && entry.waveform) {
+          selectedClick = entry;
+          drawSelectedClick();
+        }
+        added = true;
+      });
+      while (clickStore.length > 2000) {
+        clickStore.shift();
+      }
+      if (added) {
+        drawClickScatters();
+      }
+    }
+
+    function drawScatter(canvasId, points, yOf, yMin, yMax, options = {}) {
+      const canvas = $(canvasId);
+      const ctx = canvas.getContext("2d");
+      resizeCanvas(canvas);
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.fillStyle = "#0a1310";
+      ctx.fillRect(0, 0, w, h);
+      // Horizontal grid with labels.
+      ctx.strokeStyle = "rgba(140, 190, 178, 0.14)";
+      ctx.fillStyle = "rgba(190, 215, 225, 0.55)";
+      ctx.font = `${Math.max(10, h / 18)}px Cascadia Mono, Consolas, monospace`;
+      for (let g = 0; g <= 4; g++) {
+        const frac = g / 4;
+        const y = h - frac * h;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+        const value = options.logY
+          ? Math.pow(10, yMin + frac * (yMax - yMin))
+          : yMin + frac * (yMax - yMin);
+        ctx.fillText(options.format ? options.format(value) : value.toFixed(0), 6, Math.max(12, y - 4));
+      }
+      const windowSeconds = Number($("clickWindowSeconds").value);
+      const newest = points.length ? points[points.length - 1].t : 0;
+      const hits = [];
+      for (const entry of points) {
+        const raw = yOf(entry);
+        if (raw === null || raw === undefined || !Number.isFinite(raw)) {
+          continue;
+        }
+        const value = options.logY ? Math.log10(Math.max(raw, 1e-6)) : raw;
+        if (value < yMin || value > yMax) {
+          continue;
+        }
+        const x = w * (1 - (newest - entry.t) / windowSeconds);
+        if (x < 0) {
+          continue;
+        }
+        const y = h - ((value - yMin) / (yMax - yMin)) * h;
+        const size = Math.max(3, w / 400);
+        ctx.fillStyle = entry.echo ? "rgba(150, 160, 170, 0.6)" : "#37b7eb";
+        if (entry === selectedClick) {
+          ctx.fillStyle = "#f2b544";
+          ctx.fillRect(x - size, y - size, size * 2 + 1, size * 2 + 1);
+        }
+        else {
+          ctx.fillRect(x - size / 2, y - size / 2, size, size);
+        }
+        hits.push({ x, y, entry });
+      }
+      scatterHitMaps[canvasId] = hits;
+    }
+
+    function drawClickScatters() {
+      const windowSeconds = Number($("clickWindowSeconds").value);
+      const newest = clickStore.length ? clickStore[clickStore.length - 1].t : 0;
+      const visible = clickStore.filter((entry) => newest - entry.t <= windowSeconds);
+
+      drawScatter("btCanvas", visible, (e) => e.bearingDeg, 0, 180,
+        { format: (v) => `${v.toFixed(0)}°` });
+      drawScatter("ampCanvas", visible, (e) => e.amplitudeDb, 0,
+        Math.max(24, ...visible.map((e) => e.amplitudeDb + 3)),
+        { format: (v) => `${v.toFixed(0)} dB` });
+      drawScatter("iciCanvas", visible, (e) => e.iciSeconds, -3, Math.log10(3),
+        { logY: true, format: (v) => v >= 1 ? `${v.toFixed(1)} s` : `${(v * 1000).toFixed(0)} ms` });
+
+      const withBearing = visible.filter((e) => e.bearingDeg !== null).length;
+      $("btMeta").textContent = withBearing
+        ? `${withBearing} clicks with bearings`
+        : "needs ≥2 channels with localisation";
+      $("ampMeta").textContent = visible.length ? `${visible.length} clicks` : "no clicks yet";
+      $("clickStoreMeta").textContent = `${clickStore.length} clicks stored`;
+    }
+
+    ["btCanvas", "ampCanvas", "iciCanvas"].forEach((canvasId) => {
+      $(canvasId).addEventListener("click", (event) => {
+        const rect = $(canvasId).getBoundingClientRect();
+        const ratio = window.devicePixelRatio || 1;
+        const px = (event.clientX - rect.left) * ratio;
+        const py = (event.clientY - rect.top) * ratio;
+        let best = null;
+        let bestDist = 14 * ratio;
+        for (const hit of scatterHitMaps[canvasId] || []) {
+          const dist = Math.hypot(hit.x - px, hit.y - py);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = hit.entry;
+          }
+        }
+        if (best) {
+          selectedClick = best;
+          drawSelectedClick();
+          drawClickScatters();
+        }
+      });
+    });
+
+    $("clickWindowSeconds").addEventListener("change", drawClickScatters);
+
+    // ---- Wigner-Ville of the selected click ----
+
+    function fftComplex(re, im, invert) {
+      const n = re.length;
+      for (let i = 1, j = 0; i < n; i++) {
+        let bit = n >> 1;
+        for (; j & bit; bit >>= 1) {
+          j ^= bit;
+        }
+        j ^= bit;
+        if (i < j) {
+          [re[i], re[j]] = [re[j], re[i]];
+          [im[i], im[j]] = [im[j], im[i]];
+        }
+      }
+      for (let len = 2; len <= n; len <<= 1) {
+        const angle = (invert ? 2 : -2) * Math.PI / len;
+        const wr = Math.cos(angle);
+        const wi = Math.sin(angle);
+        for (let i = 0; i < n; i += len) {
+          let cr = 1;
+          let ci = 0;
+          for (let k = 0; k < len / 2; k++) {
+            const ur = re[i + k];
+            const ui = im[i + k];
+            const vr = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci;
+            const vi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
+            re[i + k] = ur + vr;
+            im[i + k] = ui + vi;
+            re[i + k + len / 2] = ur - vr;
+            im[i + k + len / 2] = ui - vi;
+            const ncr = cr * wr - ci * wi;
+            ci = cr * wi + ci * wr;
+            cr = ncr;
+          }
+        }
+      }
+      if (invert) {
+        for (let i = 0; i < n; i++) {
+          re[i] /= n;
+          im[i] /= n;
+        }
+      }
+    }
+
+    function computeWigner(wave) {
+      // Centre a power-of-two window on the click's peak.
+      const N = 128;
+      let peak = 0;
+      let peakAt = 0;
+      for (let i = 0; i < wave.length; i++) {
+        const a = Math.abs(wave[i]);
+        if (a > peak) {
+          peak = a;
+          peakAt = i;
+        }
+      }
+      const start = Math.max(0, Math.min(peakAt - N / 2, wave.length - N));
+      const x = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        x[i] = start + i < wave.length ? wave[start + i] : 0;
+      }
+      // Analytic signal via FFT (zero negative frequencies).
+      const are = Array.from(x);
+      const aim = new Array(N).fill(0);
+      fftComplex(are, aim, false);
+      for (let k = 1; k < N / 2; k++) {
+        are[k] *= 2;
+        aim[k] *= 2;
+      }
+      for (let k = N / 2 + 1; k < N; k++) {
+        are[k] = 0;
+        aim[k] = 0;
+      }
+      fftComplex(are, aim, true);
+      // WVD: FFT over the lag kernel z(n+tau) * conj(z(n-tau)). The lag
+      // product of a tone at f oscillates at 2f, so the N lag-FFT bins
+      // span 0..fs/2 (bin k = k*fs/(2N)) — keep them all.
+      const rows = N;
+      const wvd = [];
+      let maxVal = 0;
+      for (let n = 0; n < N; n++) {
+        const kr = new Array(N).fill(0);
+        const ki = new Array(N).fill(0);
+        const L = Math.min(n, N - 1 - n);
+        for (let tau = -L; tau <= L; tau++) {
+          const pr = are[n + tau] * are[n - tau] + aim[n + tau] * aim[n - tau];
+          const pi = aim[n + tau] * are[n - tau] - are[n + tau] * aim[n - tau];
+          const idx = (tau + N) % N;
+          kr[idx] = pr;
+          ki[idx] = pi;
+        }
+        fftComplex(kr, ki, false);
+        const column = new Float64Array(rows);
+        for (let k = 0; k < rows; k++) {
+          const value = Math.max(0, kr[k]);
+          column[k] = value;
+          if (value > maxVal) {
+            maxVal = value;
+          }
+        }
+        wvd.push(column);
+      }
+      return { wvd, rows, cols: N, maxVal, start };
+    }
+
+    function drawSelectedClick() {
+      if (!selectedClick) {
+        return;
+      }
+      const sr = clickSampleRate();
+      $("clickSelMeta").textContent =
+        `sample ${selectedClick.startSample} · ${selectedClick.durationSamples ?? "?"} samples · ` +
+        `${formatNumber(selectedClick.amplitudeDb, 1)} dB SE` +
+        (selectedClick.bearingDeg !== null ? ` · ${formatNumber(selectedClick.bearingDeg, 1)}°` : "");
+
+      const wave = selectedClick.waveform;
+      const waveCanvas = $("clickWaveCanvas");
+      const waveCtx = waveCanvas.getContext("2d");
+      resizeCanvas(waveCanvas);
+      waveCtx.fillStyle = "#0a1310";
+      waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
+      if (!wave || !wave.length) {
+        waveCtx.fillStyle = "rgba(190, 215, 225, 0.6)";
+        waveCtx.font = "13px Cascadia Mono, Consolas, monospace";
+        waveCtx.fillText("No waveform for this click (enable click waveforms)", 12, 26);
+        $("wignerMeta").textContent = "";
+        return;
+      }
+      let peak = 1e-9;
+      for (const value of wave) {
+        peak = Math.max(peak, Math.abs(value));
+      }
+      waveCtx.strokeStyle = "#37b7eb";
+      waveCtx.lineWidth = Math.max(1, waveCanvas.width / 900);
+      waveCtx.beginPath();
+      for (let i = 0; i < wave.length; i++) {
+        const px = (i / (wave.length - 1)) * waveCanvas.width;
+        const py = waveCanvas.height / 2 - (wave[i] / peak) * (waveCanvas.height / 2 - 4);
+        if (i === 0) {
+          waveCtx.moveTo(px, py);
+        }
+        else {
+          waveCtx.lineTo(px, py);
+        }
+      }
+      waveCtx.stroke();
+
+      const { wvd, rows, cols, maxVal } = computeWigner(wave);
+      const wignerCanvas = $("wignerCanvas");
+      const wignerCtx = wignerCanvas.getContext("2d");
+      resizeCanvas(wignerCanvas);
+      const off = document.createElement("canvas");
+      off.width = cols;
+      off.height = rows;
+      const offCtx = off.getContext("2d");
+      const img = offCtx.createImageData(cols, rows);
+      for (let n = 0; n < cols; n++) {
+        for (let k = 0; k < rows; k++) {
+          const [r, g, b] = heatRgb(maxVal > 0 ? Math.pow(wvd[n][k] / maxVal, 0.5) : 0);
+          const at = ((rows - 1 - k) * cols + n) * 4;
+          img.data[at] = r;
+          img.data[at + 1] = g;
+          img.data[at + 2] = b;
+          img.data[at + 3] = 255;
+        }
+      }
+      offCtx.putImageData(img, 0, 0);
+      wignerCtx.imageSmoothingEnabled = true;
+      wignerCtx.drawImage(off, 0, 0, wignerCanvas.width, wignerCanvas.height);
+      $("wignerMeta").textContent =
+        `${cols} samples · 0–${(sr / 2000).toFixed(1)} kHz`;
+    }
 
     // ================= UI chrome: menus, tabs, dialogs, status bar =========
 

@@ -3984,6 +3984,9 @@ int main(int argc, char** argv) {
                 // Full-spectrum preview frames: the result feed carries them
                 // to the web UI's live waterfall (0 = all bins).
                 "--preview-bins", "0",
+                // Click waveforms feed the click detector display's
+                // waveform/Wigner panel.
+                "--click-waveforms",
                 "--ffmpeg", ffmpeg_path,
                 "--restart",
                 "--resume-from-engine",
