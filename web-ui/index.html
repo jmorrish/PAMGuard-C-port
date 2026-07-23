@@ -1664,7 +1664,15 @@
       bins: 0,
       maxDb: -Infinity,
       totalSlices: 0,
-      sampleRateHz: 0
+      sampleRateHz: 0,
+      // Interpolated scrolling: the display cursor advances continuously at
+      // the FFT column rate (measured from arriving frames) and the
+      // waterfall is drawn at a fractional offset, so it glides between
+      // chunk arrivals instead of stepping.
+      columnRateHz: 0,
+      displayedCols: 0,
+      lastRafTime: 0,
+      rafId: null
     };
     const liveWaterfallWidth = 1200; // columns of history kept offscreen
 
@@ -1681,6 +1689,8 @@
       live.bins = bins;
       live.maxDb = -Infinity;
       live.totalSlices = 0;
+      live.displayedCols = 0;
+      live.columnRateHz = 0;
     }
 
     function appendLiveFrames(frames) {
@@ -1723,20 +1733,77 @@
       }
       live.ctx.putImageData(img, live.canvas.width - width, 0);
       live.totalSlices += slices.length;
+
+      // Measure the column rate from the data itself (startSample spacing),
+      // so the glide speed is exact whatever the session's FFT hop is.
+      if (slices.length >= 2 && live.sampleRateHz > 0) {
+        const hop = slices[1].startSample - slices[0].startSample;
+        if (hop > 0) {
+          live.columnRateHz = live.sampleRateHz / hop;
+        }
+      }
+      if (live.displayedCols === 0) {
+        live.displayedCols = live.totalSlices;
+      }
     }
 
-    function renderLiveWaterfall() {
+    function drawLiveView() {
       if (!live.canvas) {
         return;
       }
       const canvas = $("spectrogramCanvas");
       const ctx = canvas.getContext("2d");
       resizeCanvas(canvas);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(live.canvas, 0, 0, canvas.width, canvas.height);
+      // Reserve ~0.3 s of columns at the buffer's right edge so the window
+      // ending at the display cursor always has source pixels to read.
+      const reserve = Math.max(2, Math.ceil(live.columnRateHz * 0.3));
+      const windowCols = Math.max(1, live.canvas.width - reserve);
+      // The window ends at the display cursor; its source x is how far the
+      // cursor lags the buffer's right edge, inside the reserve.
+      const lag = live.totalSlices - live.displayedCols;
+      const srcX = Math.max(0, reserve - lag);
+      ctx.fillStyle = "#071514";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Smoothing on: sub-column offsets interpolate horizontally (the
+      // glide) and the bin-to-pixel downscale averages vertically.
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(live.canvas, srcX, 0, windowCols, live.canvas.height,
+                    0, 0, canvas.width, canvas.height);
       const nyquistKhz = live.sampleRateHz > 0 ? (live.sampleRateHz / 2000).toFixed(1) : "?";
       $("spectrogramMeta").textContent =
         `Live 0–${nyquistKhz} kHz · ${live.bins} bins · ${live.totalSlices} slices · auto gain`;
+    }
+
+    function liveRafLoop(now) {
+      if (!liveViewActive || !live.canvas) {
+        live.rafId = liveViewActive ? requestAnimationFrame(liveRafLoop) : null;
+        return;
+      }
+      const dt = live.lastRafTime > 0 ? (now - live.lastRafTime) / 1000 : 0;
+      live.lastRafTime = now;
+      const reserveCols = live.columnRateHz * 0.3;
+      // Advance at the true column rate, never past the newest data; after
+      // a stall-then-burst, snap to within the reserve and glide on.
+      live.displayedCols = Math.min(live.displayedCols + live.columnRateHz * dt, live.totalSlices);
+      if (live.totalSlices - live.displayedCols > reserveCols) {
+        live.displayedCols = live.totalSlices - reserveCols * 0.5;
+      }
+      drawLiveView();
+      live.rafId = requestAnimationFrame(liveRafLoop);
+    }
+
+    function ensureLiveRaf() {
+      if (live.rafId === null) {
+        live.lastRafTime = 0;
+        live.rafId = requestAnimationFrame(liveRafLoop);
+      }
+    }
+
+    function stopLiveRaf() {
+      if (live.rafId !== null) {
+        cancelAnimationFrame(live.rafId);
+        live.rafId = null;
+      }
     }
 
     // The live view consumes the PUSH stream: the service writes each
@@ -1750,6 +1817,7 @@
 
     function stopLiveView() {
       liveViewActive = false;
+      stopLiveRaf();
       if (liveStreamAbort !== null) {
         liveStreamAbort.abort();
         liveStreamAbort = null;
@@ -1763,7 +1831,7 @@
     function handleLiveResult(result) {
       if (Array.isArray(result.spectrogram) && result.spectrogram.length) {
         appendLiveFrames(result.spectrogram);
-        renderLiveWaterfall();
+        ensureLiveRaf();
       }
       const now = performance.now();
       if (now - lastMetricsPaint > 500) {
