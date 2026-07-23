@@ -23,6 +23,10 @@
 #include <httplib.h>
 #include <json.hpp>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include "pamguard/core/SessionManager.h"
 #include "pamguard/io/WavReader.h"
 #include "pamguard/detectors/CtSpectrumTemplates.h"
@@ -484,6 +488,222 @@ std::filesystem::path openapi_file_from_environment() {
     }
     return std::filesystem::path(raw);
 }
+
+// ---------------------------------------------------------------------------
+// Live sound-card capture management (opt-in via PAMGUARD_CAPTURE_ENABLED).
+//
+// The service never runs shell commands: device listing and capture both use
+// CreateProcess with explicitly quoted argument strings, capture device names
+// must exactly match an enumerated device, and the spawned ingest bridge is
+// held in a Windows Job Object so stopping a capture kills the whole ffmpeg
+// process tree. Windows/DirectShow only; other platforms report 501.
+// ---------------------------------------------------------------------------
+
+std::string ffmpeg_path_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_FFMPEG_PATH");
+    if (raw == nullptr || std::string(raw).empty()) {
+        return "ffmpeg";
+    }
+    return raw;
+}
+
+std::string ingest_exe_path(const char* argv0) {
+    const char* raw = std::getenv("PAMGUARD_INGEST_EXE");
+    if (raw != nullptr && !std::string(raw).empty()) {
+        return raw;
+    }
+    // Default: next to the service executable.
+    std::filesystem::path self(argv0 == nullptr ? "" : argv0);
+    auto candidate = self.parent_path() / "ffmpeg_stream_ingest.exe";
+    return candidate.string();
+}
+
+#ifdef _WIN32
+
+/** Standard Windows argument quoting (backslash-doubling before quotes). */
+std::string quote_windows_arg(const std::string& arg) {
+    if (!arg.empty() && arg.find_first_of(" \t\"") == std::string::npos) {
+        return arg;
+    }
+    std::string quoted = "\"";
+    std::size_t backslashes = 0;
+    for (const char c : arg) {
+        if (c == '\\') {
+            ++backslashes;
+            continue;
+        }
+        if (c == '"') {
+            quoted.append(backslashes * 2 + 1, '\\');
+            quoted.push_back('"');
+            backslashes = 0;
+            continue;
+        }
+        quoted.append(backslashes, '\\');
+        backslashes = 0;
+        quoted.push_back(c);
+    }
+    quoted.append(backslashes * 2, '\\');
+    quoted.push_back('"');
+    return quoted;
+}
+
+std::string join_windows_command(const std::vector<std::string>& args) {
+    std::string command;
+    for (const auto& arg : args) {
+        if (!command.empty()) {
+            command.push_back(' ');
+        }
+        command += quote_windows_arg(arg);
+    }
+    return command;
+}
+
+/** Runs a command and captures stdout+stderr; returns false when it could
+ * not be started at all (a non-zero exit still returns true with output). */
+bool run_command_capture(const std::vector<std::string>& args, std::string& output) {
+    SECURITY_ATTRIBUTES security{};
+    security.nLength = sizeof(security);
+    security.bInheritHandle = TRUE;
+    HANDLE read_pipe = nullptr;
+    HANDLE write_pipe = nullptr;
+    if (!CreatePipe(&read_pipe, &write_pipe, &security, 0)) {
+        return false;
+    }
+    SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOA startup{};
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdOutput = write_pipe;
+    startup.hStdError = write_pipe;
+    startup.hStdInput = INVALID_HANDLE_VALUE;
+    PROCESS_INFORMATION process{};
+    std::string command = join_windows_command(args);
+    const bool started = CreateProcessA(nullptr, command.data(), nullptr, nullptr, TRUE,
+                                        CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process) != 0;
+    CloseHandle(write_pipe);
+    if (!started) {
+        CloseHandle(read_pipe);
+        return false;
+    }
+    char buffer[4096];
+    DWORD read = 0;
+    while (ReadFile(read_pipe, buffer, sizeof(buffer), &read, nullptr) && read > 0) {
+        output.append(buffer, read);
+    }
+    CloseHandle(read_pipe);
+    WaitForSingleObject(process.hProcess, 15000);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    return true;
+}
+
+#endif // _WIN32
+
+/** ffmpeg dshow device enumeration: lines like [dshow @ ...] "Name" (audio). */
+std::vector<std::pair<std::string, std::string>> parse_dshow_devices(const std::string& listing) {
+    std::vector<std::pair<std::string, std::string>> devices;
+    std::istringstream stream(listing);
+    std::string line;
+    while (std::getline(stream, line)) {
+        const auto first_quote = line.find('"');
+        if (first_quote == std::string::npos) {
+            continue;
+        }
+        const auto second_quote = line.find('"', first_quote + 1);
+        if (second_quote == std::string::npos) {
+            continue;
+        }
+        const auto suffix = line.substr(second_quote + 1);
+        std::string type;
+        if (suffix.find("(audio)") != std::string::npos) {
+            type = "audio";
+        }
+        else if (suffix.find("(video)") != std::string::npos) {
+            type = "video";
+        }
+        else {
+            continue;
+        }
+        // "Alternative name" lines also carry quotes; skip them.
+        if (line.find("Alternative name") != std::string::npos) {
+            continue;
+        }
+        devices.emplace_back(line.substr(first_quote + 1, second_quote - first_quote - 1), type);
+    }
+    return devices;
+}
+
+struct CaptureProcess {
+    std::string session_id;
+    std::string device;
+    std::size_t sample_rate_hz = 0;
+    std::size_t channel_count = 0;
+#ifdef _WIN32
+    HANDLE process = nullptr;
+    HANDLE job = nullptr;
+    DWORD pid = 0;
+#endif
+};
+
+struct CaptureState {
+    std::mutex mutex;
+    std::unordered_map<std::string, CaptureProcess> running; // by session id
+};
+
+#ifdef _WIN32
+
+bool capture_process_running(const CaptureProcess& capture) {
+    return capture.process != nullptr && WaitForSingleObject(capture.process, 0) == WAIT_TIMEOUT;
+}
+
+void close_capture_process(CaptureProcess& capture) {
+    // Closing the kill-on-close job object takes the whole ffmpeg tree down.
+    if (capture.job != nullptr) {
+        CloseHandle(capture.job);
+        capture.job = nullptr;
+    }
+    if (capture.process != nullptr) {
+        WaitForSingleObject(capture.process, 5000);
+        CloseHandle(capture.process);
+        capture.process = nullptr;
+    }
+}
+
+bool start_capture_process(CaptureProcess& capture, const std::vector<std::string>& args,
+                           std::string& error) {
+    HANDLE job = CreateJobObjectA(nullptr, nullptr);
+    if (job != nullptr) {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
+    }
+    STARTUPINFOA startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    std::string command = join_windows_command(args);
+    const bool started = CreateProcessA(nullptr, command.data(), nullptr, nullptr, FALSE,
+                                        CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr,
+                                        &startup, &process) != 0;
+    if (!started) {
+        if (job != nullptr) {
+            CloseHandle(job);
+        }
+        error = "could not start the ingest bridge (" + args.front() + ")";
+        return false;
+    }
+    if (job != nullptr) {
+        AssignProcessToJobObject(job, process.hProcess);
+    }
+    ResumeThread(process.hThread);
+    CloseHandle(process.hThread);
+    capture.process = process.hProcess;
+    capture.job = job;
+    capture.pid = process.dwProcessId;
+    return true;
+}
+
+#endif // _WIN32
 
 std::string cors_origin_from_environment() {
     const char* raw = std::getenv("PAMGUARD_CORS_ORIGIN");
@@ -3521,6 +3741,18 @@ int main(int argc, char** argv) {
     const auto cors_origin = cors_origin_from_environment();
     const auto api_key = api_key_from_environment();
 
+    const bool capture_enabled = bool_from_environment("PAMGUARD_CAPTURE_ENABLED");
+    const auto ffmpeg_path = ffmpeg_path_from_environment();
+    const auto ingest_exe = ingest_exe_path(argc > 0 ? argv[0] : nullptr);
+    CaptureState capture_state;
+#ifdef _WIN32
+    if (capture_enabled && !api_key.empty()) {
+        // The spawned ingest bridge reads the key from the inherited
+        // environment rather than the (inspectable) command line.
+        SetEnvironmentVariableA("PAMGUARD_CAPTURE_API_KEY", api_key.c_str());
+    }
+#endif
+
     const auto job_audio_dir = job_audio_dir_from_environment();
     const auto audio_archive_dir = audio_archive_dir_from_environment();
     std::mutex audio_archive_mutex;
@@ -3593,12 +3825,200 @@ int main(int argc, char** argv) {
         res.set_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
     });
 
+    // ---- live sound-card capture (opt-in, Windows/DirectShow) ----
+
+    const auto list_capture_devices = [&](std::string& error)
+        -> std::vector<std::pair<std::string, std::string>> {
+#ifdef _WIN32
+        std::string output;
+        if (!run_command_capture({ffmpeg_path, "-hide_banner", "-list_devices", "true",
+                                  "-f", "dshow", "-i", "dummy"}, output)) {
+            error = "ffmpeg could not be started (" + ffmpeg_path +
+                "); install ffmpeg or set PAMGUARD_FFMPEG_PATH";
+            return {};
+        }
+        return parse_dshow_devices(output);
+#else
+        error = "sound-card capture is only implemented for Windows/DirectShow";
+        return {};
+#endif
+    };
+
+    server.Get("/capture/devices", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!capture_enabled) {
+            json_response(res, {{"error", "capture is disabled; set PAMGUARD_CAPTURE_ENABLED=1"}}, 503);
+            return;
+        }
+        std::string error;
+        const auto devices = list_capture_devices(error);
+        if (!error.empty()) {
+            json_response(res, {{"error", error}}, 502);
+            return;
+        }
+        json list = json::array();
+        for (const auto& [name, type] : devices) {
+            list.push_back({{"name", name}, {"type", type}});
+        }
+        json_response(res, {{"devices", std::move(list)}});
+    });
+
+    server.Get("/capture/status", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        json list = json::array();
+#ifdef _WIN32
+        std::lock_guard<std::mutex> lock(capture_state.mutex);
+        for (auto& [session_id, capture] : capture_state.running) {
+            list.push_back({
+                {"sessionId", session_id},
+                {"device", capture.device},
+                {"sampleRateHz", capture.sample_rate_hz},
+                {"channels", capture.channel_count},
+                {"pid", capture.pid},
+                {"running", capture_process_running(capture)},
+            });
+        }
+#endif
+        json_response(res, {{"captureEnabled", capture_enabled}, {"captures", std::move(list)}});
+    });
+
+    server.Post("/capture/start", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!capture_enabled) {
+            json_response(res, {{"error", "capture is disabled; set PAMGUARD_CAPTURE_ENABLED=1"}}, 503);
+            return;
+        }
+#ifndef _WIN32
+        json_response(res, {{"error", "sound-card capture is only implemented for Windows/DirectShow"}}, 501);
+#else
+        try {
+            const auto body = json::parse(req.body);
+            const auto session_id = body.value("sessionId", std::string());
+            const auto device = body.value("device", std::string());
+            if (session_id.empty() || device.empty()) {
+                json_response(res, {{"error", "sessionId and device are required"}}, 400);
+                return;
+            }
+            std::size_t sample_rate = 0;
+            std::size_t channel_count = 0;
+            {
+                std::lock_guard<std::mutex> lock(configs_mutex);
+                const auto found = configs.find(session_id);
+                if (found == configs.end()) {
+                    json_response(res, {{"error", "session does not exist; create it first"}}, 404);
+                    return;
+                }
+                sample_rate = found->second.sample_rate_hz;
+                channel_count = found->second.channel_count;
+            }
+            // The device must exactly match an enumerated device: no
+            // user-composed strings ever reach the child command line.
+            std::string error;
+            const auto devices = list_capture_devices(error);
+            if (!error.empty()) {
+                json_response(res, {{"error", error}}, 502);
+                return;
+            }
+            const bool known = std::any_of(devices.begin(), devices.end(), [&](const auto& entry) {
+                return entry.second == "audio" && entry.first == device;
+            });
+            if (!known) {
+                json_response(res, {{"error", "device is not an enumerated audio capture device: " + device}}, 400);
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(capture_state.mutex);
+            auto existing = capture_state.running.find(session_id);
+            if (existing != capture_state.running.end()) {
+                if (capture_process_running(existing->second)) {
+                    json_response(res, {{"error", "a capture is already running for this session"}}, 409);
+                    return;
+                }
+                close_capture_process(existing->second);
+                capture_state.running.erase(existing);
+            }
+
+            CaptureProcess capture;
+            capture.session_id = session_id;
+            capture.device = device;
+            capture.sample_rate_hz = sample_rate;
+            capture.channel_count = channel_count;
+            std::vector<std::string> args = {
+                ingest_exe,
+                "--ffmpeg-input-option", "-f", "--ffmpeg-input-option", "dshow",
+                "--source", "audio=" + device,
+                "--session", session_id,
+                "--engine", "http://127.0.0.1:" + std::to_string(port),
+                "--sample-rate", std::to_string(sample_rate),
+                "--channels", std::to_string(channel_count),
+                "--ffmpeg", ffmpeg_path,
+                "--restart",
+                "--resume-from-engine",
+            };
+            if (!api_key.empty()) {
+                args.push_back("--api-key-env");
+                args.push_back("PAMGUARD_CAPTURE_API_KEY");
+            }
+            if (!start_capture_process(capture, args, error)) {
+                json_response(res, {{"error", error}}, 502);
+                return;
+            }
+            const auto pid = capture.pid;
+            capture_state.running.emplace(session_id, std::move(capture));
+            json_response(res, {
+                {"started", true},
+                {"sessionId", session_id},
+                {"device", device},
+                {"sampleRateHz", sample_rate},
+                {"channels", channel_count},
+                {"pid", pid},
+            });
+        }
+        catch (const std::exception& error_ex) {
+            json_response(res, {{"error", error_ex.what()}}, 400);
+        }
+#endif
+    });
+
+    server.Post("/capture/stop", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+#ifndef _WIN32
+        json_response(res, {{"error", "sound-card capture is only implemented for Windows/DirectShow"}}, 501);
+#else
+        try {
+            const auto body = json::parse(req.body);
+            const auto session_id = body.value("sessionId", std::string());
+            std::lock_guard<std::mutex> lock(capture_state.mutex);
+            const auto found = capture_state.running.find(session_id);
+            if (found == capture_state.running.end()) {
+                json_response(res, {{"error", "no capture is registered for this session"}}, 404);
+                return;
+            }
+            close_capture_process(found->second);
+            capture_state.running.erase(found);
+            json_response(res, {{"stopped", true}, {"sessionId", session_id}});
+        }
+        catch (const std::exception& error_ex) {
+            json_response(res, {{"error", error_ex.what()}}, 400);
+        }
+#endif
+    });
+
     server.Get("/health", [&](const httplib::Request&, httplib::Response& res) {
         json_response(res, {
             {"ok", true},
             {"sessions", manager.session_count()},
             {"maxSessions", max_sessions},
             {"resultSchemaVersion", kResultSchemaVersion},
+            {"captureEnabled", capture_enabled},
             {"jobQueueEnabled", !job_audio_dir.empty()},
             {"audioArchiveEnabled", !audio_archive_dir.empty()},
             {"resultFeedDepth", result_feed_depth},

@@ -412,13 +412,62 @@
         grid-template-columns: 1fr 1fr;
       }
     }
+    details.cfg {
+      margin: 14px 0 0;
+      border: 1px solid rgba(140, 190, 178, 0.28);
+      border-radius: 10px;
+      padding: 0 14px 10px;
+      background: rgba(10, 34, 31, 0.35);
+    }
+
+    details.cfg > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 10px 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+      user-select: none;
+    }
+
+    details.cfg > summary::before {
+      content: "\25B8";
+      display: inline-block;
+      margin-right: 8px;
+      transition: transform 0.15s ease;
+    }
+
+    details.cfg[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
+    .capture-panel {
+      margin: 14px 0 6px;
+      border: 1px solid rgba(126, 217, 87, 0.45);
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: rgba(18, 46, 24, 0.45);
+    }
+
+    .capture-panel .capture-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .capture-panel .capture-head span {
+      opacity: 0.75;
+      font-size: 0.86rem;
+    }
   </style>
 </head>
 <body>
   <div class="shell">
     <header>
       <h1>PAMGuard web engine console</h1>
-      <p class="lede">Create an isolated C++ analysis session, send a synthetic PCM block, and inspect detector counts from the browser. This is a proof console for the service API, not the final analyst UI.</p>
+      <p class="lede">Pick a sound-card device and press Start capture for live monitoring, or send a synthetic PCM block to try the detectors. Detector settings live in the collapsible groups below — the defaults are sensible, so you only open what you need.</p>
     </header>
 
     <main>
@@ -430,6 +479,22 @@
 
           <label for="apiKey">API key</label>
           <input id="apiKey" type="password" placeholder="Optional PAMGUARD_API_KEY">
+
+          <div class="capture-panel">
+            <div class="capture-head">
+              <strong>Live capture — server sound card</strong>
+              <span id="captureMeta">Checking availability…</span>
+            </div>
+            <label for="captureDevice">Audio device</label>
+            <select id="captureDevice">
+              <option value="">Press Refresh devices</option>
+            </select>
+            <div class="actions">
+              <button id="captureRefreshButton" class="secondary">Refresh devices</button>
+              <button id="captureStartButton">Start capture</button>
+              <button id="captureStopButton" class="secondary">Stop capture</button>
+            </div>
+          </div>
 
           <label for="sessionId">Session ID</label>
           <input id="sessionId" value="demo">
@@ -478,7 +543,7 @@
             </div>
           </div>
 
-          <h3 class="section-title">Array geometry</h3>
+          <details class="cfg"><summary>Array geometry</summary>
           <div class="grid">
             <div>
               <label for="hydrophoneSpacingM">Spacing metres</label>
@@ -491,7 +556,9 @@
           </div>
           <label for="arrayGeometryJson">Advanced hydrophone JSON</label>
           <textarea id="arrayGeometryJson" placeholder='Optional. Paste either [{"channel":0,"xM":0,"yM":0,"zM":0,"sensitivityDb":0}] or {"id":"array-1","speedOfSoundMps":1500,"hydrophones":[...]}.'></textarea>
+          </details>
 
+          <details class="cfg"><summary>Test signal &amp; result preview</summary>
           <div class="grid">
             <div>
               <label for="chunkFrames">Test frames</label>
@@ -528,7 +595,9 @@
             </div>
           </div>
 
-          <h3 class="section-title">Click detector</h3>
+          </details>
+
+          <details class="cfg"><summary>Click detector</summary>
           <div class="grid">
             <div>
               <label for="clickThresholdDb">Threshold dB</label>
@@ -590,10 +659,6 @@
               <label for="classifierTypesJson">Classifier type JSON override</label>
               <textarea id="classifierTypesJson" placeholder='Optional JSON array. Example: [{"standard":"beakedWhale","speciesCode":11,"discard":false},{"standard":"porpoise","speciesCode":22,"whichSelections":127}]'></textarea>
             </div>
-            <div class="wide">
-              <label for="monitoringJson">Monitoring &amp; extra detector JSON</label>
-              <textarea id="monitoringJson" placeholder='Optional JSON object merged into the session config. Example: {"noiseBand":{"enabled":true,"bandType":"thirdOctave","minFrequencyHz":50,"maxFrequencyHz":0,"outputIntervalSeconds":5},"ltsa":{"enabled":true,"intervalSeconds":10},"ishmael":{"enabled":true,"f0":200,"f1":2000,"thresh":2},"sgramCorr":{"enabled":true,"segments":[[0,500,0.2,1500]],"spread":80,"thresh":0.05},"matchFilt":{"enabled":true,"kernel":[0.1,-0.2,0.1],"thresh":0.5},"acquisition":{"voltsPeak2Peak":5}}'></textarea>
-            </div>
             <div>
               <label for="trainEnabled">Click trains</label>
               <select id="trainEnabled">
@@ -611,7 +676,9 @@
             </div>
           </div>
 
-          <h3 class="section-title">Click features</h3>
+          </details>
+
+          <details class="cfg"><summary>Click features</summary>
           <div class="grid">
             <div>
               <label for="clickFeatureFftLength">Feature FFT length</label>
@@ -659,7 +726,9 @@
             </div>
           </div>
 
-          <h3 class="section-title">Whistle/moan peaks</h3>
+          </details>
+
+          <details class="cfg"><summary>Whistle &amp; moan peaks</summary>
           <div class="grid">
             <div>
               <label for="whistleThresholdDb">Threshold dB</label>
@@ -699,7 +768,9 @@
             </div>
           </div>
 
-          <h3 class="section-title">Whistle/moan contours</h3>
+          </details>
+
+          <details class="cfg"><summary>Whistle &amp; moan contours</summary>
           <div class="grid">
             <div>
               <label for="fragmentationMethod">Fragmentation</label>
@@ -744,6 +815,13 @@
               </select>
             </div>
           </div>
+
+          </details>
+
+          <details class="cfg"><summary>Monitoring &amp; extra detectors</summary>
+            <label for="monitoringJson">Monitoring &amp; extra detector JSON</label>
+            <textarea id="monitoringJson" placeholder='Optional JSON object merged into the session config. Example: {"noiseBand":{"enabled":true,"bandType":"thirdOctave","minFrequencyHz":50,"maxFrequencyHz":0,"outputIntervalSeconds":5},"ltsa":{"enabled":true,"intervalSeconds":10},"ishmael":{"enabled":true,"f0":200,"f1":2000,"thresh":2},"sgramCorr":{"enabled":true,"segments":[[0,500,0.2,1500]],"spread":80,"thresh":0.05},"matchFilt":{"enabled":true,"kernel":[0.1,-0.2,0.1],"thresh":0.5},"acquisition":{"voltsPeak2Peak":5}}'></textarea>
+          </details>
 
           <div class="actions">
             <button id="healthButton" class="secondary">Health</button>
@@ -1073,7 +1151,11 @@
       $("mContinuity").textContent = result.sampleContinuity || "n/a";
       renderMonitoring(result);
       renderContourSummaries(result.whistleRegions || []);
-      drawSpectrogram(result.spectrogram || [], result.whistleRegions || []);
+      // Feed-polled results carry no spectrogram preview; keep the last
+      // rendered image instead of wiping the canvas.
+      if (Array.isArray(result.spectrogram)) {
+        drawSpectrogram(result.spectrogram, result.whistleRegions || []);
+      }
     }
 
     function resizeCanvas(canvas) {
@@ -1533,6 +1615,119 @@
       renderArchiveEvents(result);
       log(result);
     }
+
+    // ---- live sound-card capture ----
+
+    let livePollTimer = null;
+    let livePollSeq = 0;
+
+    async function refreshCaptureDevices() {
+      const select = $("captureDevice");
+      const meta = $("captureMeta");
+      try {
+        const health = await requestJson(api("/health"));
+        if (!health.captureEnabled) {
+          meta.textContent = "Disabled — start the service with PAMGUARD_CAPTURE_ENABLED=1";
+          select.replaceChildren(new Option("Capture disabled on the server", ""));
+          return;
+        }
+        const listing = await requestJson(api("/capture/devices"));
+        const audio = (listing.devices || []).filter((d) => d.type === "audio");
+        if (!audio.length) {
+          meta.textContent = "No audio capture devices found on the server";
+          select.replaceChildren(new Option("No audio devices", ""));
+          return;
+        }
+        select.replaceChildren(...audio.map((d) => new Option(d.name, d.name)));
+        meta.textContent = `${audio.length} audio device${audio.length === 1 ? "" : "s"} — uses the session's sample rate & channels`;
+      } catch (error) {
+        meta.textContent = String(error);
+      }
+    }
+
+    function stopLivePoll() {
+      if (livePollTimer !== null) {
+        clearInterval(livePollTimer);
+        livePollTimer = null;
+      }
+    }
+
+    function startLivePoll(sessionId) {
+      stopLivePoll();
+      livePollSeq = 0;
+      livePollTimer = setInterval(async () => {
+        try {
+          const feed = await requestJson(api(`/sessions/${encodeURIComponent(sessionId)}/results?sinceSeq=${livePollSeq}`));
+          if (feed.latestSeq !== undefined) {
+            livePollSeq = feed.latestSeq;
+          }
+          const results = Array.isArray(feed.results) ? feed.results : [];
+          if (results.length) {
+            updateMetrics(results[results.length - 1]);
+          }
+        } catch (error) {
+          // Session gone or service stopped: stop polling quietly.
+          stopLivePoll();
+          $("captureMeta").textContent = `Live poll stopped: ${error}`;
+        }
+      }, 2000);
+    }
+
+    $("captureRefreshButton").addEventListener("click", refreshCaptureDevices);
+
+    $("captureStartButton").addEventListener("click", async () => {
+      const device = $("captureDevice").value;
+      const meta = $("captureMeta");
+      if (!device) {
+        meta.textContent = "Pick an audio device first (Refresh devices)";
+        return;
+      }
+      try {
+        // Create the session if it does not exist yet, then start capture.
+        try {
+          await requestJson(api("/sessions"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(sessionBody())
+          });
+        } catch (createError) {
+          if (!String(createError).toLowerCase().includes("exist")) {
+            throw createError;
+          }
+        }
+        const sessionId = $("sessionId").value;
+        const result = await requestJson(api("/capture/start"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, device })
+        });
+        meta.textContent = `Capturing '${device}' into session '${sessionId}' (pid ${result.pid})`;
+        startLivePoll(sessionId);
+        log(result);
+      } catch (error) {
+        meta.textContent = String(error);
+        log(String(error));
+      }
+    });
+
+    $("captureStopButton").addEventListener("click", async () => {
+      const meta = $("captureMeta");
+      stopLivePoll();
+      try {
+        const result = await requestJson(api("/capture/stop"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: $("sessionId").value })
+        });
+        meta.textContent = "Capture stopped";
+        log(result);
+      } catch (error) {
+        meta.textContent = String(error);
+        log(String(error));
+      }
+    });
+
+    refreshCaptureDevices();
 
     $("healthButton").addEventListener("click", async () => {
       try {
