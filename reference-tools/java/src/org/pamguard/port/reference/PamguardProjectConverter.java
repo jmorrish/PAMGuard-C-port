@@ -247,6 +247,8 @@ public final class PamguardProjectConverter {
             json.append("    \"postSample\": ").append(click.postSample).append(",\n");
             json.append("    \"minSep\": ").append(click.minSep).append(",\n");
             json.append("    \"maxLength\": ").append(click.maxLength);
+            appendIirFilter(json, "preFilter", click.preFilter);
+            appendIirFilter(json, "triggerFilter", click.triggerFilter);
             if (click.runEchoOnline || echoParams != null) {
                 json.append(",\n    \"echo\": { \"runOnline\": ").append(click.runEchoOnline);
                 json.append(", \"discardEchoes\": ").append(click.discardEchoes);
@@ -702,6 +704,36 @@ public final class PamguardProjectConverter {
      * flags parallel to SpectrogramNoiseProcess's fixed method order (median,
      * average, kernel, threshold), with per-method settings in the same order.
      */
+    /** ClickParameters.preFilter/triggerFilter, PAMGuard field names kept. */
+    private static void appendIirFilter(StringBuilder json, String key, Filters.FilterParams filter) {
+        if (filter == null || filter.filterType == Filters.FilterType.NONE) {
+            return;
+        }
+        String type = filter.filterType == Filters.FilterType.BUTTERWORTH ? "butterworth"
+                : filter.filterType == Filters.FilterType.CHEBYCHEV ? "chebyshev" : null;
+        if (type == null) {
+            System.out.println("skipped: click " + key + " (unsupported filter type " + filter.filterType + ")");
+            return;
+        }
+        String band;
+        switch (filter.filterBand) {
+        case HIGHPASS: band = "highpass"; break;
+        case LOWPASS: band = "lowpass"; break;
+        case BANDPASS: band = "bandpass"; break;
+        case BANDSTOP: band = "bandstop"; break;
+        default:
+            System.out.println("skipped: click " + key + " (unsupported band " + filter.filterBand + ")");
+            return;
+        }
+        json.append(",\n    \"").append(key).append("\": { \"type\": \"").append(type);
+        json.append("\", \"band\": \"").append(band);
+        json.append("\", \"order\": ").append(filter.filterOrder);
+        json.append(", \"highPassFreq\": ").append(format(filter.highPassFreq));
+        json.append(", \"lowPassFreq\": ").append(format(filter.lowPassFreq));
+        json.append(", \"passBandRipple\": ").append(format(filter.passBandRipple));
+        json.append(" }");
+    }
+
     private static void appendNoiseSettings(StringBuilder json, SpectrogramNoiseSettings noise) {
         if (noise == null || noise.isRunMethod() == null) {
             return;

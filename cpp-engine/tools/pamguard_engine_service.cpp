@@ -2003,6 +2003,52 @@ json job_to_json(const OfflineJob& job) {
     return body;
 }
 
+pamguard::dsp::IirFilterParams parse_iir_filter(const json& filter) {
+    pamguard::dsp::IirFilterParams params;
+    const auto type = filter.value("type", std::string("none"));
+    if (type == "none") {
+        params.type = pamguard::dsp::IirFilterType::None;
+        return params;
+    }
+    if (type == "butterworth") {
+        params.type = pamguard::dsp::IirFilterType::Butterworth;
+    }
+    else if (type == "chebyshev") {
+        params.type = pamguard::dsp::IirFilterType::Chebyshev;
+    }
+    else {
+        throw std::invalid_argument("filter type must be none, butterworth, or chebyshev");
+    }
+    const auto band = filter.value("band", std::string("highpass"));
+    if (band == "highpass") {
+        params.band = pamguard::dsp::IirFilterBand::HighPass;
+    }
+    else if (band == "lowpass") {
+        params.band = pamguard::dsp::IirFilterBand::LowPass;
+    }
+    else if (band == "bandpass") {
+        params.band = pamguard::dsp::IirFilterBand::BandPass;
+    }
+    else if (band == "bandstop") {
+        params.band = pamguard::dsp::IirFilterBand::BandStop;
+    }
+    else {
+        throw std::invalid_argument("filter band must be highpass, lowpass, bandpass, or bandstop");
+    }
+    params.order = filter.value("order", 4);
+    params.high_pass_freq_hz = filter.value("highPassFreq", 0.0F);
+    params.low_pass_freq_hz = filter.value("lowPassFreq", 0.0F);
+    params.pass_band_ripple_db = filter.value("passBandRipple", 2.0);
+    if (params.order <= 0 || params.order > 32) {
+        throw std::invalid_argument("filter order must be between 1 and 32");
+    }
+    if (!std::isfinite(params.high_pass_freq_hz) || !std::isfinite(params.low_pass_freq_hz) ||
+        params.high_pass_freq_hz < 0.0F || params.low_pass_freq_hz < 0.0F) {
+        throw std::invalid_argument("filter frequencies must be non-negative and finite");
+    }
+    return params;
+}
+
 pamguard::core::AnalysisConfig parse_config(const json& body) {
     pamguard::core::AnalysisConfig config;
     config.session_id = body.at("sessionId").get<std::string>();
@@ -2111,6 +2157,13 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         config.detector.click.post_sample = click.value("postSample", config.detector.click.post_sample);
         config.detector.click.min_sep = click.value("minSep", config.detector.click.min_sep);
         config.detector.click.max_length = click.value("maxLength", config.detector.click.max_length);
+
+        if (click.contains("preFilter")) {
+            config.detector.click.pre_filter = parse_iir_filter(click.at("preFilter"));
+        }
+        if (click.contains("triggerFilter")) {
+            config.detector.click.trigger_filter = parse_iir_filter(click.at("triggerFilter"));
+        }
 
         const auto echo = click.value("echo", json::object());
         config.detector.click_echo_enabled = echo.value("runOnline", false);
@@ -2936,6 +2989,8 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"minSep", config.detector.click.min_sep},
         {"maxLength", config.detector.click.max_length},
         {"featuresEnabled", config.detector.click_features_enabled},
+        {"preFilterActive", config.detector.click.pre_filter.type != pamguard::dsp::IirFilterType::None},
+        {"triggerFilterActive", config.detector.click.trigger_filter.type != pamguard::dsp::IirFilterType::None},
         {"echoRunOnline", config.detector.click_echo_enabled},
         {"echoDiscard", config.detector.click_echo_discard},
         {"echoMaxIntervalSeconds", config.detector.click_echo_max_interval_seconds},

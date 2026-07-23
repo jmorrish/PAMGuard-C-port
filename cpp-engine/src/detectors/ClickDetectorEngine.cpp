@@ -89,6 +89,41 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
     if (!std::all_of(channels_.begin(), channels_.end(), [&](std::size_t channel) { return channel < chunk.channel_count; })) {
         throw std::invalid_argument("audio chunk does not contain all click detector channels");
     }
+    // PAMGuard's newData: raw -> preFilter -> waveformData (what click
+    // waveforms are captured from), then triggerFilter over waveformData ->
+    // triggerData (what the short/long trigger consumes). Filter state runs
+    // continuously across chunks, exactly as the per-channel FastIIRFilters
+    // do in the reference.
+    const auto frame_total = chunk.frame_count();
+    if (!iir_filters_built_) {
+        for (std::size_t i_chan = 0; i_chan < channels_.size(); ++i_chan) {
+            pre_iir_filters_.emplace_back(static_cast<double>(chunk.sample_rate_hz), config_.pre_filter);
+            trigger_iir_filters_.emplace_back(static_cast<double>(chunk.sample_rate_hz), config_.trigger_filter);
+        }
+        prefiltered_.assign(channels_.size(), {});
+        trigger_data_.assign(channels_.size(), {});
+        iir_filters_built_ = true;
+    }
+    for (std::size_t i_chan = 0; i_chan < channels_.size(); ++i_chan) {
+        auto& pre = prefiltered_[i_chan];
+        pre.resize(frame_total);
+        for (std::size_t i_samp = 0; i_samp < frame_total; ++i_samp) {
+            pre[i_samp] = chunk.sample(i_samp, channels_[i_chan]);
+        }
+        if (pre_iir_filters_[i_chan].active()) {
+            for (auto& sample : pre) {
+                sample = pre_iir_filters_[i_chan].run_sample(sample);
+            }
+        }
+        auto& trigger = trigger_data_[i_chan];
+        if (trigger_iir_filters_[i_chan].active()) {
+            trigger_iir_filters_[i_chan].run(pre, trigger);
+        }
+        else {
+            trigger = pre;
+        }
+    }
+
     append_waveform_history(chunk);
 
     if (!filters_initialized_) {
@@ -108,7 +143,7 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
                 continue;
             }
 
-            const double sample = chunk.sample(i_samp, channel);
+            const double sample = trigger_data_[i_chan][i_samp];
             const double short_value = short_filters_[i_chan].run(sample, false);
             const double long_value = long_filters_[i_chan].run(sample, over_threshold_ != 0);
             over_threshold_ = set_bit(over_threshold_, channel, short_value > long_value * threshold);
@@ -195,7 +230,7 @@ void ClickDetectorEngine::initialize_filters(const core::AudioChunk& chunk) {
         double short_value = 0.0;
         double long_value = 0.0;
         for (std::size_t i_samp = 0; i_samp < frame_count; ++i_samp) {
-            const double sample = std::abs(chunk.sample(i_samp, channel));
+            const double sample = std::abs(trigger_data_[i_chan][i_samp]);
             short_value += sample;
             long_value += sample;
         }
@@ -217,7 +252,9 @@ void ClickDetectorEngine::append_waveform_history(const core::AudioChunk& chunk)
     const auto frame_count = chunk.frame_count();
     for (std::size_t i = 0; i < frame_count; ++i) {
         for (std::size_t i_chan = 0; i_chan < channels_.size(); ++i_chan) {
-            waveform_history_[i_chan].push_back(chunk.sample(i, channels_[i_chan]));
+            // Click waveforms come from the PREFILTERED stream, as PAMGuard
+            // captures from filteredDataBlock when a prefilter runs.
+            waveform_history_[i_chan].push_back(prefiltered_[i_chan][i]);
         }
     }
 }

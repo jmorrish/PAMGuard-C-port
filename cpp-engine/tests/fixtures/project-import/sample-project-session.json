@@ -35,6 +35,8 @@
     "postSample": 50,
     "minSep": 80,
     "maxLength": 512,
+    "preFilter": { "type": "butterworth", "band": "highpass", "order": 4, "highPassFreq": 500.0, "lowPassFreq": 20000.0, "passBandRipple": 2.0 },
+    "triggerFilter": { "type": "butterworth", "band": "highpass", "order": 2, "highPassFreq": 2000.0, "lowPassFreq": 20000.0, "passBandRipple": 2.0 },
     "echo": { "runOnline": true, "discardEchoes": false, "maxIntervalSeconds": 0.080000000000000000 },
     "basicClassifier": {
       "enabled": true,

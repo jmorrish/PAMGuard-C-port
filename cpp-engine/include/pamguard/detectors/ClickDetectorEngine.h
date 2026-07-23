@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "pamguard/core/AudioFrame.h"
+#include "pamguard/dsp/IirFilter.h"
 
 namespace pamguard::detectors {
 
@@ -20,6 +21,17 @@ struct ClickDetectorConfig {
     std::size_t post_sample = 40;
     std::size_t min_sep = 100;
     std::size_t max_length = 1024;
+    /**
+     * PAMGuard's ClickDetector runs the audio through two IIR filters before
+     * anything else sees it: `preFilter` conditions the waveform (and is what
+     * click waveforms are captured from), and `triggerFilter` runs on the
+     * prefiltered data to feed the trigger alone. ClickParameters' own
+     * defaults are a 4th-order 500 Hz Butterworth highpass and a 2nd-order
+     * 2 kHz one; the engine defaults to None so existing sessions keep their
+     * behaviour, and the project importer carries PAMGuard's values across.
+     */
+    dsp::IirFilterParams pre_filter;
+    dsp::IirFilterParams trigger_filter;
 };
 
 struct ClickDetectionResult {
@@ -74,6 +86,13 @@ private:
     std::vector<std::size_t> channels_;
     std::vector<TriggerFilter> short_filters_;
     std::vector<TriggerFilter> long_filters_;
+    /** Per-channel IIR state, persistent across chunks like PAMGuard's. */
+    std::vector<dsp::FastIirFilter> pre_iir_filters_;
+    std::vector<dsp::FastIirFilter> trigger_iir_filters_;
+    bool iir_filters_built_ = false;
+    /** Scratch: this chunk's prefiltered and trigger-filtered channel data. */
+    std::vector<std::vector<double>> prefiltered_;
+    std::vector<std::vector<double>> trigger_data_;
     bool filters_initialized_ = false;
     ClickStatus click_status_ = ClickStatus::ClickOff;
     std::uint64_t samples_processed_ = 0;
