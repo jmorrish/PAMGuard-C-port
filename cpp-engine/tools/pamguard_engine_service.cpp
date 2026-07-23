@@ -3876,7 +3876,7 @@ int main(int argc, char** argv) {
         for (auto& [session_id, capture] : capture_state.running) {
             list.push_back({
                 {"sessionId", session_id},
-                {"device", capture.device},
+                {"source", capture.device},
                 {"sampleRateHz", capture.sample_rate_hz},
                 {"channels", capture.channel_count},
                 {"pid", capture.pid},
@@ -3902,8 +3902,15 @@ int main(int argc, char** argv) {
             const auto body = json::parse(req.body);
             const auto session_id = body.value("sessionId", std::string());
             const auto device = body.value("device", std::string());
-            if (session_id.empty() || device.empty()) {
-                json_response(res, {{"error", "sessionId and device are required"}}, 400);
+            const auto url = body.value("url", std::string());
+            if (session_id.empty() || (device.empty() == url.empty())) {
+                json_response(res, {{"error", "sessionId and exactly one of device (sound card) or url (stream) are required"}}, 400);
+                return;
+            }
+            if (!url.empty() && url.rfind("http://", 0) != 0 && url.rfind("https://", 0) != 0) {
+                // Only plain http(s) stream URLs: no file paths, lavfi
+                // graphs, or protocol tricks reach the child command line.
+                json_response(res, {{"error", "url must start with http:// or https://"}}, 400);
                 return;
             }
             std::size_t sample_rate = 0;
@@ -3918,20 +3925,22 @@ int main(int argc, char** argv) {
                 sample_rate = found->second.sample_rate_hz;
                 channel_count = found->second.channel_count;
             }
-            // The device must exactly match an enumerated device: no
-            // user-composed strings ever reach the child command line.
             std::string error;
-            const auto devices = list_capture_devices(error);
-            if (!error.empty()) {
-                json_response(res, {{"error", error}}, 502);
-                return;
-            }
-            const bool known = std::any_of(devices.begin(), devices.end(), [&](const auto& entry) {
-                return entry.second == "audio" && entry.first == device;
-            });
-            if (!known) {
-                json_response(res, {{"error", "device is not an enumerated audio capture device: " + device}}, 400);
-                return;
+            if (!device.empty()) {
+                // The device must exactly match an enumerated device: no
+                // user-composed strings ever reach the child command line.
+                const auto devices = list_capture_devices(error);
+                if (!error.empty()) {
+                    json_response(res, {{"error", error}}, 502);
+                    return;
+                }
+                const bool known = std::any_of(devices.begin(), devices.end(), [&](const auto& entry) {
+                    return entry.second == "audio" && entry.first == device;
+                });
+                if (!known) {
+                    json_response(res, {{"error", "device is not an enumerated audio capture device: " + device}}, 400);
+                    return;
+                }
             }
 
             std::lock_guard<std::mutex> lock(capture_state.mutex);
@@ -3947,13 +3956,24 @@ int main(int argc, char** argv) {
 
             CaptureProcess capture;
             capture.session_id = session_id;
-            capture.device = device;
+            capture.device = device.empty() ? url : device;
             capture.sample_rate_hz = sample_rate;
             capture.channel_count = channel_count;
-            std::vector<std::string> args = {
-                ingest_exe,
-                "--ffmpeg-input-option", "-f", "--ffmpeg-input-option", "dshow",
-                "--source", "audio=" + device,
+            std::vector<std::string> args = {ingest_exe};
+            if (!device.empty()) {
+                args.push_back("--ffmpeg-input-option");
+                args.push_back("-f");
+                args.push_back("--ffmpeg-input-option");
+                args.push_back("dshow");
+                args.push_back("--source");
+                args.push_back("audio=" + device);
+            }
+            else {
+                // Icecast/HTTP streams deliver at their own live rate.
+                args.push_back("--source");
+                args.push_back(url);
+            }
+            const std::vector<std::string> more_args = {
                 "--session", session_id,
                 "--engine", "http://127.0.0.1:" + std::to_string(port),
                 "--sample-rate", std::to_string(sample_rate),
@@ -3968,6 +3988,7 @@ int main(int argc, char** argv) {
                 "--restart",
                 "--resume-from-engine",
             };
+            args.insert(args.end(), more_args.begin(), more_args.end());
             if (!api_key.empty()) {
                 args.push_back("--api-key-env");
                 args.push_back("PAMGUARD_CAPTURE_API_KEY");
@@ -3977,11 +3998,13 @@ int main(int argc, char** argv) {
                 return;
             }
             const auto pid = capture.pid;
+            const auto source = capture.device;
             capture_state.running.emplace(session_id, std::move(capture));
             json_response(res, {
                 {"started", true},
                 {"sessionId", session_id},
-                {"device", device},
+                {"source", source},
+                {"kind", device.empty() ? "url" : "dshow"},
                 {"sampleRateHz", sample_rate},
                 {"channels", channel_count},
                 {"pid", pid},

@@ -503,10 +503,21 @@
               <strong>Live capture — server sound card</strong>
               <span id="captureMeta">Checking availability…</span>
             </div>
-            <label for="captureDevice">Audio device</label>
-            <select id="captureDevice">
-              <option value="">Press Refresh devices</option>
+            <label for="captureSourceType">Source</label>
+            <select id="captureSourceType">
+              <option value="device" selected>Sound card device</option>
+              <option value="url">Stream URL (Icecast / HTTP audio)</option>
             </select>
+            <div id="captureDeviceRow">
+              <label for="captureDevice">Audio device</label>
+              <select id="captureDevice">
+                <option value="">Press Refresh devices</option>
+              </select>
+            </div>
+            <div id="captureUrlRow" style="display: none;">
+              <label for="captureUrl">Stream URL</label>
+              <input id="captureUrl" placeholder="http://icecast-server:8000/mountpoint.mp3">
+            </div>
             <div class="actions">
               <button id="captureRefreshButton" class="secondary">Refresh devices</button>
               <button id="captureStartButton">Start capture</button>
@@ -1969,12 +1980,28 @@
       // The delay-locked loop converges to the new lag smoothly on its own.
     });
 
+    $("captureSourceType").addEventListener("change", () => {
+      const useUrl = $("captureSourceType").value === "url";
+      $("captureDeviceRow").style.display = useUrl ? "none" : "";
+      $("captureUrlRow").style.display = useUrl ? "" : "none";
+      $("captureRefreshButton").style.display = useUrl ? "none" : "";
+      $("captureMeta").textContent = useUrl
+        ? "The stream's audio is resampled to the session's sample rate & channels"
+        : "Uses the session's sample rate & channels";
+    });
+
     $("captureRefreshButton").addEventListener("click", refreshCaptureDevices);
 
     $("captureStartButton").addEventListener("click", async () => {
+      const useUrl = $("captureSourceType").value === "url";
       const device = $("captureDevice").value;
+      const url = $("captureUrl").value.trim();
       const meta = $("captureMeta");
-      if (!device) {
+      if (useUrl && !/^https?:\/\//.test(url)) {
+        meta.textContent = "Enter a stream URL starting with http:// or https://";
+        return;
+      }
+      if (!useUrl && !device) {
         meta.textContent = "Pick an audio device first (Refresh devices)";
         return;
       }
@@ -1992,12 +2019,13 @@
           }
         }
         const sessionId = $("sessionId").value;
+        const startBody = useUrl ? { sessionId, url } : { sessionId, device };
         const result = await requestJson(api("/capture/start"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, device })
+          body: JSON.stringify(startBody)
         });
-        meta.textContent = `Capturing '${device}' into session '${sessionId}' (pid ${result.pid})`;
+        meta.textContent = `Capturing '${useUrl ? url : device}' into session '${sessionId}' (pid ${result.pid})`;
         startLiveStream(sessionId);
         log(result);
       } catch (error) {
