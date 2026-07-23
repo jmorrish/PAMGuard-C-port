@@ -260,6 +260,7 @@ struct AnalysisResult {
     std::vector<LtsaResult> ltsa;
     std::vector<detectors::IshmaelDetection> ishmael_detections;
     std::vector<detectors::IshmaelDetection> sgram_corr_detections;
+    std::vector<detectors::IshmaelDetection> match_filt_detections;
     std::vector<MatchedTemplateClickResult> matched_template_classifications;
 };
 
@@ -366,6 +367,9 @@ private:
     /** Kernel shared across channels; per-channel gram buffers inside. */
     std::optional<detectors::SgramCorrDetector> sgram_corr_detector_;
     std::optional<detectors::IshmaelPeakPicker> sgram_corr_picker_;
+    /** Raw-audio matched filter; per-channel buffers inside. */
+    std::optional<detectors::MatchFiltDetector> match_filt_detector_;
+    std::optional<detectors::IshmaelPeakPicker> match_filt_picker_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

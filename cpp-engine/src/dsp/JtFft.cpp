@@ -104,6 +104,28 @@ std::vector<double> JtFft::real_forward(const std::vector<double>& x, std::size_
     return packed;
 }
 
+std::vector<double> JtFft::real_inverse(const std::vector<double>& packed) {
+    const std::size_t n = packed.size();
+    std::vector<std::complex<double>> spectrum(n);
+    if (n == 0) {
+        return {};
+    }
+    // Even-length packed layout: a[0]=Re[0], a[1]=Re[n/2].
+    const std::size_t half = n / 2;
+    spectrum[0] = {packed[0], 0.0};
+    spectrum[half] = {packed[1], 0.0};
+    for (std::size_t k = 1; k < half; ++k) {
+        spectrum[k] = {packed[2 * k], packed[2 * k + 1]};
+        spectrum[n - k] = std::conj(spectrum[k]);
+    }
+    const auto out = transform(std::move(spectrum), +1);
+    std::vector<double> signal(n, 0.0);
+    for (std::size_t j = 0; j < n; ++j) {
+        signal[j] = out[j].real() / static_cast<double>(n);
+    }
+    return signal;
+}
+
 void JtFft::complex_inverse(std::vector<double>& data, std::size_t n, bool scale) {
     data.resize(2 * n, 0.0);
     std::vector<std::complex<double>> a(n);

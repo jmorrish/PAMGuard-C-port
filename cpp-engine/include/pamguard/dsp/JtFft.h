@@ -37,6 +37,13 @@ public:
      * 2n (zero padded) as FastFFT.ifft does.
      */
     static void complex_inverse(std::vector<double>& data, std::size_t n, bool scale);
+
+    /**
+     * FastFFT.realInverse: the scaled inverse of real_forward — takes a
+     * packed spectrum of even length n and returns the length-n real
+     * signal (conjugate-symmetric reconstruction, inverse transform, 1/n).
+     */
+    [[nodiscard]] static std::vector<double> real_inverse(const std::vector<double>& packed);
 };
 
 } // namespace pamguard::dsp

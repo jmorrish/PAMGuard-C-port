@@ -33,7 +33,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 27;
+constexpr int kResultSchemaVersion = 28;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2149,6 +2149,20 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 throw std::invalid_argument("sgramCorr needs segments and positive spread");
             }
         }
+        const auto match_filt = body.value("matchFilt", json::object());
+        auto& mf_config = config.detector.match_filt;
+        mf_config.enabled = match_filt.value("enabled", false);
+        if (mf_config.enabled) {
+            mf_config.kernel = match_filt.value("kernel", std::vector<double>{});
+            mf_config.channels = match_filt.value("channels", std::vector<std::size_t>{});
+            mf_config.thresh = match_filt.value("thresh", mf_config.thresh);
+            mf_config.min_time_s = match_filt.value("minTimeSeconds", mf_config.min_time_s);
+            mf_config.max_time_s = match_filt.value("maxTimeSeconds", mf_config.max_time_s);
+            mf_config.refractory_time_s = match_filt.value("refractoryTimeSeconds", mf_config.refractory_time_s);
+            if (mf_config.kernel.empty()) {
+                throw std::invalid_argument("matchFilt needs a non-empty kernel waveform");
+            }
+        }
         const auto matched = body.value("matchedTemplate", json::object());
         auto& mt_config = config.detector.matched_template;
         mt_config.enabled = matched.value("enabled", false);
@@ -3017,6 +3031,20 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
     out["sgramCorrDetections"] = json::array();
     for (const auto& detection : result.sgram_corr_detections) {
         out["sgramCorrDetections"].push_back({
+            {"channel", detection.channel},
+            {"startSample", detection.start_sample},
+            {"durationSamples", detection.duration_samples},
+            {"peakTimeSample", detection.peak_time_sample},
+            {"peakHeight", detection.peak_height},
+            {"startTimeMs", detection.start_time_ms},
+            {"lowFreqHz", detection.low_freq_hz},
+            {"highFreqHz", detection.high_freq_hz},
+        });
+    }
+
+    out["matchFiltDetections"] = json::array();
+    for (const auto& detection : result.match_filt_detections) {
+        out["matchFiltDetections"].push_back({
             {"channel", detection.channel},
             {"startSample", detection.start_sample},
             {"durationSamples", detection.duration_samples},

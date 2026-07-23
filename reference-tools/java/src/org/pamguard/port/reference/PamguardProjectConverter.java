@@ -27,6 +27,7 @@ import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTempl
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates.SpectrumTemplateType;
 import fftManager.FFTParameters;
 import IshmaelDetector.EnergySumParams;
+import IshmaelDetector.MatchFiltParams;
 import IshmaelDetector.SgramCorrParams;
 import ltsa.LtsaParameters;
 import matchedTemplateClassifer.MTClassifier;
@@ -131,6 +132,7 @@ public final class PamguardProjectConverter {
         LtsaParameters ltsaParams = null;
         EnergySumParams energySum = null;
         SgramCorrParams sgramCorr = null;
+        MatchFiltParams matchFilt = null;
         MatchedTemplateParams matchedTemplate = null;
 
         for (PamControlledUnitSettings unit : group.getUnitSettings()) {
@@ -181,6 +183,9 @@ public final class PamguardProjectConverter {
             }
             else if (settings instanceof SgramCorrParams && sgramCorr == null) {
                 sgramCorr = (SgramCorrParams) settings;
+            }
+            else if (settings instanceof MatchFiltParams && matchFilt == null) {
+                matchFilt = (MatchFiltParams) settings;
             }
             else if (settings instanceof MatchedTemplateParams && matchedTemplate == null) {
                 matchedTemplate = (MatchedTemplateParams) settings;
@@ -479,6 +484,32 @@ public final class PamguardProjectConverter {
             }
         }
 
+        if (matchFilt != null) {
+            // The engine carries the kernel samples inline, so the WAV the
+            // configuration references is read here — through the same
+            // AudioSystem + bytesToSamples path MatchFiltProcess2 uses.
+            double[] kernelSamples = readKernelWav(matchFilt.getKernelFilename());
+            if (kernelSamples == null || kernelSamples.length == 0) {
+                System.out.println("skipped: Ishmael matched filter (kernel file missing or unreadable: \""
+                        + matchFilt.getKernelFilename() + "\")");
+            }
+            else {
+                json.append(",\n  \"matchFilt\": { \"enabled\": true, \"kernel\": [");
+                for (int i = 0; i < kernelSamples.length; i++) {
+                    if (i > 0) {
+                        json.append(",");
+                    }
+                    json.append(String.format(java.util.Locale.ROOT, "%.17g", kernelSamples[i]));
+                }
+                json.append("]");
+                json.append(", \"thresh\": ").append(format(matchFilt.thresh));
+                json.append(", \"minTimeSeconds\": ").append(format(matchFilt.minTime));
+                json.append(", \"maxTimeSeconds\": ").append(format(matchFilt.maxTime));
+                json.append(", \"refractoryTimeSeconds\": ").append(format(matchFilt.refractoryTime));
+                json.append(" }");
+            }
+        }
+
         if (matchedTemplate != null) {
             if (matchedTemplate.classifiers == null || matchedTemplate.classifiers.isEmpty()) {
                 System.out.println("skipped: matched template classifier (no classifiers)");
@@ -708,6 +739,38 @@ public final class PamguardProjectConverter {
         energySumSample.refractoryTime = 0.2;
         group.addSettings(new PamControlledUnitSettings("Energy Sum", "Energy Sum",
                 EnergySumParams.class.getName(), 1, energySumSample));
+        // A real 16-bit kernel WAV next to the psfx so the matched-filter
+        // mapping exercises the real AudioSystem read-back path.
+        java.io.File kernelWav = new java.io.File(psfxFile.getParentFile(), "sample-mf-kernel.wav");
+        {
+            int kernelLen = 200;
+            byte[] kernelBytes = new byte[kernelLen * 2];
+            for (int i = 0; i < kernelLen; i++) {
+                double v = 0.7 * Math.exp(-4.0 * i / kernelLen)
+                        * Math.sin(2 * Math.PI * 12000.0 * i / 96000.0);
+                int value = (int) Math.round(v * 32767.0);
+                kernelBytes[2 * i] = (byte) (value & 0xFF);
+                kernelBytes[2 * i + 1] = (byte) ((value >> 8) & 0xFF);
+            }
+            javax.sound.sampled.AudioFormat kernelFormat =
+                    new javax.sound.sampled.AudioFormat(96000, 16, 1, true, false);
+            javax.sound.sampled.AudioInputStream kernelStream = new javax.sound.sampled.AudioInputStream(
+                    new java.io.ByteArrayInputStream(kernelBytes), kernelFormat, kernelLen);
+            javax.sound.sampled.AudioSystem.write(kernelStream,
+                    javax.sound.sampled.AudioFileFormat.Type.WAVE, kernelWav);
+            kernelStream.close();
+        }
+        MatchFiltParams matchFiltSample = new MatchFiltParams();
+        java.lang.reflect.Field kernelListField = MatchFiltParams.class.getDeclaredField("kernelFilenameList");
+        kernelListField.setAccessible(true);
+        java.util.ArrayList<String> kernelNames = new java.util.ArrayList<>();
+        kernelNames.add(kernelWav.getAbsolutePath());
+        kernelListField.set(matchFiltSample, kernelNames);
+        matchFiltSample.thresh = 0.5;
+        matchFiltSample.minTime = 0.002;
+        matchFiltSample.refractoryTime = 0.05;
+        group.addSettings(new PamControlledUnitSettings("Match Filter", "Matched Filter",
+                MatchFiltParams.class.getName(), 1, matchFiltSample));
         SgramCorrParams sgramSample = new SgramCorrParams();
         sgramSample.segment = new double[][]{{0.0, 500.0, 0.2, 1500.0}};
         sgramSample.spread = 80.0;
@@ -909,6 +972,34 @@ public final class PamguardProjectConverter {
      * average, kernel, threshold), with per-method settings in the same order.
      */
     /** ClickParameters.preFilter/triggerFilter, PAMGuard field names kept. */
+    /**
+     * Reads a matched-filter kernel WAV exactly as
+     * MatchFiltProcess2.prepareKernel does (AudioSystem + channel-0
+     * bytesToSamples); null when missing or unreadable.
+     */
+    private static double[] readKernelWav(String filename) {
+        if (filename == null || filename.length() == 0) {
+            return null;
+        }
+        java.io.File kernelFile = new java.io.File(filename);
+        if (!kernelFile.exists()) {
+            return null;
+        }
+        try {
+            byte[] byteArray = new byte[(int) kernelFile.length()];
+            javax.sound.sampled.AudioInputStream audioStream =
+                    javax.sound.sampled.AudioSystem.getAudioInputStream(kernelFile);
+            int nBytesRead = audioStream.read(byteArray, 0, byteArray.length);
+            javax.sound.sampled.AudioFormat audioFormat = audioStream.getFormat();
+            long nBytesToDo = nBytesRead - (nBytesRead % audioFormat.getFrameSize());
+            double[] samples = Acquisition.FileInputSystem.bytesToSamples(byteArray, nBytesToDo, 0, audioFormat);
+            audioStream.close();
+            return samples;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
     private static void appendMatchTemplate(StringBuilder json, String key, MatchTemplate template) {
         json.append(", \"").append(key).append("\": { \"name\": \"")
                 .append(template.name == null ? "" : template.name.replace("\"", "'"))

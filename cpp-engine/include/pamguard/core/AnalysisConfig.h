@@ -9,6 +9,7 @@
 #include "pamguard/detectors/IshmaelDetector.h"
 #include "pamguard/detectors/LtsaMonitor.h"
 #include "pamguard/detectors/MatchedTemplateClassifier.h"
+#include "pamguard/detectors/MatchFiltDetector.h"
 #include "pamguard/detectors/SgramCorrDetector.h"
 #include "pamguard/detectors/NoiseBandMonitor.h"
 #include "pamguard/detectors/SpectrogramNoiseReducer.h"
@@ -157,6 +158,8 @@ struct DetectorConfig {
     detectors::MatchedTemplateClassifierConfig matched_template;
     /** PAMGuard Ishmael spectrogram correlation detector. */
     detectors::SgramCorrConfig sgram_corr;
+    /** PAMGuard Ishmael matched filter (MatchFiltProcess2). */
+    detectors::MatchFiltConfig match_filt;
     bool whistle_peak_detector_enabled = false;
     detectors::WhistlePeakConfig whistle_peak;
     bool whistle_region_detector_enabled = false;

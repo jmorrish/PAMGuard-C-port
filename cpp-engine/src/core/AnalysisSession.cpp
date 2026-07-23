@@ -576,6 +576,21 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
         sgram_corr_picker_.emplace(static_cast<double>(config_.sample_rate_hz),
                                    config_.detector.fft.fft_hop, picker_config);
     }
+    if (config_.detector.match_filt.enabled && !config_.detector.match_filt.kernel.empty() &&
+        config_.sample_rate_hz != 0) {
+        match_filt_detector_.emplace(static_cast<double>(config_.sample_rate_hz),
+                                     config_.detector.match_filt);
+        detectors::IshmaelEnergySumConfig picker_config;
+        picker_config.thresh = config_.detector.match_filt.thresh;
+        picker_config.min_time_s = config_.detector.match_filt.min_time_s;
+        picker_config.max_time_s = config_.detector.match_filt.max_time_s;
+        picker_config.refractory_time_s = config_.detector.match_filt.refractory_time_s;
+        // getLoFreq/getHiFreq: the full band; detection rate is the AUDIO
+        // rate (getDetSampleRate returns getSampleRate), hence hop 1.
+        picker_config.f0 = 0.0;
+        picker_config.f1 = static_cast<double>(config_.sample_rate_hz) / 2.0;
+        match_filt_picker_.emplace(static_cast<double>(config_.sample_rate_hz), 1, picker_config);
+    }
     if (config_.detector.click_detector_enabled) {
         click_detector_.emplace(config_.detector.click);
         if (config_.detector.click_echo_enabled && config_.sample_rate_hz != 0) {
@@ -732,6 +747,34 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                 auto detection = sgram_corr_picker_->process(frame.channel, frame.start_sample, *fn);
                 if (detection.has_value()) {
                     result.sgram_corr_detections.push_back(*detection);
+                }
+            }
+        }
+    }
+    if (match_filt_detector_.has_value() && match_filt_detector_->valid()) {
+        // Raw-audio path. Empty channel list means channel 0 only — the
+        // reference's behaviour with no channel groups.
+        static const std::vector<std::size_t> default_channels{0};
+        const auto& mf_channels = config_.detector.match_filt.channels.empty()
+            ? default_channels : config_.detector.match_filt.channels;
+        std::vector<double> channel_samples;
+        for (const auto channel : mf_channels) {
+            if (channel >= chunk.channel_count) {
+                continue;
+            }
+            const auto frames = chunk.frame_count();
+            channel_samples.resize(frames);
+            for (std::size_t i = 0; i < frames; ++i) {
+                channel_samples[i] = chunk.sample(i, channel);
+            }
+            const auto blocks = match_filt_detector_->process(channel, channel_samples);
+            for (const auto& block : blocks) {
+                for (std::size_t i = 0; i < block.values.size(); ++i) {
+                    auto detection = match_filt_picker_->process(
+                        channel, block.start_sample + static_cast<std::int64_t>(i), block.values[i]);
+                    if (detection.has_value()) {
+                        result.match_filt_detections.push_back(*detection);
+                    }
                 }
             }
         }
