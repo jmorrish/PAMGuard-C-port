@@ -33,7 +33,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 24;
+constexpr int kResultSchemaVersion = 25;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2103,6 +2103,30 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 throw std::invalid_argument("ltsa.intervalSeconds must be positive");
             }
         }
+        const auto ishmael = body.value("ishmael", json::object());
+        auto& ish_config = config.detector.ishmael;
+        ish_config.enabled = ishmael.value("enabled", false);
+        if (ish_config.enabled) {
+            ish_config.f0 = ishmael.value("f0", ish_config.f0);
+            ish_config.f1 = ishmael.value("f1", ish_config.f1);
+            ish_config.ratio_f0 = ishmael.value("ratioF0", ish_config.ratio_f0);
+            ish_config.ratio_f1 = ishmael.value("ratioF1", ish_config.ratio_f1);
+            ish_config.use_ratio = ishmael.value("useRatio", ish_config.use_ratio);
+            ish_config.use_log = ishmael.value("useLog", ish_config.use_log);
+            ish_config.adaptive_threshold = ishmael.value("adaptiveThreshold", ish_config.adaptive_threshold);
+            ish_config.long_filter = ishmael.value("longFilter", ish_config.long_filter);
+            ish_config.spike_decay = ishmael.value("spikeDecay", ish_config.spike_decay);
+            ish_config.output_smoothing = ishmael.value("outputSmoothing", ish_config.output_smoothing);
+            ish_config.short_filter = ishmael.value("shortFilter", ish_config.short_filter);
+            ish_config.thresh = ishmael.value("thresh", ish_config.thresh);
+            ish_config.min_time_s = ishmael.value("minTimeSeconds", ish_config.min_time_s);
+            ish_config.max_time_s = ishmael.value("maxTimeSeconds", ish_config.max_time_s);
+            ish_config.refractory_time_s = ishmael.value("refractoryTimeSeconds", ish_config.refractory_time_s);
+            if (!(ish_config.f1 > ish_config.f0) || ish_config.min_time_s < 0.0 ||
+                ish_config.max_time_s < 0.0 || ish_config.refractory_time_s < 0.0) {
+                throw std::invalid_argument("ishmael needs f1 > f0 and non-negative times");
+            }
+        }
         const auto acquisition = body.value("acquisition", json::object());
         config.acquisition.volts_peak_to_peak = acquisition.value("voltsPeak2Peak", config.acquisition.volts_peak_to_peak);
         config.acquisition.preamp_gain_db = acquisition.value("preampGainDb", config.acquisition.preamp_gain_db);
@@ -2917,6 +2941,20 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             {"startSample", entry.interval.start_sample},
             {"durationSamples", entry.interval.duration_samples},
             {"magnitude", entry.interval.magnitude},
+        });
+    }
+
+    out["ishmaelDetections"] = json::array();
+    for (const auto& detection : result.ishmael_detections) {
+        out["ishmaelDetections"].push_back({
+            {"channel", detection.channel},
+            {"startSample", detection.start_sample},
+            {"durationSamples", detection.duration_samples},
+            {"peakTimeSample", detection.peak_time_sample},
+            {"peakHeight", detection.peak_height},
+            {"startTimeMs", detection.start_time_ms},
+            {"lowFreqHz", detection.low_freq_hz},
+            {"highFreqHz", detection.high_freq_hz},
         });
     }
 

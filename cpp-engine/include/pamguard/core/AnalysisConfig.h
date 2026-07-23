@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "pamguard/detectors/ClickDetectorEngine.h"
+#include "pamguard/detectors/IshmaelDetector.h"
 #include "pamguard/detectors/LtsaMonitor.h"
 #include "pamguard/detectors/NoiseBandMonitor.h"
 #include "pamguard/detectors/SpectrogramNoiseReducer.h"
@@ -148,6 +149,8 @@ struct DetectorConfig {
     detectors::NoiseBandConfig noise_band;
     /** PAMGuard ltsa: long-term spectral average over the FFT stream. */
     detectors::LtsaConfig ltsa;
+    /** PAMGuard IshmaelDetector energy sum + peak picker. */
+    detectors::IshmaelEnergySumConfig ishmael;
     bool whistle_peak_detector_enabled = false;
     detectors::WhistlePeakConfig whistle_peak;
     bool whistle_region_detector_enabled = false;

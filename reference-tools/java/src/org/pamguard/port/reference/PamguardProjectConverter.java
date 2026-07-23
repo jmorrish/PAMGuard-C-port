@@ -26,6 +26,7 @@ import clickTrainDetector.clickTrainAlgorithms.mht.electricalNoiseFilter.SimpleE
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates;
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates.SpectrumTemplateType;
 import fftManager.FFTParameters;
+import IshmaelDetector.EnergySumParams;
 import ltsa.LtsaParameters;
 import noiseBandMonitor.NoiseBandSettings;
 import spectrogramNoiseReduction.SpectrogramNoiseSettings;
@@ -124,6 +125,7 @@ public final class PamguardProjectConverter {
         SimpleEchoParams echoParams = null;
         NoiseBandSettings noiseBand = null;
         LtsaParameters ltsaParams = null;
+        EnergySumParams energySum = null;
 
         for (PamControlledUnitSettings unit : group.getUnitSettings()) {
             Object settings;
@@ -167,6 +169,9 @@ public final class PamguardProjectConverter {
             }
             else if (settings instanceof LtsaParameters && ltsaParams == null) {
                 ltsaParams = (LtsaParameters) settings;
+            }
+            else if (settings instanceof EnergySumParams && energySum == null) {
+                energySum = (EnergySumParams) settings;
             }
             else {
                 System.out.printf("skipped: %s / %s (%s)%n", unit.getUnitType(), unit.getUnitName(),
@@ -407,6 +412,35 @@ public final class PamguardProjectConverter {
             }
         }
 
+        if (energySum != null) {
+            if (energySum.f1 > energySum.f0) {
+                json.append(",\n  \"ishmael\": { \"enabled\": true");
+                json.append(", \"f0\": ").append(format(energySum.f0));
+                json.append(", \"f1\": ").append(format(energySum.f1));
+                json.append(", \"ratioF0\": ").append(format(energySum.ratiof0));
+                json.append(", \"ratioF1\": ").append(format(energySum.ratiof1));
+                json.append(", \"useRatio\": ").append(energySum.useRatio);
+                json.append(", \"useLog\": ").append(energySum.useLog);
+                json.append(", \"adaptiveThreshold\": ").append(energySum.adaptiveThreshold);
+                json.append(", \"longFilter\": ").append(format(energySum.longFilter));
+                json.append(", \"spikeDecay\": ").append(format(energySum.spikeDecay));
+                json.append(", \"outputSmoothing\": ").append(energySum.outPutSmoothing);
+                // shortFilter is a boxed Double and can be null in files
+                // written before the field existed; the runtime default
+                // EnergySumParams.clone() would restore is 0.1.
+                json.append(", \"shortFilter\": ").append(format(
+                        energySum.shortFilter == null ? 0.1 : energySum.shortFilter));
+                json.append(", \"thresh\": ").append(format(energySum.thresh));
+                json.append(", \"minTimeSeconds\": ").append(format(energySum.minTime));
+                json.append(", \"maxTimeSeconds\": ").append(format(energySum.maxTime));
+                json.append(", \"refractoryTimeSeconds\": ").append(format(energySum.refractoryTime));
+                json.append(" }");
+            }
+            else {
+                System.out.println("skipped: Ishmael energy sum (f1 not above f0)");
+            }
+        }
+
         json.append("\n}\n");
 
         jsonFile.getParentFile().mkdirs();
@@ -600,6 +634,14 @@ public final class PamguardProjectConverter {
         ltsaSample.intervalSeconds = 10;
         group.addSettings(new PamControlledUnitSettings("LTSA", "LTSA",
                 LtsaParameters.class.getName(), 1, ltsaSample));
+        EnergySumParams energySumSample = new EnergySumParams();
+        energySumSample.f0 = 200.0;
+        energySumSample.f1 = 2500.0;
+        energySumSample.thresh = 2.0;
+        energySumSample.minTime = 0.05;
+        energySumSample.refractoryTime = 0.2;
+        group.addSettings(new PamControlledUnitSettings("Energy Sum", "Energy Sum",
+                EnergySumParams.class.getName(), 1, energySumSample));
         // A module the engine has no equivalent for, so the converter's
         // skip reporting always has something real to report.
         group.addSettings(new PamControlledUnitSettings("Spectrogram", "User Display",

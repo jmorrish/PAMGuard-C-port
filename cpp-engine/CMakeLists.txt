@@ -25,6 +25,7 @@ add_library(pamguard_engine
     src/detectors/MhtSimpleChi2Vars.cpp
     src/detectors/StandardMhtChi2.cpp
     src/detectors/ConnectedRegionTracker.cpp
+    src/detectors/IshmaelDetector.cpp
     src/detectors/LtsaMonitor.cpp
     src/detectors/NoiseBandMonitor.cpp
     src/detectors/SpectrogramNoiseReducer.cpp
@@ -317,6 +318,12 @@ add_executable(ltsa_fixture_check
 )
 
 target_link_libraries(ltsa_fixture_check PRIVATE pamguard_engine)
+
+add_executable(ishmael_fixture_check
+    tools/ishmael_fixture_check.cpp
+)
+
+target_link_libraries(ishmael_fixture_check PRIVATE pamguard_engine)
 
 add_executable(iir_filter_fixture_check
     tools/iir_filter_fixture_check.cpp
@@ -649,6 +656,11 @@ add_test(
 add_test(
     NAME ltsa_parity
     COMMAND ltsa_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ltsa/ltsa.csv
+)
+
+add_test(
+    NAME ishmael_parity
+    COMMAND ishmael_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ishmael/ishmael-energy-sum.csv
 )
 
 add_test(

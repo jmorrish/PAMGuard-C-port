@@ -22,6 +22,7 @@ The HTTP service smoke asserts the health endpoint, live PCM result body, and ar
 
 ## Version history
 
+- `25`: Adds an `ishmaelDetections` array (ported PAMGuard IshmaelDetector energy sum + peak picker): threshold crossings of the band energy sum with duration/refractory gating, reporting the event's sample span, peak value/time, and the configured band. Configured via `ishmael: {enabled, f0, f1, ratioF0, ratioF1, useRatio, useLog, adaptiveThreshold, longFilter, spikeDecay, outputSmoothing, shortFilter, thresh, minTimeSeconds, maxTimeSeconds, refractoryTimeSeconds}`.
 - `24`: Adds an `ltsa` array (ported PAMGuard LTSA): per channel per completed averaging period, `magnitude` holds the RMS spectral magnitude per FFT bin (`sqrt(mean magnitude-squared)`, uncalibrated exactly as the reference stores it), with the wall-clock-aligned window, `nFft`, and the covered sample span. Configured via `ltsa: {enabled, intervalSeconds}`.
 - `23`: Adds a `noiseBands` array (ported PAMGuard noiseBandMonitor): per channel per output interval, ANSI band `rmsDb`/`peakDb` levels ascending in frequency, calibrated to dB re 1 uPa when `acquisition` and hydrophone sensitivity/preamp gain are configured, honest relative dB otherwise.
 - `22`: Adds an `echo` boolean to click results when online echo detection runs (`click.echo.runOnline`), via the ported PAMGuard SimpleEchoDetector. Absent when the gate is off, so unchecked is distinguishable from not-an-echo. With `discardEchoes`, echoes are removed before any output at all.

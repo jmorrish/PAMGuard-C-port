@@ -246,6 +246,7 @@ struct AnalysisResult {
     std::vector<WhistleRegionGroup> whistle_groups;
     std::vector<NoiseBandResult> noise_bands;
     std::vector<LtsaResult> ltsa;
+    std::vector<detectors::IshmaelDetection> ishmael_detections;
 };
 
 [[nodiscard]] std::vector<ClickTrainBearingSummary> summarize_click_train_bearings(
@@ -338,6 +339,14 @@ private:
     std::unordered_map<std::size_t, detectors::NoiseBandMonitor> noise_band_monitors_;
     /** One per channel, keyed by channel number (LtsaProcess.ChannelProcess). */
     std::unordered_map<std::size_t, detectors::LtsaMonitor> ltsa_monitors_;
+    /**
+     * ONE energy sum for the session, not one per channel: the reference's
+     * noise floor and smoothing state are single fields shared across every
+     * channel the process serves. The peak picker keeps per-channel state
+     * internally, as IshPeakProcess does.
+     */
+    std::optional<detectors::IshmaelEnergySum> ishmael_energy_;
+    std::optional<detectors::IshmaelPeakPicker> ishmael_picker_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

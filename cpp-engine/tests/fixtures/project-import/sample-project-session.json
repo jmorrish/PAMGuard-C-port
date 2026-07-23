@@ -93,5 +93,6 @@
     "noise": { "medianFilter": true, "medianFilterLength": 41, "averageSubtraction": true, "updateConstant": 0.030000000000000000, "kernelSmoothing": false, "threshold": true, "thresholdDb": 9.0, "finalOutput": 2 }
   },
   "noiseBand": { "enabled": true, "bandType": "thirdOctave", "minFrequencyHz": 1.7925856629456591, "maxFrequencyHz": 1133.6866687924667, "referenceFrequencyHz": 1000.0, "iirOrder": 6, "outputIntervalSeconds": 5 },
-  "ltsa": { "enabled": true, "intervalSeconds": 10 }
+  "ltsa": { "enabled": true, "intervalSeconds": 10 },
+  "ishmael": { "enabled": true, "f0": 200.0, "f1": 2500.0, "ratioF0": 1000.0, "ratioF1": 2000.0, "useRatio": false, "useLog": false, "adaptiveThreshold": false, "longFilter": 0.00010000000000000000, "spikeDecay": 100.0, "outputSmoothing": false, "shortFilter": 0.10000000000000000, "thresh": 2.0, "minTimeSeconds": 0.050000000000000000, "maxTimeSeconds": 99999.0, "refractoryTimeSeconds": 0.20000000000000000 }
 }

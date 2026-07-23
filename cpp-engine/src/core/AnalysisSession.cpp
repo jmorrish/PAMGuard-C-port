@@ -545,6 +545,12 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
             }
         }
     }
+    if (config_.detector.ishmael.enabled && config_.detector.fft.fft_length >= 2 &&
+        config_.detector.fft.fft_hop > 0 && config_.sample_rate_hz != 0) {
+        ishmael_energy_.emplace(static_cast<double>(config_.sample_rate_hz), config_.detector.ishmael);
+        ishmael_picker_.emplace(static_cast<double>(config_.sample_rate_hz),
+                                config_.detector.fft.fft_hop, config_.detector.ishmael);
+    }
     if (config_.detector.click_detector_enabled) {
         click_detector_.emplace(config_.detector.click);
         if (config_.detector.click_echo_enabled && config_.sample_rate_hz != 0) {
@@ -661,6 +667,33 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                 pamguard_packed_magnitude_squared(frame.bins));
             if (closed.has_value()) {
                 result.ltsa.push_back({frame.channel, std::move(*closed)});
+            }
+        }
+    }
+    if (ishmael_energy_.has_value()) {
+        // PAMGuard's FFT units arrive slice-major across channels (ch0 ch1
+        // ch0 ch1 ...); the engine's frames are channel-major per chunk, so
+        // they are re-ordered to feed the shared-state energy sum the way
+        // the reference sees them.
+        std::vector<const dsp::SpectrogramFrame*> ordered;
+        ordered.reserve(result.spectrogram_frames.size());
+        for (const auto& frame : result.spectrogram_frames) {
+            ordered.push_back(&frame);
+        }
+        std::stable_sort(ordered.begin(), ordered.end(),
+                         [](const dsp::SpectrogramFrame* a, const dsp::SpectrogramFrame* b) {
+                             if (a->fft_slice != b->fft_slice) {
+                                 return a->fft_slice < b->fft_slice;
+                             }
+                             return a->channel < b->channel;
+                         });
+        for (const auto* frame : ordered) {
+            const auto sample = ishmael_energy_->process_frame(
+                pamguard_packed_magnitude_squared(frame->bins));
+            auto detection = ishmael_picker_->process(frame->channel, frame->start_sample,
+                                                      sample.det_value);
+            if (detection.has_value()) {
+                result.ishmael_detections.push_back(*detection);
             }
         }
     }
