@@ -52,8 +52,10 @@ struct Options {
     bool allow_existing_session = false;
     bool resume_from_engine = false;
     bool realtime = false;
-    /** When > 0, PCM POSTs request a spectrogram preview of this many bins,
-     * which the engine's result feed then carries to live viewers. */
+    /** When enabled, PCM POSTs request spectrogram preview frames, which the
+     * engine's result feed then carries to live viewers. preview_bins == 0
+     * means the full spectrum at full resolution. */
+    bool preview = false;
     std::size_t preview_bins = 0;
 };
 
@@ -93,8 +95,8 @@ void usage() {
         << "  --owner-id <id>                 Overlay ownerId when posting --session-config\n"
         << "  --tenant-id <id>                Overlay tenantId when posting --session-config\n"
         << "  --audio-filter <ffmpeg-filter>  Optional FFmpeg -af filter for channel mapping/filtering\n"
-        << "  --preview-bins <n>              Ask the engine for an n-bin spectrogram preview per chunk\n"
-        << "                                  (feeds live viewers via the session result feed)\n"
+        << "  --preview-bins <n>              Ask the engine for spectrogram preview frames per chunk\n"
+        << "                                  (0 = full spectrum; feeds live viewers via the result feed)\n"
         << "  --ffmpeg-input-option <arg>     Extra FFmpeg input option token before -i; repeat as needed\n"
         << "  --allow-existing-session        Continue if --session-config finds the session already exists\n"
         << "  --resume-from-engine            Start from the engine session runtime.expectedStartSample\n"
@@ -178,6 +180,7 @@ Options parse_options(int argc, char** argv) {
             options.audio_filter = require_value(i, argc, argv, arg);
         }
         else if (arg == "--preview-bins") {
+            options.preview = true;
             options.preview_bins = static_cast<std::size_t>(std::stoull(require_value(i, argc, argv, arg)));
         }
         else if (arg == "--ffmpeg-input-option") {
@@ -545,9 +548,11 @@ int main(int argc, char** argv) {
     try {
         const auto options = parse_options(argc, argv);
         auto endpoint = parse_http_endpoint(options.engine_url);
-        if (options.preview_bins > 0) {
-            endpoint.extra_query = "&includeSpectrogram=true&spectrogramMaxBins=" +
-                std::to_string(options.preview_bins);
+        if (options.preview) {
+            endpoint.extra_query = "&includeSpectrogram=true";
+            if (options.preview_bins > 0) {
+                endpoint.extra_query += "&spectrogramMaxBins=" + std::to_string(options.preview_bins);
+            }
         }
         std::uint64_t start_sample = options.start_sample;
         std::size_t chunks_posted = 0;

@@ -3959,9 +3959,9 @@ int main(int argc, char** argv) {
                 "--channels", std::to_string(channel_count),
                 // Quarter-second chunks: calm POST cadence, smooth live view.
                 "--chunk-frames", std::to_string(std::max<std::size_t>(1, sample_rate / 4)),
-                // The result feed carries these preview frames to the web
-                // UI's rolling live spectrogram.
-                "--preview-bins", "96",
+                // Full-spectrum preview frames: the result feed carries them
+                // to the web UI's live waterfall (0 = all bins).
+                "--preview-bins", "0",
                 "--ffmpeg", ffmpeg_path,
                 "--restart",
                 "--resume-from-engine",

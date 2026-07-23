@@ -1151,9 +1151,10 @@
       $("mContinuity").textContent = result.sampleContinuity || "n/a";
       renderMonitoring(result);
       renderContourSummaries(result.whistleRegions || []);
-      // Feed-polled results carry no spectrogram preview; keep the last
-      // rendered image instead of wiping the canvas.
-      if (Array.isArray(result.spectrogram)) {
+      // In live mode the scrolling waterfall owns the canvas; otherwise a
+      // one-shot result draws its own frames (and preview-less results keep
+      // the last image rather than blanking).
+      if (livePollTimer === null && Array.isArray(result.spectrogram)) {
         drawSpectrogram(result.spectrogram, result.whistleRegions || []);
       }
     }
@@ -1169,11 +1170,17 @@
       return ratio;
     }
 
-    function heatColor(unit) {
+    function heatRgb(unit) {
       const t = Math.max(0, Math.min(1, unit));
-      const r = Math.round(8 + 237 * Math.pow(t, 1.7));
-      const g = Math.round(27 + 187 * Math.sin(t * Math.PI * 0.72));
-      const b = Math.round(25 + 78 * (1 - t));
+      return [
+        Math.round(8 + 237 * Math.pow(t, 1.7)),
+        Math.round(27 + 187 * Math.sin(t * Math.PI * 0.72)),
+        Math.round(25 + 78 * (1 - t))
+      ];
+    }
+
+    function heatColor(unit) {
+      const [r, g, b] = heatRgb(unit);
       return `rgb(${r}, ${g}, ${b})`;
     }
 
@@ -1645,8 +1652,92 @@
       }
     }
 
-    let liveFrames = [];
-    const maxLiveFrames = 480; // ~2 minutes of quarter-second chunks
+    // ---- live scrolling waterfall (PAMGuard-style display) ----
+    // Full-spectrum preview frames arrive with each capture chunk; new
+    // columns are painted onto an offscreen 1px-per-cell canvas that
+    // scrolls left, then scaled onto the visible canvas. Polling runs at
+    // ~3 Hz, so the display advances as chunks arrive rather than in
+    // 2-second batches.
+    const live = {
+      canvas: null,
+      ctx: null,
+      bins: 0,
+      maxDb: -Infinity,
+      totalSlices: 0,
+      sampleRateHz: 0
+    };
+    const liveWaterfallWidth = 1200; // columns of history kept offscreen
+
+    function ensureLiveCanvas(bins) {
+      if (live.canvas && live.bins === bins) {
+        return;
+      }
+      live.canvas = document.createElement("canvas");
+      live.canvas.width = liveWaterfallWidth;
+      live.canvas.height = bins;
+      live.ctx = live.canvas.getContext("2d");
+      live.ctx.fillStyle = "#071514";
+      live.ctx.fillRect(0, 0, live.canvas.width, live.canvas.height);
+      live.bins = bins;
+      live.maxDb = -Infinity;
+      live.totalSlices = 0;
+    }
+
+    function appendLiveFrames(frames) {
+      const channel = frames[0].channel;
+      const slices = frames.filter((f) => f.channel === channel && Array.isArray(f.magnitudeSquared));
+      if (!slices.length) {
+        return;
+      }
+      const bins = slices[0].magnitudeSquared.length;
+      ensureLiveCanvas(bins);
+
+      // Auto-gain: track the loudest bin with a slow decay so a single
+      // burst does not permanently compress the display.
+      let batchMax = -Infinity;
+      const dbSlices = slices.map((slice) => slice.magnitudeSquared.map((value) => {
+        const db = 10 * Math.log10(Math.max(value, 1e-12));
+        if (db > batchMax) {
+          batchMax = db;
+        }
+        return db;
+      }));
+      live.maxDb = Math.max(batchMax, live.maxDb - 1.0);
+
+      const width = Math.min(dbSlices.length, liveWaterfallWidth);
+      live.ctx.drawImage(live.canvas, -width, 0);
+      const img = live.ctx.createImageData(width, bins);
+      const range = 60;
+      const floor = live.maxDb - range;
+      for (let x = 0; x < width; x++) {
+        const slice = dbSlices[dbSlices.length - width + x];
+        for (let bin = 0; bin < bins; bin++) {
+          const [r, g, b] = heatRgb((slice[bin] - floor) / range);
+          const y = bins - 1 - bin; // low frequency at the bottom
+          const at = (y * width + x) * 4;
+          img.data[at] = r;
+          img.data[at + 1] = g;
+          img.data[at + 2] = b;
+          img.data[at + 3] = 255;
+        }
+      }
+      live.ctx.putImageData(img, live.canvas.width - width, 0);
+      live.totalSlices += slices.length;
+    }
+
+    function renderLiveWaterfall() {
+      if (!live.canvas) {
+        return;
+      }
+      const canvas = $("spectrogramCanvas");
+      const ctx = canvas.getContext("2d");
+      resizeCanvas(canvas);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(live.canvas, 0, 0, canvas.width, canvas.height);
+      const nyquistKhz = live.sampleRateHz > 0 ? (live.sampleRateHz / 2000).toFixed(1) : "?";
+      $("spectrogramMeta").textContent =
+        `Live 0–${nyquistKhz} kHz · ${live.bins} bins · ${live.totalSlices} slices · auto gain`;
+    }
 
     function stopLivePoll() {
       if (livePollTimer !== null) {
@@ -1658,38 +1749,37 @@
     function startLivePoll(sessionId) {
       stopLivePoll();
       livePollSeq = 0;
-      liveFrames = [];
+      live.canvas = null;
+      live.sampleRateHz = Number($("sampleRate").value) || 0;
+      let polling = false;
       livePollTimer = setInterval(async () => {
+        if (polling) {
+          return; // skip if the previous poll is still in flight
+        }
+        polling = true;
         try {
           const feed = await requestJson(api(`/sessions/${encodeURIComponent(sessionId)}/results?sinceSeq=${livePollSeq}`));
           if (feed.latestSeq !== undefined) {
             livePollSeq = feed.latestSeq;
           }
           const results = Array.isArray(feed.results) ? feed.results : [];
-          if (!results.length) {
-            return;
-          }
-          // Accumulate preview frames across polls so the spectrogram is a
-          // rolling window rather than a single chunk's sliver.
-          for (const result of results) {
-            if (Array.isArray(result.spectrogram)) {
-              liveFrames.push(...result.spectrogram);
+          if (results.length) {
+            for (const result of results) {
+              if (Array.isArray(result.spectrogram) && result.spectrogram.length) {
+                appendLiveFrames(result.spectrogram);
+              }
             }
-          }
-          if (liveFrames.length > maxLiveFrames) {
-            liveFrames = liveFrames.slice(liveFrames.length - maxLiveFrames);
-          }
-          const latest = results[results.length - 1];
-          updateMetrics(latest);
-          if (liveFrames.length) {
-            drawSpectrogram(liveFrames, latest.whistleRegions || []);
+            renderLiveWaterfall();
+            updateMetrics(results[results.length - 1]);
           }
         } catch (error) {
           // Session gone or service stopped: stop polling quietly.
           stopLivePoll();
           $("captureMeta").textContent = `Live poll stopped: ${error}`;
+        } finally {
+          polling = false;
         }
-      }, 2000);
+      }, 300);
     }
 
     $("captureRefreshButton").addEventListener("click", refreshCaptureDevices);
