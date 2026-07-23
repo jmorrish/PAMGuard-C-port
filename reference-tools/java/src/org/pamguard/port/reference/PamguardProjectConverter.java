@@ -28,6 +28,9 @@ import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTempl
 import fftManager.FFTParameters;
 import IshmaelDetector.EnergySumParams;
 import ltsa.LtsaParameters;
+import matchedTemplateClassifer.MTClassifier;
+import matchedTemplateClassifer.MatchTemplate;
+import matchedTemplateClassifer.MatchedTemplateParams;
 import noiseBandMonitor.NoiseBandSettings;
 import spectrogramNoiseReduction.SpectrogramNoiseSettings;
 import spectrogramNoiseReduction.medianFilter.MedianFilterParams;
@@ -126,6 +129,7 @@ public final class PamguardProjectConverter {
         NoiseBandSettings noiseBand = null;
         LtsaParameters ltsaParams = null;
         EnergySumParams energySum = null;
+        MatchedTemplateParams matchedTemplate = null;
 
         for (PamControlledUnitSettings unit : group.getUnitSettings()) {
             Object settings;
@@ -172,6 +176,9 @@ public final class PamguardProjectConverter {
             }
             else if (settings instanceof EnergySumParams && energySum == null) {
                 energySum = (EnergySumParams) settings;
+            }
+            else if (settings instanceof MatchedTemplateParams && matchedTemplate == null) {
+                matchedTemplate = (MatchedTemplateParams) settings;
             }
             else {
                 System.out.printf("skipped: %s / %s (%s)%n", unit.getUnitType(), unit.getUnitName(),
@@ -441,6 +448,34 @@ public final class PamguardProjectConverter {
             }
         }
 
+        if (matchedTemplate != null) {
+            if (matchedTemplate.classifiers == null || matchedTemplate.classifiers.isEmpty()) {
+                System.out.println("skipped: matched template classifier (no classifiers)");
+            }
+            else {
+                json.append(",\n  \"matchedTemplate\": { \"enabled\": true");
+                json.append(", \"normalisationType\": ").append(matchedTemplate.normalisationType);
+                json.append(", \"peakSearch\": ").append(matchedTemplate.peakSearch);
+                json.append(", \"peakSmoothing\": ").append(matchedTemplate.peakSmoothing);
+                json.append(", \"lengthDb\": ").append(format(matchedTemplate.lengthdB));
+                json.append(", \"restrictedBins\": ").append(matchedTemplate.restrictedBins);
+                json.append(", \"channelClassification\": ").append(matchedTemplate.channelClassification);
+                json.append(",\n    \"classifiers\": [");
+                for (int i = 0; i < matchedTemplate.classifiers.size(); i++) {
+                    MTClassifier classifier = matchedTemplate.classifiers.get(i);
+                    if (i > 0) {
+                        json.append(",");
+                    }
+                    json.append("\n      { \"thresholdToAccept\": ")
+                            .append(format(classifier.thresholdToAccept));
+                    appendMatchTemplate(json, "match", classifier.waveformMatch);
+                    appendMatchTemplate(json, "reject", classifier.waveformReject);
+                    json.append(" }");
+                }
+                json.append("\n    ] }");
+            }
+        }
+
         json.append("\n}\n");
 
         jsonFile.getParentFile().mkdirs();
@@ -642,6 +677,26 @@ public final class PamguardProjectConverter {
         energySumSample.refractoryTime = 0.2;
         group.addSettings(new PamControlledUnitSettings("Energy Sum", "Energy Sum",
                 EnergySumParams.class.getName(), 1, energySumSample));
+        MatchedTemplateParams matchedSample = new MatchedTemplateParams();
+        // The default MTClassifier carries 192 kHz templates, above the
+        // sample acquisition's 96 kHz — the engine would (correctly) refuse
+        // to decimate them, so the sample uses synthetic 48 kHz templates.
+        double[] matchWave = new double[64];
+        double[] rejectWave = new double[64];
+        for (int i = 0; i < matchWave.length; i++) {
+            matchWave[i] = Math.exp(-0.05 * i) * Math.sin(2 * Math.PI * 9000.0 * i / 48000.0);
+            rejectWave[i] = Math.exp(-0.04 * i) * Math.sin(2 * Math.PI * 3000.0 * i / 48000.0);
+        }
+        MTClassifier mtClassifier = new MTClassifier();
+        mtClassifier.thresholdToAccept = 0.1;
+        mtClassifier.normalisation = matchedSample.normalisationType;
+        mtClassifier.waveformMatch = new MatchTemplate("sample match", matchWave, 48000);
+        mtClassifier.waveformReject = new MatchTemplate("sample reject", rejectWave, 48000);
+        matchedSample.classifiers.clear();
+        matchedSample.classifiers.add(mtClassifier);
+        matchedSample.restrictedBins = 256;
+        group.addSettings(new PamControlledUnitSettings("Matched Template", "Matched Template Classifier",
+                MatchedTemplateParams.class.getName(), 1, matchedSample));
         // A module the engine has no equivalent for, so the converter's
         // skip reporting always has something real to report.
         group.addSettings(new PamControlledUnitSettings("Spectrogram", "User Display",
@@ -815,6 +870,20 @@ public final class PamguardProjectConverter {
      * average, kernel, threshold), with per-method settings in the same order.
      */
     /** ClickParameters.preFilter/triggerFilter, PAMGuard field names kept. */
+    private static void appendMatchTemplate(StringBuilder json, String key, MatchTemplate template) {
+        json.append(", \"").append(key).append("\": { \"name\": \"")
+                .append(template.name == null ? "" : template.name.replace("\"", "'"))
+                .append("\", \"sampleRateHz\": ").append(format(template.sR));
+        json.append(", \"waveform\": [");
+        for (int i = 0; i < template.waveform.length; i++) {
+            if (i > 0) {
+                json.append(",");
+            }
+            json.append(String.format(java.util.Locale.ROOT, "%.17g", template.waveform[i]));
+        }
+        json.append("] }");
+    }
+
     private static void appendIirFilter(StringBuilder json, String key, Filters.FilterParams filter) {
         if (filter == null || filter.filterType == Filters.FilterType.NONE) {
             return;

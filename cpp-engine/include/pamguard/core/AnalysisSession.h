@@ -202,6 +202,18 @@ struct LtsaResult {
     detectors::LtsaInterval interval;
 };
 
+/**
+ * Matched-template classifier outcome for one click (the PAMGuard
+ * MatchedClickAnnotation equivalent): the best result per template pair
+ * across channels, plus the aggregated classification flag.
+ */
+struct MatchedTemplateClickResult {
+    std::size_t click_index = 0;
+    std::int64_t click_start_sample = 0;
+    bool classified = false;
+    std::vector<detectors::MtTemplateResult> results;
+};
+
 /** Classifier chain verdict for an ICI-tracker click train. */
 struct ClickTrainClassificationResult {
     std::size_t train_id = 0;
@@ -247,6 +259,7 @@ struct AnalysisResult {
     std::vector<NoiseBandResult> noise_bands;
     std::vector<LtsaResult> ltsa;
     std::vector<detectors::IshmaelDetection> ishmael_detections;
+    std::vector<MatchedTemplateClickResult> matched_template_classifications;
 };
 
 [[nodiscard]] std::vector<ClickTrainBearingSummary> summarize_click_train_bearings(
@@ -347,6 +360,8 @@ private:
      */
     std::optional<detectors::IshmaelEnergySum> ishmael_energy_;
     std::optional<detectors::IshmaelPeakPicker> ishmael_picker_;
+    /** One per session; per-classifier template FFTs cache inside. */
+    std::optional<detectors::MatchedTemplateClassifier> matched_template_classifier_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

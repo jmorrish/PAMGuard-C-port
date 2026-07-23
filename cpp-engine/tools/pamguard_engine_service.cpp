@@ -33,7 +33,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 25;
+constexpr int kResultSchemaVersion = 26;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2127,6 +2127,40 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 throw std::invalid_argument("ishmael needs f1 > f0 and non-negative times");
             }
         }
+        const auto matched = body.value("matchedTemplate", json::object());
+        auto& mt_config = config.detector.matched_template;
+        mt_config.enabled = matched.value("enabled", false);
+        if (mt_config.enabled) {
+            mt_config.normalisation_type = matched.value("normalisationType", mt_config.normalisation_type);
+            mt_config.peak_search = matched.value("peakSearch", mt_config.peak_search);
+            mt_config.peak_smoothing = matched.value("peakSmoothing", mt_config.peak_smoothing);
+            mt_config.length_db = matched.value("lengthDb", mt_config.length_db);
+            mt_config.restricted_bins = matched.value("restrictedBins", mt_config.restricted_bins);
+            mt_config.channel_classification = matched.value("channelClassification", mt_config.channel_classification);
+            const auto classifiers = matched.value("classifiers", json::array());
+            for (const auto& entry : classifiers) {
+                pamguard::detectors::MtTemplatePair pair;
+                pair.threshold_to_accept = entry.value("thresholdToAccept", pair.threshold_to_accept);
+                const auto parse_template = [](const json& t, pamguard::detectors::MatchTemplateWaveform& out) {
+                    out.name = t.value("name", std::string("template"));
+                    out.sample_rate_hz = t.value("sampleRateHz", 0.0);
+                    out.waveform = t.value("waveform", std::vector<double>{});
+                };
+                parse_template(entry.value("match", json::object()), pair.match_template);
+                parse_template(entry.value("reject", json::object()), pair.reject_template);
+                mt_config.classifiers.push_back(std::move(pair));
+            }
+            if (mt_config.classifiers.empty() || mt_config.restricted_bins <= 0) {
+                throw std::invalid_argument("matchedTemplate needs classifiers and positive restrictedBins");
+            }
+            // Surface template problems (decimation, empty waveforms) at
+            // session creation rather than at first audio.
+            pamguard::detectors::MatchedTemplateClassifier probe(
+                config.sample_rate_hz != 0 ? static_cast<double>(config.sample_rate_hz) : 0.0, mt_config);
+            if (!probe.valid()) {
+                throw std::invalid_argument("matchedTemplate: " + probe.invalid_reason());
+            }
+        }
         const auto acquisition = body.value("acquisition", json::object());
         config.acquisition.volts_peak_to_peak = acquisition.value("voltsPeak2Peak", config.acquisition.volts_peak_to_peak);
         config.acquisition.preamp_gain_db = acquisition.value("preampGainDb", config.acquisition.preamp_gain_db);
@@ -2955,6 +2989,29 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             {"startTimeMs", detection.start_time_ms},
             {"lowFreqHz", detection.low_freq_hz},
             {"highFreqHz", detection.high_freq_hz},
+        });
+    }
+
+    out["matchedTemplateClassifications"] = json::array();
+    for (const auto& entry : result.matched_template_classifications) {
+        json results = json::array();
+        for (const auto& mt : entry.results) {
+            json item = {
+                {"threshold", mt.threshold},
+                {"matchCorr", mt.match_corr},
+            };
+            // A zeroed "none" reject template yields NaN; omit rather than
+            // serialise a null.
+            if (std::isfinite(mt.reject_corr)) {
+                item["rejectCorr"] = mt.reject_corr;
+            }
+            results.push_back(std::move(item));
+        }
+        out["matchedTemplateClassifications"].push_back({
+            {"clickIndex", entry.click_index},
+            {"clickStartSample", entry.click_start_sample},
+            {"classified", entry.classified},
+            {"results", std::move(results)},
         });
     }
 

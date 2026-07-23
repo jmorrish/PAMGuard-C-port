@@ -551,6 +551,13 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
         ishmael_picker_.emplace(static_cast<double>(config_.sample_rate_hz),
                                 config_.detector.fft.fft_hop, config_.detector.ishmael);
     }
+    if (config_.detector.matched_template.enabled && config_.sample_rate_hz != 0) {
+        matched_template_classifier_.emplace(static_cast<double>(config_.sample_rate_hz),
+                                             config_.detector.matched_template);
+        if (!matched_template_classifier_->valid()) {
+            throw std::invalid_argument("matchedTemplate: " + matched_template_classifier_->invalid_reason());
+        }
+    }
     if (config_.detector.click_detector_enabled) {
         click_detector_.emplace(config_.detector.click);
         if (config_.detector.click_echo_enabled && config_.sample_rate_hz != 0) {
@@ -735,6 +742,22 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
             auto classification = click_basic_classifier_->identify(result.clicks[i]);
             classification.click_index = i;
             result.click_classifications.push_back(classification);
+        }
+    }
+    if (matched_template_classifier_.has_value()) {
+        // MTProcess consumes finished clicks (after the echo gate), one
+        // annotation per click carrying the best result per template pair.
+        for (std::size_t i = 0; i < result.clicks.size(); ++i) {
+            if (result.clicks[i].waveform.empty()) {
+                continue;
+            }
+            auto outcome = matched_template_classifier_->classify(result.clicks[i].waveform);
+            MatchedTemplateClickResult entry;
+            entry.click_index = i;
+            entry.click_start_sample = result.clicks[i].start_sample;
+            entry.classified = outcome.classified;
+            entry.results = std::move(outcome.best_results);
+            result.matched_template_classifications.push_back(std::move(entry));
         }
     }
     if (click_train_tracker_) {
