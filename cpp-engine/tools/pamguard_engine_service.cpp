@@ -3957,6 +3957,11 @@ int main(int argc, char** argv) {
                 "--engine", "http://127.0.0.1:" + std::to_string(port),
                 "--sample-rate", std::to_string(sample_rate),
                 "--channels", std::to_string(channel_count),
+                // Quarter-second chunks: calm POST cadence, smooth live view.
+                "--chunk-frames", std::to_string(std::max<std::size_t>(1, sample_rate / 4)),
+                // The result feed carries these preview frames to the web
+                // UI's rolling live spectrogram.
+                "--preview-bins", "96",
                 "--ffmpeg", ffmpeg_path,
                 "--restart",
                 "--resume-from-engine",

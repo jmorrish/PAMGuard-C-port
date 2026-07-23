@@ -52,12 +52,17 @@ struct Options {
     bool allow_existing_session = false;
     bool resume_from_engine = false;
     bool realtime = false;
+    /** When > 0, PCM POSTs request a spectrogram preview of this many bins,
+     * which the engine's result feed then carries to live viewers. */
+    std::size_t preview_bins = 0;
 };
 
 struct Endpoint {
     std::string host;
     int port = 80;
     std::string base_path;
+    /** Extra query parameters appended to every PCM POST. */
+    std::string extra_query;
 };
 
 struct ChunkPostResult {
@@ -88,6 +93,8 @@ void usage() {
         << "  --owner-id <id>                 Overlay ownerId when posting --session-config\n"
         << "  --tenant-id <id>                Overlay tenantId when posting --session-config\n"
         << "  --audio-filter <ffmpeg-filter>  Optional FFmpeg -af filter for channel mapping/filtering\n"
+        << "  --preview-bins <n>              Ask the engine for an n-bin spectrogram preview per chunk\n"
+        << "                                  (feeds live viewers via the session result feed)\n"
         << "  --ffmpeg-input-option <arg>     Extra FFmpeg input option token before -i; repeat as needed\n"
         << "  --allow-existing-session        Continue if --session-config finds the session already exists\n"
         << "  --resume-from-engine            Start from the engine session runtime.expectedStartSample\n"
@@ -169,6 +176,9 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "--audio-filter") {
             options.audio_filter = require_value(i, argc, argv, arg);
+        }
+        else if (arg == "--preview-bins") {
+            options.preview_bins = static_cast<std::size_t>(std::stoull(require_value(i, argc, argv, arg)));
         }
         else if (arg == "--ffmpeg-input-option") {
             options.ffmpeg_input_options.push_back(require_value(i, argc, argv, arg));
@@ -423,7 +433,7 @@ ChunkPostResult post_chunk(
     std::uint64_t start_sample,
     std::size_t frame_count) {
     const auto path = endpoint.base_path + "/sessions/" + url_path_escape(session_id) +
-        "/pcm-f32le?startSample=" + std::to_string(start_sample);
+        "/pcm-f32le?startSample=" + std::to_string(start_sample) + endpoint.extra_query;
     const std::string body(data, byte_count);
     auto response = client.Post(path, body, "application/octet-stream");
     if (!response) {
@@ -534,7 +544,11 @@ bool run_stream_once(
 int main(int argc, char** argv) {
     try {
         const auto options = parse_options(argc, argv);
-        const auto endpoint = parse_http_endpoint(options.engine_url);
+        auto endpoint = parse_http_endpoint(options.engine_url);
+        if (options.preview_bins > 0) {
+            endpoint.extra_query = "&includeSpectrogram=true&spectrogramMaxBins=" +
+                std::to_string(options.preview_bins);
+        }
         std::uint64_t start_sample = options.start_sample;
         std::size_t chunks_posted = 0;
         std::size_t restart_count = 0;

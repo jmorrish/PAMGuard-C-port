@@ -1645,6 +1645,9 @@
       }
     }
 
+    let liveFrames = [];
+    const maxLiveFrames = 480; // ~2 minutes of quarter-second chunks
+
     function stopLivePoll() {
       if (livePollTimer !== null) {
         clearInterval(livePollTimer);
@@ -1655,6 +1658,7 @@
     function startLivePoll(sessionId) {
       stopLivePoll();
       livePollSeq = 0;
+      liveFrames = [];
       livePollTimer = setInterval(async () => {
         try {
           const feed = await requestJson(api(`/sessions/${encodeURIComponent(sessionId)}/results?sinceSeq=${livePollSeq}`));
@@ -1662,8 +1666,23 @@
             livePollSeq = feed.latestSeq;
           }
           const results = Array.isArray(feed.results) ? feed.results : [];
-          if (results.length) {
-            updateMetrics(results[results.length - 1]);
+          if (!results.length) {
+            return;
+          }
+          // Accumulate preview frames across polls so the spectrogram is a
+          // rolling window rather than a single chunk's sliver.
+          for (const result of results) {
+            if (Array.isArray(result.spectrogram)) {
+              liveFrames.push(...result.spectrogram);
+            }
+          }
+          if (liveFrames.length > maxLiveFrames) {
+            liveFrames = liveFrames.slice(liveFrames.length - maxLiveFrames);
+          }
+          const latest = results[results.length - 1];
+          updateMetrics(latest);
+          if (liveFrames.length) {
+            drawSpectrogram(liveFrames, latest.whistleRegions || []);
           }
         } catch (error) {
           // Session gone or service stopped: stop polling quietly.

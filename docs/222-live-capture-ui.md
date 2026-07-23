@@ -19,12 +19,13 @@ Opt-in via `PAMGUARD_CAPTURE_ENABLED=1` — the service spawns no processes unle
 
 ## Web UI
 
-- **Live capture panel** at the top: device dropdown (populated from `/capture/devices`, with a clear message when capture is disabled server-side), Refresh / Start / Stop. Start creates the session from the current form if it doesn't exist, then starts capture and begins a 2-second **live poll** of `GET /sessions/{id}/results?sinceSeq=K`, feeding the metric tiles, monitoring cards, and contour summaries continuously. Feed results carry no spectrogram preview, so the canvas keeps its last image instead of blanking.
+- **Live capture panel** at the top: device dropdown (populated from `/capture/devices`, with a clear message when capture is disabled server-side), Refresh / Start / Stop. Start creates the session from the current form if it doesn't exist, then starts capture and begins a 2-second **live poll** of `GET /sessions/{id}/results?sinceSeq=K`, feeding the metric tiles, monitoring cards, and contour summaries continuously.
+- **Live spectrogram**: the ingest bridge gained `--preview-bins <n>` (appends `includeSpectrogram=true&spectrogramMaxBins=n` to its PCM POSTs), captures spawn with `--preview-bins 96` and quarter-second chunks, and the UI accumulates the feed's preview frames into a **rolling window** (last 480 slices, ~2 minutes) drawn on every poll — so the spectrogram scrolls during capture instead of showing one chunk's sliver. The archive stores its own preview-free body, so archives do not grow from this. Manual PCM sends without preview keep the last image rather than blanking the canvas.
 - **Collapsible config groups** replace the flat form: Array geometry, Test signal & result preview, Click detector, Click features, Whistle & moan peaks, Whistle & moan contours, and Monitoring & extra detectors are `<details>` sections, collapsed by default — the default view is API base, capture panel, session basics, and the action buttons.
 
 ## Validation
 
-Suite still `82/82`; service smoke passes (capture defaults off — no behaviour change unless enabled). Live end-to-end check on real hardware: device enumerated ("Microphone (High Definition Audio Device)"), capture started through the API, **6.7 s of real microphone audio ingested** (319,488 samples at 48 kHz), the results feed carried 78 sequenced results at schema v28 for the UI poller, stop left zero child processes. The UI script block parses and all seven `<details>` groups are balanced.
+Suite still `82/82`; service smoke passes (capture defaults off — no behaviour change unless enabled). Live end-to-end check on real hardware: device enumerated ("Microphone (High Definition Audio Device)"), capture started through the API, **~7 s of real microphone audio ingested** at 48 kHz, the results feed carried sequenced v28 results **including 375 spectrogram preview slices of 96 bins** for the rolling live display, and stop left zero child processes. The UI script block parses and all seven `<details>` groups are balanced.
 
 ## Claim boundary
 
