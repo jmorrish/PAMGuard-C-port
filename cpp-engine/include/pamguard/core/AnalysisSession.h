@@ -259,6 +259,7 @@ struct AnalysisResult {
     std::vector<NoiseBandResult> noise_bands;
     std::vector<LtsaResult> ltsa;
     std::vector<detectors::IshmaelDetection> ishmael_detections;
+    std::vector<detectors::IshmaelDetection> sgram_corr_detections;
     std::vector<MatchedTemplateClickResult> matched_template_classifications;
 };
 
@@ -362,6 +363,9 @@ private:
     std::optional<detectors::IshmaelPeakPicker> ishmael_picker_;
     /** One per session; per-classifier template FFTs cache inside. */
     std::optional<detectors::MatchedTemplateClassifier> matched_template_classifier_;
+    /** Kernel shared across channels; per-channel gram buffers inside. */
+    std::optional<detectors::SgramCorrDetector> sgram_corr_detector_;
+    std::optional<detectors::IshmaelPeakPicker> sgram_corr_picker_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

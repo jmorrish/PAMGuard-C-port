@@ -27,6 +27,7 @@ import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTempl
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates.SpectrumTemplateType;
 import fftManager.FFTParameters;
 import IshmaelDetector.EnergySumParams;
+import IshmaelDetector.SgramCorrParams;
 import ltsa.LtsaParameters;
 import matchedTemplateClassifer.MTClassifier;
 import matchedTemplateClassifer.MatchTemplate;
@@ -129,6 +130,7 @@ public final class PamguardProjectConverter {
         NoiseBandSettings noiseBand = null;
         LtsaParameters ltsaParams = null;
         EnergySumParams energySum = null;
+        SgramCorrParams sgramCorr = null;
         MatchedTemplateParams matchedTemplate = null;
 
         for (PamControlledUnitSettings unit : group.getUnitSettings()) {
@@ -176,6 +178,9 @@ public final class PamguardProjectConverter {
             }
             else if (settings instanceof EnergySumParams && energySum == null) {
                 energySum = (EnergySumParams) settings;
+            }
+            else if (settings instanceof SgramCorrParams && sgramCorr == null) {
+                sgramCorr = (SgramCorrParams) settings;
             }
             else if (settings instanceof MatchedTemplateParams && matchedTemplate == null) {
                 matchedTemplate = (MatchedTemplateParams) settings;
@@ -448,6 +453,32 @@ public final class PamguardProjectConverter {
             }
         }
 
+        if (sgramCorr != null) {
+            if (sgramCorr.segment == null || sgramCorr.segment.length == 0) {
+                System.out.println("skipped: Ishmael spectrogram correlation (no segments)");
+            }
+            else {
+                json.append(",\n  \"sgramCorr\": { \"enabled\": true, \"segments\": [");
+                for (int i = 0; i < sgramCorr.segment.length; i++) {
+                    if (i > 0) {
+                        json.append(", ");
+                    }
+                    json.append("[").append(format(sgramCorr.segment[i][0]))
+                            .append(", ").append(format(sgramCorr.segment[i][1]))
+                            .append(", ").append(format(sgramCorr.segment[i][2]))
+                            .append(", ").append(format(sgramCorr.segment[i][3])).append("]");
+                }
+                json.append("]");
+                json.append(", \"spread\": ").append(format(sgramCorr.spread));
+                json.append(", \"useLog\": ").append(sgramCorr.useLog);
+                json.append(", \"thresh\": ").append(format(sgramCorr.thresh));
+                json.append(", \"minTimeSeconds\": ").append(format(sgramCorr.minTime));
+                json.append(", \"maxTimeSeconds\": ").append(format(sgramCorr.maxTime));
+                json.append(", \"refractoryTimeSeconds\": ").append(format(sgramCorr.refractoryTime));
+                json.append(" }");
+            }
+        }
+
         if (matchedTemplate != null) {
             if (matchedTemplate.classifiers == null || matchedTemplate.classifiers.isEmpty()) {
                 System.out.println("skipped: matched template classifier (no classifiers)");
@@ -677,6 +708,14 @@ public final class PamguardProjectConverter {
         energySumSample.refractoryTime = 0.2;
         group.addSettings(new PamControlledUnitSettings("Energy Sum", "Energy Sum",
                 EnergySumParams.class.getName(), 1, energySumSample));
+        SgramCorrParams sgramSample = new SgramCorrParams();
+        sgramSample.segment = new double[][]{{0.0, 500.0, 0.2, 1500.0}};
+        sgramSample.spread = 80.0;
+        sgramSample.thresh = 0.05;
+        sgramSample.minTime = 0.05;
+        sgramSample.refractoryTime = 0.2;
+        group.addSettings(new PamControlledUnitSettings("Sgram Corr", "Spectrogram Correlation",
+                SgramCorrParams.class.getName(), 1, sgramSample));
         MatchedTemplateParams matchedSample = new MatchedTemplateParams();
         // The default MTClassifier carries 192 kHz templates, above the
         // sample acquisition's 96 kHz — the engine would (correctly) refuse

@@ -33,7 +33,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 26;
+constexpr int kResultSchemaVersion = 27;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2127,6 +2127,28 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 throw std::invalid_argument("ishmael needs f1 > f0 and non-negative times");
             }
         }
+        const auto sgram = body.value("sgramCorr", json::object());
+        auto& sgram_config = config.detector.sgram_corr;
+        sgram_config.enabled = sgram.value("enabled", false);
+        if (sgram_config.enabled) {
+            const auto segments = sgram.value("segments", json::array());
+            for (const auto& seg : segments) {
+                if (!seg.is_array() || seg.size() != 4) {
+                    throw std::invalid_argument("sgramCorr.segments entries must be [t0, f0, t1, f1]");
+                }
+                sgram_config.segments.push_back({seg[0].get<double>(), seg[1].get<double>(),
+                                                 seg[2].get<double>(), seg[3].get<double>()});
+            }
+            sgram_config.spread = sgram.value("spread", sgram_config.spread);
+            sgram_config.use_log = sgram.value("useLog", sgram_config.use_log);
+            sgram_config.thresh = sgram.value("thresh", sgram_config.thresh);
+            sgram_config.min_time_s = sgram.value("minTimeSeconds", sgram_config.min_time_s);
+            sgram_config.max_time_s = sgram.value("maxTimeSeconds", sgram_config.max_time_s);
+            sgram_config.refractory_time_s = sgram.value("refractoryTimeSeconds", sgram_config.refractory_time_s);
+            if (sgram_config.segments.empty() || !(sgram_config.spread > 0.0)) {
+                throw std::invalid_argument("sgramCorr needs segments and positive spread");
+            }
+        }
         const auto matched = body.value("matchedTemplate", json::object());
         auto& mt_config = config.detector.matched_template;
         mt_config.enabled = matched.value("enabled", false);
@@ -2981,6 +3003,20 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
     out["ishmaelDetections"] = json::array();
     for (const auto& detection : result.ishmael_detections) {
         out["ishmaelDetections"].push_back({
+            {"channel", detection.channel},
+            {"startSample", detection.start_sample},
+            {"durationSamples", detection.duration_samples},
+            {"peakTimeSample", detection.peak_time_sample},
+            {"peakHeight", detection.peak_height},
+            {"startTimeMs", detection.start_time_ms},
+            {"lowFreqHz", detection.low_freq_hz},
+            {"highFreqHz", detection.high_freq_hz},
+        });
+    }
+
+    out["sgramCorrDetections"] = json::array();
+    for (const auto& detection : result.sgram_corr_detections) {
+        out["sgramCorrDetections"].push_back({
             {"channel", detection.channel},
             {"startSample", detection.start_sample},
             {"durationSamples", detection.duration_samples},

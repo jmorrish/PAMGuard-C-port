@@ -27,6 +27,7 @@ add_library(pamguard_engine
     src/detectors/ConnectedRegionTracker.cpp
     src/detectors/IshmaelDetector.cpp
     src/detectors/MatchedTemplateClassifier.cpp
+    src/detectors/SgramCorrDetector.cpp
     src/dsp/JtFft.cpp
     src/detectors/LtsaMonitor.cpp
     src/detectors/NoiseBandMonitor.cpp
@@ -332,6 +333,12 @@ add_executable(matched_template_fixture_check
 )
 
 target_link_libraries(matched_template_fixture_check PRIVATE pamguard_engine)
+
+add_executable(sgram_corr_fixture_check
+    tools/sgram_corr_fixture_check.cpp
+)
+
+target_link_libraries(sgram_corr_fixture_check PRIVATE pamguard_engine)
 
 add_executable(iir_filter_fixture_check
     tools/iir_filter_fixture_check.cpp
@@ -674,6 +681,11 @@ add_test(
 add_test(
     NAME matched_template_parity
     COMMAND matched_template_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/matched-template/matched-template.csv
+)
+
+add_test(
+    NAME sgram_corr_parity
+    COMMAND sgram_corr_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sgram-corr/sgram-corr.csv
 )
 
 add_test(

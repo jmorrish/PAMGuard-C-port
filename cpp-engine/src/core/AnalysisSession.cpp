@@ -558,6 +558,24 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
             throw std::invalid_argument("matchedTemplate: " + matched_template_classifier_->invalid_reason());
         }
     }
+    if (config_.detector.sgram_corr.enabled && !config_.detector.sgram_corr.segments.empty() &&
+        config_.detector.fft.fft_length >= 2 && config_.detector.fft.fft_hop > 0 &&
+        config_.sample_rate_hz != 0) {
+        sgram_corr_detector_.emplace(static_cast<double>(config_.sample_rate_hz),
+                                     config_.detector.fft.fft_length, config_.detector.fft.fft_hop,
+                                     config_.detector.sgram_corr);
+        // The detection function feeds the same IshPeakProcess machinery as
+        // the energy sum; the reported band is the kernel's span.
+        detectors::IshmaelEnergySumConfig picker_config;
+        picker_config.thresh = config_.detector.sgram_corr.thresh;
+        picker_config.min_time_s = config_.detector.sgram_corr.min_time_s;
+        picker_config.max_time_s = config_.detector.sgram_corr.max_time_s;
+        picker_config.refractory_time_s = config_.detector.sgram_corr.refractory_time_s;
+        picker_config.f0 = sgram_corr_detector_->min_frequency_hz();
+        picker_config.f1 = sgram_corr_detector_->max_frequency_hz();
+        sgram_corr_picker_.emplace(static_cast<double>(config_.sample_rate_hz),
+                                   config_.detector.fft.fft_hop, picker_config);
+    }
     if (config_.detector.click_detector_enabled) {
         click_detector_.emplace(config_.detector.click);
         if (config_.detector.click_echo_enabled && config_.sample_rate_hz != 0) {
@@ -701,6 +719,20 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                                                       sample.det_value);
             if (detection.has_value()) {
                 result.ishmael_detections.push_back(*detection);
+            }
+        }
+    }
+    if (sgram_corr_detector_.has_value()) {
+        // Per-channel gram buffers keep their own state, so plain frame
+        // order (time-ordered within each channel) is sufficient.
+        for (const auto& frame : result.spectrogram_frames) {
+            const auto fn = sgram_corr_detector_->process_frame(
+                frame.channel, pamguard_packed_magnitude_squared(frame.bins));
+            if (fn.has_value()) {
+                auto detection = sgram_corr_picker_->process(frame.channel, frame.start_sample, *fn);
+                if (detection.has_value()) {
+                    result.sgram_corr_detections.push_back(*detection);
+                }
             }
         }
     }
