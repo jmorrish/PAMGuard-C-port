@@ -3758,6 +3758,7 @@ int main(int argc, char** argv) {
     std::mutex audio_archive_mutex;
     const auto result_feed_depth = result_feed_depth_from_environment();
     std::mutex result_feed_mutex;
+    std::condition_variable result_feed_cv;
     std::unordered_map<std::string, SessionResultFeed> result_feeds;
     const auto job_workers = job_workers_from_environment();
     JobQueueState job_state;
@@ -3957,8 +3958,9 @@ int main(int argc, char** argv) {
                 "--engine", "http://127.0.0.1:" + std::to_string(port),
                 "--sample-rate", std::to_string(sample_rate),
                 "--channels", std::to_string(channel_count),
-                // Quarter-second chunks: calm POST cadence, smooth live view.
-                "--chunk-frames", std::to_string(std::max<std::size_t>(1, sample_rate / 4)),
+                // ~50 ms chunks: the live display advances at this cadence,
+                // so it must be small enough to read as continuous.
+                "--chunk-frames", std::to_string(std::max<std::size_t>(1, sample_rate / 20)),
                 // Full-spectrum preview frames: the result feed carries them
                 // to the web UI's live waterfall (0 = all bins).
                 "--preview-bins", "0",
@@ -4621,6 +4623,71 @@ int main(int argc, char** argv) {
         }
     });
 
+    // Push stream of session results as NDJSON: one JSON body per line the
+    // moment the engine produces it, with blank-line heartbeats. This is
+    // what live viewers (the web UI waterfall) consume — no polling, so the
+    // display advances at the audio chunk cadence. Each open stream holds
+    // one HTTP worker thread; PAMGUARD_HTTP_THREADS bounds the total.
+    server.Get(R"(/sessions/([^/]+)/results/stream)", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (result_feed_depth == 0) {
+            json_response(res, {{"error", "result feed is disabled (PAMGUARD_RESULT_FEED_DEPTH=0)"}}, 404);
+            return;
+        }
+        const auto session_id = req.matches[1].str();
+        {
+            std::lock_guard lock(configs_mutex);
+            if (configs.find(session_id) == configs.end()) {
+                json_response(res, {{"error", "unknown session"}}, 404);
+                return;
+            }
+        }
+        auto cursor = std::make_shared<std::uint64_t>(parse_uint64_param(req, "sinceSeq", 0));
+        res.set_header("Cache-Control", "no-cache");
+        res.set_chunked_content_provider(
+            "application/x-ndjson",
+            [&, session_id, cursor](std::size_t, httplib::DataSink& sink) -> bool {
+                std::vector<std::string> lines;
+                {
+                    std::unique_lock lock(result_feed_mutex);
+                    result_feed_cv.wait_for(lock, std::chrono::seconds(1), [&] {
+                        const auto found = result_feeds.find(session_id);
+                        return found != result_feeds.end() && !found->second.recent.empty() &&
+                            found->second.recent.back().first > *cursor;
+                    });
+                    const auto found = result_feeds.find(session_id);
+                    if (found != result_feeds.end()) {
+                        for (const auto& [sequence, result_body] : found->second.recent) {
+                            if (sequence > *cursor) {
+                                lines.push_back(result_body.dump());
+                                *cursor = sequence;
+                            }
+                        }
+                    }
+                }
+                {
+                    // Session deleted: end the stream cleanly.
+                    std::lock_guard lock(configs_mutex);
+                    if (configs.find(session_id) == configs.end()) {
+                        sink.done();
+                        return false;
+                    }
+                }
+                if (lines.empty()) {
+                    // Heartbeat keeps the connection verifiably alive.
+                    return sink.write("\n", 1);
+                }
+                for (const auto& line : lines) {
+                    if (!sink.write(line.data(), line.size()) || !sink.write("\n", 1)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+    });
+
     server.Get(R"(/sessions/([^/]+)/results)", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
             return;
@@ -4993,16 +5060,20 @@ int main(int argc, char** argv) {
                                      config.sample_rate_hz, config.channel_count);
             }
             if (result_feed_depth > 0) {
-                std::lock_guard feed_lock(result_feed_mutex);
-                auto& feed = result_feeds[session_id];
-                const auto sequence = feed.next_sequence++;
-                json feed_body = body;
-                feed_body["seq"] = sequence;
-                body["seq"] = sequence;
-                feed.recent.emplace_back(sequence, std::move(feed_body));
-                while (feed.recent.size() > result_feed_depth) {
-                    feed.recent.pop_front();
+                {
+                    std::lock_guard feed_lock(result_feed_mutex);
+                    auto& feed = result_feeds[session_id];
+                    const auto sequence = feed.next_sequence++;
+                    json feed_body = body;
+                    feed_body["seq"] = sequence;
+                    body["seq"] = sequence;
+                    feed.recent.emplace_back(sequence, std::move(feed_body));
+                    while (feed.recent.size() > result_feed_depth) {
+                        feed.recent.pop_front();
+                    }
                 }
+                // Wake any streaming viewers blocked on this session.
+                result_feed_cv.notify_all();
             }
             json_response(res, body);
         }

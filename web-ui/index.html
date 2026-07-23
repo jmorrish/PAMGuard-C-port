@@ -1154,7 +1154,7 @@
       // In live mode the scrolling waterfall owns the canvas; otherwise a
       // one-shot result draws its own frames (and preview-less results keep
       // the last image rather than blanking).
-      if (livePollTimer === null && Array.isArray(result.spectrogram)) {
+      if (!liveViewActive && Array.isArray(result.spectrogram)) {
         drawSpectrogram(result.spectrogram, result.whistleRegions || []);
       }
     }
@@ -1739,15 +1739,93 @@
         `Live 0–${nyquistKhz} kHz · ${live.bins} bins · ${live.totalSlices} slices · auto gain`;
     }
 
-    function stopLivePoll() {
+    // The live view consumes the PUSH stream: the service writes each
+    // result the moment the engine produces it (NDJSON, blank-line
+    // heartbeats), so the waterfall advances at the audio chunk cadence
+    // (~50 ms for captures) with no polling. Metric tiles are DOM-heavy,
+    // so they throttle to ~2 Hz while the canvas paints every result.
+    let liveViewActive = false;
+    let liveStreamAbort = null;
+    let lastMetricsPaint = 0;
+
+    function stopLiveView() {
+      liveViewActive = false;
+      if (liveStreamAbort !== null) {
+        liveStreamAbort.abort();
+        liveStreamAbort = null;
+      }
       if (livePollTimer !== null) {
         clearInterval(livePollTimer);
         livePollTimer = null;
       }
     }
 
+    function handleLiveResult(result) {
+      if (Array.isArray(result.spectrogram) && result.spectrogram.length) {
+        appendLiveFrames(result.spectrogram);
+        renderLiveWaterfall();
+      }
+      const now = performance.now();
+      if (now - lastMetricsPaint > 500) {
+        lastMetricsPaint = now;
+        updateMetrics(result);
+      }
+    }
+
+    async function startLiveStream(sessionId) {
+      stopLiveView();
+      liveViewActive = true;
+      live.canvas = null;
+      live.sampleRateHz = Number($("sampleRate").value) || 0;
+      const controller = new AbortController();
+      liveStreamAbort = controller;
+      const headers = {};
+      const apiKey = $("apiKey").value.trim();
+      if (apiKey) {
+        headers["X-API-Key"] = apiKey;
+      }
+      try {
+        const response = await fetch(
+          api(`/sessions/${encodeURIComponent(sessionId)}/results/stream?sinceSeq=0`),
+          { headers, signal: controller.signal });
+        if (!response.ok || !response.body) {
+          throw new Error(`stream unavailable (${response.status})`);
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (liveViewActive) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          let newline;
+          while ((newline = buffer.indexOf("\n")) >= 0) {
+            const line = buffer.slice(0, newline).trim();
+            buffer = buffer.slice(newline + 1);
+            if (!line) {
+              continue; // heartbeat
+            }
+            handleLiveResult(JSON.parse(line));
+          }
+        }
+        if (liveViewActive) {
+          $("captureMeta").textContent = "Live stream ended";
+          liveViewActive = false;
+        }
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return; // deliberate stop
+        }
+        // Older service without the stream endpoint, or a proxy that
+        // buffers chunked responses: fall back to fast polling.
+        startLivePoll(sessionId);
+      }
+    }
+
     function startLivePoll(sessionId) {
-      stopLivePoll();
+      liveViewActive = true;
       livePollSeq = 0;
       live.canvas = null;
       live.sampleRateHz = Number($("sampleRate").value) || 0;
@@ -1763,23 +1841,17 @@
             livePollSeq = feed.latestSeq;
           }
           const results = Array.isArray(feed.results) ? feed.results : [];
-          if (results.length) {
-            for (const result of results) {
-              if (Array.isArray(result.spectrogram) && result.spectrogram.length) {
-                appendLiveFrames(result.spectrogram);
-              }
-            }
-            renderLiveWaterfall();
-            updateMetrics(results[results.length - 1]);
+          for (const result of results) {
+            handleLiveResult(result);
           }
         } catch (error) {
           // Session gone or service stopped: stop polling quietly.
-          stopLivePoll();
+          stopLiveView();
           $("captureMeta").textContent = `Live poll stopped: ${error}`;
         } finally {
           polling = false;
         }
-      }, 300);
+      }, 150);
     }
 
     $("captureRefreshButton").addEventListener("click", refreshCaptureDevices);
@@ -1811,7 +1883,7 @@
           body: JSON.stringify({ sessionId, device })
         });
         meta.textContent = `Capturing '${device}' into session '${sessionId}' (pid ${result.pid})`;
-        startLivePoll(sessionId);
+        startLiveStream(sessionId);
         log(result);
       } catch (error) {
         meta.textContent = String(error);
@@ -1821,7 +1893,7 @@
 
     $("captureStopButton").addEventListener("click", async () => {
       const meta = $("captureMeta");
-      stopLivePoll();
+      stopLiveView();
       try {
         const result = await requestJson(api("/capture/stop"), {
           method: "POST",
