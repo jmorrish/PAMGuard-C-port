@@ -590,6 +590,10 @@
               <label for="classifierTypesJson">Classifier type JSON override</label>
               <textarea id="classifierTypesJson" placeholder='Optional JSON array. Example: [{"standard":"beakedWhale","speciesCode":11,"discard":false},{"standard":"porpoise","speciesCode":22,"whichSelections":127}]'></textarea>
             </div>
+            <div class="wide">
+              <label for="monitoringJson">Monitoring &amp; extra detector JSON</label>
+              <textarea id="monitoringJson" placeholder='Optional JSON object merged into the session config. Example: {"noiseBand":{"enabled":true,"bandType":"thirdOctave","minFrequencyHz":50,"maxFrequencyHz":0,"outputIntervalSeconds":5},"ltsa":{"enabled":true,"intervalSeconds":10},"ishmael":{"enabled":true,"f0":200,"f1":2000,"thresh":2},"sgramCorr":{"enabled":true,"segments":[[0,500,0.2,1500]],"spread":80,"thresh":0.05},"matchFilt":{"enabled":true,"kernel":[0.1,-0.2,0.1],"thresh":0.5},"acquisition":{"voltsPeak2Peak":5}}'></textarea>
+            </div>
             <div>
               <label for="trainEnabled">Click trains</label>
               <select id="trainEnabled">
@@ -781,6 +785,12 @@
             <div class="metric"><strong id="mBearings">0</strong><span>Bearings</span></div>
             <div class="metric"><strong id="mPeaks">0</strong><span>Whistle peaks</span></div>
             <div class="metric"><strong id="mRegions">0</strong><span>Contours</span></div>
+            <div class="metric"><strong id="mNoiseBands">0</strong><span>Noise bands</span></div>
+            <div class="metric"><strong id="mLtsa">0</strong><span>LTSA periods</span></div>
+            <div class="metric"><strong id="mIshmael">0</strong><span>Energy sum</span></div>
+            <div class="metric"><strong id="mSgramCorr">0</strong><span>Sgram corr</span></div>
+            <div class="metric"><strong id="mMatchFilt">0</strong><span>Match filt</span></div>
+            <div class="metric"><strong id="mMatchedTemplate">0</strong><span>MT classified</span></div>
             <div class="metric"><strong id="mContinuity">n/a</strong><span>Continuity</span></div>
           </div>
           <div class="spectrogram-panel">
@@ -789,6 +799,18 @@
               <span id="spectrogramMeta">Waiting for PCM</span>
             </div>
             <canvas id="spectrogramCanvas" width="900" height="240"></canvas>
+          </div>
+          <div class="archive-panel">
+            <div class="archive-head">
+              <strong>Noise &amp; Ishmael monitoring</strong>
+              <span id="monitorMeta">No monitoring output yet</span>
+            </div>
+            <div id="monitorList" class="contour-list">
+              <div class="contour-card">
+                <strong>Waiting for monitoring output</strong>
+                <span>Enable noiseBand, ltsa, ishmael, sgramCorr, matchFilt, or matchedTemplate in the session config to see band levels and detections here.</span>
+              </div>
+            </div>
           </div>
           <div class="archive-panel">
             <div class="archive-head">
@@ -947,6 +969,88 @@
         });
     }
 
+    function renderMonitoring(result) {
+      const list = $("monitorList");
+      const meta = $("monitorMeta");
+      const noiseBands = Array.isArray(result.noiseBands) ? result.noiseBands : [];
+      const ltsa = Array.isArray(result.ltsa) ? result.ltsa : [];
+      const detectionSources = [
+        ["Energy sum", result.ishmaelDetections],
+        ["Sgram corr", result.sgramCorrDetections],
+        ["Match filt", result.matchFiltDetections],
+      ];
+      const mtResults = Array.isArray(result.matchedTemplateClassifications)
+        ? result.matchedTemplateClassifications : [];
+      const cards = [];
+
+      noiseBands.slice(-2).forEach((entry) => {
+        const card = document.createElement("div");
+        card.className = "contour-card";
+        const title = document.createElement("strong");
+        title.textContent = `Noise bands ch ${entry.channel} @ ${entry.endSample ?? "n/a"}`;
+        const levels = document.createElement("span");
+        const rms = Array.isArray(entry.rmsDb) ? entry.rmsDb : [];
+        levels.textContent = rms.length
+          ? `rms dB: ${rms.map((v) => formatNumber(v, 1)).join(", ")}`
+          : "no bands";
+        card.append(title, levels);
+        cards.push(card);
+      });
+
+      ltsa.slice(-2).forEach((entry) => {
+        const card = document.createElement("div");
+        card.className = "contour-card";
+        const title = document.createElement("strong");
+        title.textContent = `LTSA ch ${entry.channel} [${entry.startTimeMs}..${entry.endTimeMs}) ms`;
+        const info = document.createElement("span");
+        const mags = Array.isArray(entry.magnitude) ? entry.magnitude : [];
+        let peakBin = 0;
+        let peakVal = -Infinity;
+        mags.forEach((v, i) => { if (v > peakVal) { peakVal = v; peakBin = i; } });
+        info.textContent = `${entry.nFft ?? 0} slices, ${mags.length} bins, peak bin ${peakBin} (${formatNumber(peakVal, 3)})`;
+        card.append(title, info);
+        cards.push(card);
+      });
+
+      detectionSources.forEach(([label, detections]) => {
+        (Array.isArray(detections) ? detections : []).slice(-3).forEach((det) => {
+          const card = document.createElement("div");
+          card.className = "contour-card";
+          const title = document.createElement("strong");
+          title.textContent = `${label} detection ch ${det.channel}`;
+          const info = document.createElement("span");
+          info.textContent = `start ${det.startSample}, ${det.durationSamples} samples, peak ${formatNumber(det.peakHeight, 3)} @ ${det.peakTimeSample}`;
+          const band = document.createElement("span");
+          band.textContent = `band ${formatNumber(det.lowFreqHz, 0)}-${formatNumber(det.highFreqHz, 0)} Hz`;
+          card.append(title, info, band);
+          cards.push(card);
+        });
+      });
+
+      mtResults.slice(-3).forEach((entry) => {
+        const card = document.createElement("div");
+        card.className = "contour-card";
+        const title = document.createElement("strong");
+        title.textContent = `Matched template click ${entry.clickIndex}: ${entry.classified ? "CLASSIFIED" : "not classified"}`;
+        const info = document.createElement("span");
+        const results = Array.isArray(entry.results) ? entry.results : [];
+        info.textContent = results
+          .map((r, i) => `#${i} thr ${formatNumber(r.threshold, 3)} (match ${formatNumber(r.matchCorr, 3)})`)
+          .join("; ") || "no template results";
+        card.append(title, info);
+        cards.push(card);
+      });
+
+      if (!cards.length) {
+        meta.textContent = "No monitoring output in the latest result";
+        return;
+      }
+      meta.textContent = `${noiseBands.length} noise interval${noiseBands.length === 1 ? "" : "s"}, ${ltsa.length} LTSA, ` +
+        detectionSources.map(([label, d]) => `${Array.isArray(d) ? d.length : 0} ${label.toLowerCase()}`).join(", ") +
+        `, ${mtResults.length} MT`;
+      list.replaceChildren(...cards);
+    }
+
     function updateMetrics(result) {
       $("mFrames").textContent = result.spectrogramFrames ?? 0;
       $("mClicks").textContent = Array.isArray(result.clicks) ? result.clicks.length : 0;
@@ -959,7 +1063,15 @@
       $("mBearings").textContent = Array.isArray(result.clickBearings) ? result.clickBearings.length : 0;
       $("mPeaks").textContent = Array.isArray(result.whistlePeaks) ? result.whistlePeaks.length : 0;
       $("mRegions").textContent = Array.isArray(result.whistleRegions) ? result.whistleRegions.length : 0;
+      $("mNoiseBands").textContent = Array.isArray(result.noiseBands) ? result.noiseBands.length : 0;
+      $("mLtsa").textContent = Array.isArray(result.ltsa) ? result.ltsa.length : 0;
+      $("mIshmael").textContent = Array.isArray(result.ishmaelDetections) ? result.ishmaelDetections.length : 0;
+      $("mSgramCorr").textContent = Array.isArray(result.sgramCorrDetections) ? result.sgramCorrDetections.length : 0;
+      $("mMatchFilt").textContent = Array.isArray(result.matchFiltDetections) ? result.matchFiltDetections.length : 0;
+      $("mMatchedTemplate").textContent = Array.isArray(result.matchedTemplateClassifications)
+        ? result.matchedTemplateClassifications.filter((entry) => entry.classified).length : 0;
       $("mContinuity").textContent = result.sampleContinuity || "n/a";
+      renderMonitoring(result);
       renderContourSummaries(result.whistleRegions || []);
       drawSpectrogram(result.spectrogram || [], result.whistleRegions || []);
     }
@@ -1126,7 +1238,16 @@
           throw new Error("Classifier type JSON override must be an array");
         }
       }
+      const monitoringJson = $("monitoringJson").value.trim();
+      let monitoringExtras = {};
+      if (monitoringJson) {
+        monitoringExtras = JSON.parse(monitoringJson);
+        if (!monitoringExtras || Array.isArray(monitoringExtras) || typeof monitoringExtras !== "object") {
+          throw new Error("Monitoring JSON must be an object (e.g. {\"noiseBand\":{...}})");
+        }
+      }
       return {
+        ...monitoringExtras,
         sessionId: $("sessionId").value,
         sourceId: "browser-synthetic",
         ownerId: $("ownerId").value.trim() || undefined,
