@@ -26,6 +26,7 @@ import clickTrainDetector.clickTrainAlgorithms.mht.electricalNoiseFilter.SimpleE
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates;
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates.SpectrumTemplateType;
 import fftManager.FFTParameters;
+import ltsa.LtsaParameters;
 import noiseBandMonitor.NoiseBandSettings;
 import spectrogramNoiseReduction.SpectrogramNoiseSettings;
 import spectrogramNoiseReduction.medianFilter.MedianFilterParams;
@@ -122,6 +123,7 @@ public final class PamguardProjectConverter {
         MHTParams mht = null;
         SimpleEchoParams echoParams = null;
         NoiseBandSettings noiseBand = null;
+        LtsaParameters ltsaParams = null;
 
         for (PamControlledUnitSettings unit : group.getUnitSettings()) {
             Object settings;
@@ -162,6 +164,9 @@ public final class PamguardProjectConverter {
             }
             else if (settings instanceof NoiseBandSettings && noiseBand == null) {
                 noiseBand = (NoiseBandSettings) settings;
+            }
+            else if (settings instanceof LtsaParameters && ltsaParams == null) {
+                ltsaParams = (LtsaParameters) settings;
             }
             else {
                 System.out.printf("skipped: %s / %s (%s)%n", unit.getUnitType(), unit.getUnitName(),
@@ -392,6 +397,16 @@ public final class PamguardProjectConverter {
             }
         }
 
+        if (ltsaParams != null) {
+            if (ltsaParams.intervalSeconds > 0) {
+                json.append(",\n  \"ltsa\": { \"enabled\": true, \"intervalSeconds\": ")
+                        .append(ltsaParams.intervalSeconds).append(" }");
+            }
+            else {
+                System.out.println("skipped: LTSA (intervalSeconds not positive)");
+            }
+        }
+
         json.append("\n}\n");
 
         jsonFile.getParentFile().mkdirs();
@@ -581,6 +596,10 @@ public final class PamguardProjectConverter {
         noiseBandSample.outputIntervalSeconds = 5;
         group.addSettings(new PamControlledUnitSettings("Noise Band", "Noise Band Monitor",
                 NoiseBandSettings.class.getName(), 1, noiseBandSample));
+        LtsaParameters ltsaSample = new LtsaParameters();
+        ltsaSample.intervalSeconds = 10;
+        group.addSettings(new PamControlledUnitSettings("LTSA", "LTSA",
+                LtsaParameters.class.getName(), 1, ltsaSample));
         // A module the engine has no equivalent for, so the converter's
         // skip reporting always has something real to report.
         group.addSettings(new PamControlledUnitSettings("Spectrogram", "User Display",

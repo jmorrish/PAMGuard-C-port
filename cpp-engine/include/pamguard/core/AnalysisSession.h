@@ -192,6 +192,16 @@ struct NoiseBandResult {
     std::vector<double> peak_db;
 };
 
+/**
+ * One completed LTSA averaging period for one channel (PAMGuard
+ * LtsaDataUnit): RMS spectral magnitude per FFT bin, uncalibrated exactly
+ * as the reference stores it.
+ */
+struct LtsaResult {
+    std::size_t channel = 0;
+    detectors::LtsaInterval interval;
+};
+
 /** Classifier chain verdict for an ICI-tracker click train. */
 struct ClickTrainClassificationResult {
     std::size_t train_id = 0;
@@ -235,6 +245,7 @@ struct AnalysisResult {
     std::vector<ClickTrainClassificationResult> click_train_classifications;
     std::vector<WhistleRegionGroup> whistle_groups;
     std::vector<NoiseBandResult> noise_bands;
+    std::vector<LtsaResult> ltsa;
 };
 
 [[nodiscard]] std::vector<ClickTrainBearingSummary> summarize_click_train_bearings(
@@ -325,6 +336,8 @@ private:
     std::optional<detectors::SpectrogramNoiseReducer> whistle_noise_reducer_;
     /** One per channel, keyed by channel number. */
     std::unordered_map<std::size_t, detectors::NoiseBandMonitor> noise_band_monitors_;
+    /** One per channel, keyed by channel number (LtsaProcess.ChannelProcess). */
+    std::unordered_map<std::size_t, detectors::LtsaMonitor> ltsa_monitors_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

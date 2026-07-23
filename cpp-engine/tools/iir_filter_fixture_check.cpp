@@ -166,8 +166,21 @@ int main(int argc, char** argv) {
                 double value = 0.002 * std::sin(static_cast<double>(n) * 2.1);
                 if (rumble && n >= 2000 && n < 4400) {
                     // 100 Hz burst: energetic, but entirely below the 500 Hz
-                    // prefilter and 2 kHz trigger filter.
-                    value += 0.9 * std::sin(2.0 * kPi * 100.0 * static_cast<double>(n) / 48000.0);
+                    // prefilter and 2 kHz trigger filter. The onset and tail
+                    // are raised-cosine ramped (480 samples, ~100 Hz of
+                    // sideband) because an instantaneous switch-on IS a
+                    // broadband transient — the real PAMGuard filters would
+                    // click on that edge too, and rejecting the rumble only
+                    // means anything when the burst holds no such edge.
+                    const double t = static_cast<double>(n - 2000);
+                    double envelope = 1.0;
+                    if (t < 480.0) {
+                        envelope = 0.5 * (1.0 - std::cos(kPi * t / 480.0));
+                    }
+                    else if (t > 2400.0 - 480.0) {
+                        envelope = 0.5 * (1.0 - std::cos(kPi * (2400.0 - t) / 480.0));
+                    }
+                    value += envelope * 0.9 * std::sin(2.0 * kPi * 100.0 * static_cast<double>(n) / 48000.0);
                 }
                 if (transient && n >= 6000 && n <= 6006) {
                     value += ((n & 1u) == 0 ? 0.9 : -0.9);

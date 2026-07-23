@@ -33,7 +33,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 23;
+constexpr int kResultSchemaVersion = 24;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2095,6 +2095,14 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 throw std::invalid_argument("noiseBand needs positive minFrequencyHz, iirOrder, and outputIntervalSeconds");
             }
         }
+        const auto ltsa = body.value("ltsa", json::object());
+        config.detector.ltsa.enabled = ltsa.value("enabled", false);
+        if (config.detector.ltsa.enabled) {
+            config.detector.ltsa.interval_seconds = ltsa.value("intervalSeconds", config.detector.ltsa.interval_seconds);
+            if (config.detector.ltsa.interval_seconds <= 0) {
+                throw std::invalid_argument("ltsa.intervalSeconds must be positive");
+            }
+        }
         const auto acquisition = body.value("acquisition", json::object());
         config.acquisition.volts_peak_to_peak = acquisition.value("voltsPeak2Peak", config.acquisition.volts_peak_to_peak);
         config.acquisition.preamp_gain_db = acquisition.value("preampGainDb", config.acquisition.preamp_gain_db);
@@ -2896,6 +2904,19 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             {"timeMs", noise.time_unix_ms},
             {"rmsDb", noise.rms_db},
             {"peakDb", noise.peak_db},
+        });
+    }
+
+    out["ltsa"] = json::array();
+    for (const auto& entry : result.ltsa) {
+        out["ltsa"].push_back({
+            {"channel", entry.channel},
+            {"startTimeMs", entry.interval.start_time_ms},
+            {"endTimeMs", entry.interval.end_time_ms},
+            {"nFft", entry.interval.n_fft},
+            {"startSample", entry.interval.start_sample},
+            {"durationSamples", entry.interval.duration_samples},
+            {"magnitude", entry.interval.magnitude},
         });
     }
 

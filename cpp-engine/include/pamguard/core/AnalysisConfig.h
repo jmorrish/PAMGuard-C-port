@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "pamguard/detectors/ClickDetectorEngine.h"
+#include "pamguard/detectors/LtsaMonitor.h"
 #include "pamguard/detectors/NoiseBandMonitor.h"
 #include "pamguard/detectors/SpectrogramNoiseReducer.h"
 #include "pamguard/detectors/ClickFeatureExtractor.h"
@@ -145,6 +146,8 @@ struct DetectorConfig {
     detectors::SpectrogramNoiseConfig whistle_noise;
     /** PAMGuard noiseBandMonitor: octave-family band noise levels. */
     detectors::NoiseBandConfig noise_band;
+    /** PAMGuard ltsa: long-term spectral average over the FFT stream. */
+    detectors::LtsaConfig ltsa;
     bool whistle_peak_detector_enabled = false;
     detectors::WhistlePeakConfig whistle_peak;
     bool whistle_region_detector_enabled = false;

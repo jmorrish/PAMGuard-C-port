@@ -530,6 +530,21 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
                                                                      config_.detector.noise_band));
         }
     }
+    if (config_.detector.ltsa.enabled && config_.detector.fft.fft_length >= 2) {
+        // LtsaProcess.setupProcess: one ChannelProcess per channel in the
+        // map; the source is the session's FFT stream, so the channel set
+        // follows the FFT config.
+        if (config_.detector.fft.channels.empty()) {
+            for (std::size_t channel = 0; channel < config_.channel_count; ++channel) {
+                ltsa_monitors_.emplace(channel, detectors::LtsaMonitor(config_.detector.ltsa));
+            }
+        }
+        else {
+            for (const auto channel : config_.detector.fft.channels) {
+                ltsa_monitors_.emplace(channel, detectors::LtsaMonitor(config_.detector.ltsa));
+            }
+        }
+    }
     if (config_.detector.click_detector_enabled) {
         click_detector_.emplace(config_.detector.click);
         if (config_.detector.click_echo_enabled && config_.sample_rate_hz != 0) {
@@ -630,6 +645,25 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     }
     AnalysisResult result;
     result.spectrogram_frames = spectrogram_.process(chunk);
+    if (!ltsa_monitors_.empty()) {
+        // LTSA sources the FFT data block directly, BEFORE any whistle-path
+        // noise reduction, and PAMGuard stamps each FFT unit with a duration
+        // of fftLength samples.
+        for (const auto& frame : result.spectrogram_frames) {
+            auto monitor = ltsa_monitors_.find(frame.channel);
+            if (monitor == ltsa_monitors_.end()) {
+                continue;
+            }
+            auto closed = monitor->second.process_frame(
+                frame.time_unix_ms,
+                frame.start_sample,
+                static_cast<std::int64_t>(config_.detector.fft.fft_length),
+                pamguard_packed_magnitude_squared(frame.bins));
+            if (closed.has_value()) {
+                result.ltsa.push_back({frame.channel, std::move(*closed)});
+            }
+        }
+    }
     if (click_detector_) {
         result.clicks = click_detector_->process(chunk);
         if (echo_detector_.has_value()) {
@@ -841,6 +875,13 @@ AnalysisResult AnalysisSession::flush() {
     for (auto& [_, tracker] : whistle_region_trackers_) {
         auto regions = tracker.flush();
         result.whistle_regions.insert(result.whistle_regions.end(), regions.begin(), regions.end());
+    }
+    // flushDataBlockBuffers: close the in-progress LTSA period per channel.
+    for (auto& [channel, monitor] : ltsa_monitors_) {
+        auto closed = monitor.flush();
+        if (closed.has_value()) {
+            result.ltsa.push_back({channel, std::move(*closed)});
+        }
     }
     compute_whistle_delays(result);
     group_whistle_regions(result);
