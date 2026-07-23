@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "pamguard/detectors/ClickDetectorEngine.h"
+#include "pamguard/detectors/NoiseBandMonitor.h"
 #include "pamguard/detectors/SpectrogramNoiseReducer.h"
 #include "pamguard/detectors/ClickFeatureExtractor.h"
 #include "pamguard/detectors/BasicClickClassifier.h"
@@ -40,6 +41,8 @@ struct ArrayHydrophone {
     double x_error_m = 0.0;
     double y_error_m = 0.0;
     double z_error_m = 0.0;
+    /** Hydrophone.preampGain, part of the calibration constant. */
+    double preamp_gain_db = 0.0;
 };
 
 /**
@@ -140,11 +143,25 @@ struct DetectorConfig {
      * history, because WhistleDelays correlates on the noise-reduced block.
      */
     detectors::SpectrogramNoiseConfig whistle_noise;
+    /** PAMGuard noiseBandMonitor: octave-family band noise levels. */
+    detectors::NoiseBandConfig noise_band;
     bool whistle_peak_detector_enabled = false;
     detectors::WhistlePeakConfig whistle_peak;
     bool whistle_region_detector_enabled = false;
     detectors::ConnectedRegionConfig whistle_region;
     std::vector<ChannelGroup> channel_groups;
+};
+
+/**
+ * Acquisition calibration (AcquisitionParameters + AcquisitionProcess):
+ * rawAmplitude2dB converts a -1..1 sample to dB re 1 uPa as
+ * 20*log10(raw * voltsPeak2Peak / 2) - (hydrophone sensitivity +
+ * hydrophone preamp gain + system preamp gain). The defaults give
+ * uncalibrated relative dB (20*log10(raw)) when nothing is configured.
+ */
+struct AcquisitionCalibration {
+    double volts_peak_to_peak = 2.0;
+    double preamp_gain_db = 0.0;
 };
 
 struct AnalysisConfig {
@@ -156,6 +173,7 @@ struct AnalysisConfig {
     std::size_t channel_count = 0;
     DetectorConfig detector;
     ArrayConfiguration array;
+    AcquisitionCalibration acquisition;
 };
 
 } // namespace pamguard::core

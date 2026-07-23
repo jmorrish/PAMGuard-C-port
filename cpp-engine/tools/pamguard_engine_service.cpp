@@ -33,7 +33,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 22;
+constexpr int kResultSchemaVersion = 23;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -2072,6 +2072,36 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         config.array.wobble_radians < 0.0 || !std::isfinite(config.array.wobble_radians)) {
         throw std::invalid_argument("array.speedOfSoundErrorMps, timingErrorSeconds, spacingErrorM, and wobbleRadians must be non-negative and finite");
     }
+    {
+        const auto noise_band = body.value("noiseBand", json::object());
+        auto& noise_config = config.detector.noise_band;
+        noise_config.enabled = noise_band.value("enabled", false);
+        if (noise_config.enabled) {
+            const auto band = noise_band.value("bandType", std::string("thirdOctave"));
+            if (band == "octave") noise_config.band_type = pamguard::detectors::NoiseBandType::Octave;
+            else if (band == "thirdOctave") noise_config.band_type = pamguard::detectors::NoiseBandType::ThirdOctave;
+            else if (band == "decidecade") noise_config.band_type = pamguard::detectors::NoiseBandType::Decidecade;
+            else if (band == "decade") noise_config.band_type = pamguard::detectors::NoiseBandType::Decade;
+            else if (band == "tenthOctave") noise_config.band_type = pamguard::detectors::NoiseBandType::TenthOctave;
+            else if (band == "twelfthOctave") noise_config.band_type = pamguard::detectors::NoiseBandType::TwelfthOctave;
+            else throw std::invalid_argument("noiseBand.bandType must be octave, thirdOctave, decidecade, decade, tenthOctave, or twelfthOctave");
+            noise_config.min_frequency_hz = noise_band.value("minFrequencyHz", noise_config.min_frequency_hz);
+            noise_config.max_frequency_hz = noise_band.value("maxFrequencyHz", noise_config.max_frequency_hz);
+            noise_config.reference_frequency_hz = noise_band.value("referenceFrequencyHz", noise_config.reference_frequency_hz);
+            noise_config.iir_order = noise_band.value("iirOrder", noise_config.iir_order);
+            noise_config.output_interval_seconds = noise_band.value("outputIntervalSeconds", noise_config.output_interval_seconds);
+            if (!(noise_config.min_frequency_hz > 0.0) || noise_config.iir_order <= 0 ||
+                !(noise_config.output_interval_seconds > 0.0)) {
+                throw std::invalid_argument("noiseBand needs positive minFrequencyHz, iirOrder, and outputIntervalSeconds");
+            }
+        }
+        const auto acquisition = body.value("acquisition", json::object());
+        config.acquisition.volts_peak_to_peak = acquisition.value("voltsPeak2Peak", config.acquisition.volts_peak_to_peak);
+        config.acquisition.preamp_gain_db = acquisition.value("preampGainDb", config.acquisition.preamp_gain_db);
+        if (!(config.acquisition.volts_peak_to_peak > 0.0) || !std::isfinite(config.acquisition.preamp_gain_db)) {
+            throw std::invalid_argument("acquisition.voltsPeak2Peak must be positive and preampGainDb finite");
+        }
+    }
     if (array.contains("orientation")) {
         const auto& orientation = array.at("orientation");
         config.array.orientation.declared = true;
@@ -2113,6 +2143,10 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
             item.x_error_m = hydrophone.value("xErrorM", 0.0);
             item.y_error_m = hydrophone.value("yErrorM", 0.0);
             item.z_error_m = hydrophone.value("zErrorM", 0.0);
+            item.preamp_gain_db = hydrophone.value("preampGainDb", 0.0);
+            if (!std::isfinite(item.preamp_gain_db)) {
+                throw std::invalid_argument("array.hydrophones preampGainDb must be finite");
+            }
             if (item.x_error_m < 0.0 || item.y_error_m < 0.0 || item.z_error_m < 0.0 ||
                 !std::isfinite(item.x_error_m) || !std::isfinite(item.y_error_m) || !std::isfinite(item.z_error_m)) {
                 throw std::invalid_argument("array.hydrophones xErrorM, yErrorM, and zErrorM must be non-negative and finite");
@@ -2852,6 +2886,17 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             item["peakSweepRateHzPerSecond"] = bin_value_to_hz(region.peak_sweep_rate_bins_per_second);
         }
         out["whistleRegions"].push_back(std::move(item));
+    }
+
+    out["noiseBands"] = json::array();
+    for (const auto& noise : result.noise_bands) {
+        out["noiseBands"].push_back({
+            {"channel", noise.channel},
+            {"endSample", noise.end_sample},
+            {"timeMs", noise.time_unix_ms},
+            {"rmsDb", noise.rms_db},
+            {"peakDb", noise.peak_db},
+        });
     }
 
     out["whistleGroups"] = json::array();

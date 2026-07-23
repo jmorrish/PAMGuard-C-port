@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "pamguard/detectors/CtTrainSpectrum.h"
+#include "pamguard/detectors/NoiseBandMonitor.h"
 #include "pamguard/detectors/SimpleEchoDetector.h"
 #include "pamguard/detectors/StandardMhtChi2.h"
 #include "pamguard/detectors/WhistleDetectionGrouper.h"
@@ -522,6 +523,13 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
       spectrogram_(config_.detector.fft) {
     resolve_streamer_offsets(config_.array);
     current_orientation_ = config_.array.orientation;
+    if (config_.detector.noise_band.enabled && config_.sample_rate_hz != 0) {
+        for (std::size_t channel = 0; channel < config_.channel_count; ++channel) {
+            noise_band_monitors_.emplace(channel,
+                                         detectors::NoiseBandMonitor(static_cast<double>(config_.sample_rate_hz),
+                                                                     config_.detector.noise_band));
+        }
+    }
     if (config_.detector.click_detector_enabled) {
         click_detector_.emplace(config_.detector.click);
         if (config_.detector.click_echo_enabled && config_.sample_rate_hz != 0) {
@@ -718,6 +726,46 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     // the optional MHT bearing/peak-frequency chi2 variables.
     process_mht_click_trains(result);
     classify_ici_click_trains(result);
+    if (!noise_band_monitors_.empty()) {
+        // rawAmplitude2dB: 20*log10(raw * vp2p / 2) - (hydrophone sensitivity
+        // + hydrophone preamp gain + acquisition preamp gain); non-finite -> 0.
+        const auto amplitude_db = [&](double raw, std::size_t channel) {
+            double constant_term = config_.acquisition.preamp_gain_db;
+            const auto* hydrophone = find_hydrophone(config_.array, channel);
+            if (hydrophone != nullptr) {
+                constant_term += hydrophone->sensitivity_db + hydrophone->preamp_gain_db;
+            }
+            const double db = 20.0 * std::log10(raw * config_.acquisition.volts_peak_to_peak / 2.0) - constant_term;
+            return std::isfinite(db) ? db : 0.0;
+        };
+        std::vector<double> channel_samples;
+        for (auto& [channel, monitor] : noise_band_monitors_) {
+            if (channel >= chunk.channel_count || !monitor.valid()) {
+                continue;
+            }
+            const auto frames = chunk.frame_count();
+            channel_samples.resize(frames);
+            for (std::size_t i = 0; i < frames; ++i) {
+                channel_samples[i] = chunk.sample(i, channel);
+            }
+            const auto levels = monitor.process(channel_samples, chunk.start_sample, chunk.time_unix_ms);
+            if (levels.has_value()) {
+                NoiseBandResult noise;
+                noise.channel = channel;
+                noise.end_sample = levels->end_sample;
+                noise.time_unix_ms = levels->time_unix_ms;
+                noise.rms_db.reserve(levels->rms.size());
+                noise.peak_db.reserve(levels->peak.size());
+                for (const double value : levels->rms) {
+                    noise.rms_db.push_back(amplitude_db(value, channel));
+                }
+                for (const double value : levels->peak) {
+                    noise.peak_db.push_back(amplitude_db(value, channel));
+                }
+                result.noise_bands.push_back(std::move(noise));
+            }
+        }
+    }
     if (!whistle_peak_detectors_.empty() || !whistle_region_trackers_.empty()) {
         for (const auto& raw_frame : result.spectrogram_frames) {
             // PAMGuard's whistle chain is FFT -> SpectrogramNoiseProcess ->

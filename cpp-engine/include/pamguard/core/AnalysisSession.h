@@ -179,6 +179,19 @@ struct WhistleRegionGroup {
     std::size_t earlier_region_count = 0;
 };
 
+/**
+ * One noise band measurement interval for one channel: ANSI band levels in
+ * dB (calibrated via AcquisitionCalibration; uncalibrated-relative when no
+ * sensitivity is configured), ascending frequency.
+ */
+struct NoiseBandResult {
+    std::size_t channel = 0;
+    std::int64_t end_sample = 0;
+    std::int64_t time_unix_ms = 0;
+    std::vector<double> rms_db;
+    std::vector<double> peak_db;
+};
+
 /** Classifier chain verdict for an ICI-tracker click train. */
 struct ClickTrainClassificationResult {
     std::size_t train_id = 0;
@@ -221,6 +234,7 @@ struct AnalysisResult {
     std::vector<MhtClickTrainResult> mht_click_trains;
     std::vector<ClickTrainClassificationResult> click_train_classifications;
     std::vector<WhistleRegionGroup> whistle_groups;
+    std::vector<NoiseBandResult> noise_bands;
 };
 
 [[nodiscard]] std::vector<ClickTrainBearingSummary> summarize_click_train_bearings(
@@ -309,6 +323,8 @@ private:
     std::optional<detectors::SimpleEchoDetector> echo_detector_;
     /** Per-channel state lives inside; one reducer serves the session. */
     std::optional<detectors::SpectrogramNoiseReducer> whistle_noise_reducer_;
+    /** One per channel, keyed by channel number. */
+    std::unordered_map<std::size_t, detectors::NoiseBandMonitor> noise_band_monitors_;
 
     [[nodiscard]] bool whistle_delays_enabled() const;
     void retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame);

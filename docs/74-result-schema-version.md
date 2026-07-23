@@ -22,6 +22,7 @@ The HTTP service smoke asserts the health endpoint, live PCM result body, and ar
 
 ## Version history
 
+- `23`: Adds a `noiseBands` array (ported PAMGuard noiseBandMonitor): per channel per output interval, ANSI band `rmsDb`/`peakDb` levels ascending in frequency, calibrated to dB re 1 uPa when `acquisition` and hydrophone sensitivity/preamp gain are configured, honest relative dB otherwise.
 - `22`: Adds an `echo` boolean to click results when online echo detection runs (`click.echo.runOnline`), via the ported PAMGuard SimpleEchoDetector. Absent when the gate is off, so unchecked is distinguishable from not-an-echo. With `discardEchoes`, echoes are removed before any output at all.
 - `21`: Adds `earthWorldVectors` to `gridBearing` and `lsqBearing` and `pairBearingWorldVectors`' counterpart `pairBearingEarthWorldVectors`, present when session config declares `array.orientation` (heading/pitch/roll of the whole array in the world). Same vectors rotated by `getRealWorldVectors`' quaternion; without a declared orientation the fields are absent rather than silently carrying array-frame values.
 - `20`: Adds `earlierRegionCount` to `whistleGroups` entries — members that completed in earlier chunks and are therefore not addressable through `regionIndices`. `firstStartSample` now means the group's true first sample rather than this chunk's earliest member, so a group re-reported in a later chunk no longer appears to move forward in time.

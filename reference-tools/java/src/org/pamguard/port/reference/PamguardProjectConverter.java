@@ -26,6 +26,7 @@ import clickTrainDetector.clickTrainAlgorithms.mht.electricalNoiseFilter.SimpleE
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates;
 import clickTrainDetector.classification.templateClassifier.DefualtSpectrumTemplates.SpectrumTemplateType;
 import fftManager.FFTParameters;
+import noiseBandMonitor.NoiseBandSettings;
 import spectrogramNoiseReduction.SpectrogramNoiseSettings;
 import spectrogramNoiseReduction.medianFilter.MedianFilterParams;
 import whistlesAndMoans.WhistleToneParameters;
@@ -120,6 +121,7 @@ public final class PamguardProjectConverter {
         ClickTrainParams clickTrain = null;
         MHTParams mht = null;
         SimpleEchoParams echoParams = null;
+        NoiseBandSettings noiseBand = null;
 
         for (PamControlledUnitSettings unit : group.getUnitSettings()) {
             Object settings;
@@ -158,6 +160,9 @@ public final class PamguardProjectConverter {
             else if (settings instanceof SimpleEchoParams && echoParams == null) {
                 echoParams = (SimpleEchoParams) settings;
             }
+            else if (settings instanceof NoiseBandSettings && noiseBand == null) {
+                noiseBand = (NoiseBandSettings) settings;
+            }
             else {
                 System.out.printf("skipped: %s / %s (%s)%n", unit.getUnitType(), unit.getUnitName(),
                         settings == null ? "<null>" : settings.getClass().getName());
@@ -175,6 +180,17 @@ public final class PamguardProjectConverter {
         json.append("  \"sessionId\": \"").append(escape(stripExtension(psfxFile.getName()))).append("-import\",\n");
         json.append("  \"sampleRateHz\": ").append(format(acquisition.sampleRate)).append(",\n");
         json.append("  \"channelCount\": ").append(acquisition.nChannels);
+        if (acquisition.voltsPeak2Peak > 0) {
+            json.append(",\n  \"acquisition\": { \"voltsPeak2Peak\": ")
+                    .append(format(acquisition.voltsPeak2Peak));
+            if (acquisition.preamplifier != null) {
+                json.append(", \"preampGainDb\": ").append(format(acquisition.preamplifier.getGain()));
+            }
+            json.append(" }");
+        }
+        else {
+            System.out.println("skipped: acquisition calibration (voltsPeak2Peak not set)");
+        }
 
         if (array != null) {
             json.append(",\n  \"array\": {\n");
@@ -350,6 +366,32 @@ public final class PamguardProjectConverter {
             }
         }
 
+        if (noiseBand != null) {
+            String bandName;
+            switch (noiseBand.bandType) {
+            case OCTAVE: bandName = "octave"; break;
+            case THIRDOCTAVE: bandName = "thirdOctave"; break;
+            case DECIDECADE: bandName = "decidecade"; break;
+            case DECADE: bandName = "decade"; break;
+            case TENTHOCTAVE: bandName = "tenthOctave"; break;
+            case TWELTHOCTAVE: bandName = "twelfthOctave"; break;
+            default: bandName = null;
+            }
+            if (bandName == null || noiseBand.filterType != Filters.FilterType.BUTTERWORTH) {
+                System.out.println("skipped: noise band monitor ("
+                        + (bandName == null ? "unsupported band type" : "non-Butterworth filters") + ")");
+            }
+            else {
+                json.append(",\n  \"noiseBand\": { \"enabled\": true, \"bandType\": \"").append(bandName);
+                json.append("\", \"minFrequencyHz\": ").append(format(noiseBand.getMinFrequency()));
+                json.append(", \"maxFrequencyHz\": ").append(format(noiseBand.getMaxFrequency()));
+                json.append(", \"referenceFrequencyHz\": ").append(format(noiseBand.getReferenceFrequency()));
+                json.append(", \"iirOrder\": ").append(noiseBand.iirOrder);
+                json.append(", \"outputIntervalSeconds\": ").append(noiseBand.outputIntervalSeconds);
+                json.append(" }");
+            }
+        }
+
         json.append("\n}\n");
 
         jsonFile.getParentFile().mkdirs();
@@ -371,6 +413,7 @@ public final class PamguardProjectConverter {
         // constructors, which is why *reading* real files works headlessly, so
         // allocate the sample instance the same way serialisation itself does.
         AcquisitionParameters acquisition = newWithoutConstructor(AcquisitionParameters.class);
+        acquisition.voltsPeak2Peak = 5.0;
         acquisition.sampleRate = 96000;
         acquisition.nChannels = 4;
 
@@ -532,6 +575,12 @@ public final class PamguardProjectConverter {
         echoSample.maxIntervalSeconds = 0.08;
         group.addSettings(new PamControlledUnitSettings("Click Detector", "Echo Detector",
                 SimpleEchoParams.class.getName(), 1, echoSample));
+        NoiseBandSettings noiseBandSample = new NoiseBandSettings();
+        noiseBandSample.bandType = noiseBandMonitor.BandType.THIRDOCTAVE;
+        noiseBandSample.iirOrder = 6;
+        noiseBandSample.outputIntervalSeconds = 5;
+        group.addSettings(new PamControlledUnitSettings("Noise Band", "Noise Band Monitor",
+                NoiseBandSettings.class.getName(), 1, noiseBandSample));
         // A module the engine has no equivalent for, so the converter's
         // skip reporting always has something real to report.
         group.addSettings(new PamControlledUnitSettings("Spectrogram", "User Display",

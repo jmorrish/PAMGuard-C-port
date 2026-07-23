@@ -25,6 +25,7 @@ add_library(pamguard_engine
     src/detectors/MhtSimpleChi2Vars.cpp
     src/detectors/StandardMhtChi2.cpp
     src/detectors/ConnectedRegionTracker.cpp
+    src/detectors/NoiseBandMonitor.cpp
     src/detectors/SpectrogramNoiseReducer.cpp
     src/detectors/WhistlePeakDetector.cpp
     src/dsp/IirFilter.cpp
@@ -303,6 +304,12 @@ add_executable(spectrogram_noise_fixture_check
 )
 
 target_link_libraries(spectrogram_noise_fixture_check PRIVATE pamguard_engine)
+
+add_executable(noise_band_fixture_check
+    tools/noise_band_fixture_check.cpp
+)
+
+target_link_libraries(noise_band_fixture_check PRIVATE pamguard_engine)
 
 add_executable(iir_filter_fixture_check
     tools/iir_filter_fixture_check.cpp
@@ -625,6 +632,11 @@ add_test(
 add_test(
     NAME spectrogram_noise_parity
     COMMAND spectrogram_noise_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/whistle/spectrogram-noise.csv
+)
+
+add_test(
+    NAME noise_band_parity
+    COMMAND noise_band_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/noise/noise-bands.csv
 )
 
 add_test(
