@@ -7,6 +7,8 @@ param(
     [int]$Channels = 2,
     [double]$ChunkSeconds = 1.0,
     [switch]$Detectors,
+    [switch]$Archive,   # enable result + audio archiving during the run
+    [switch]$Monitors,  # enable noiseBand + ltsa + ishmael + sgramCorr monitoring load
     [switch]$SoakMinutes0  # placeholder switch retained for compatibility
 )
 
@@ -41,14 +43,24 @@ if (-not (Test-Path $serviceExe)) {
 $oldMaxSessions = $env:PAMGUARD_MAX_SESSIONS
 $oldSessionDir = $env:PAMGUARD_SESSION_CONFIG_DIR
 $oldArchiveDir = $env:PAMGUARD_RESULT_ARCHIVE_DIR
+$oldAudioArchiveDir = $env:PAMGUARD_AUDIO_ARCHIVE_DIR
+$archiveRoot = $null
 $process = $null
 try {
     Remove-Item Env:\PAMGUARD_SESSION_CONFIG_DIR -ErrorAction SilentlyContinue
     Remove-Item Env:\PAMGUARD_RESULT_ARCHIVE_DIR -ErrorAction SilentlyContinue
+    Remove-Item Env:\PAMGUARD_AUDIO_ARCHIVE_DIR -ErrorAction SilentlyContinue
     Remove-Item Env:\PAMGUARD_API_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:\PAMGUARD_API_KEY_FILE -ErrorAction SilentlyContinue
     Remove-Item Env:\PAMGUARD_REQUIRE_SESSION_METADATA -ErrorAction SilentlyContinue
     $env:PAMGUARD_MAX_SESSIONS = "$($Sessions + 2)"
+    if ($Archive) {
+        $archiveRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("pamguard-bench-archive-" + [System.Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path (Join-Path $archiveRoot "results") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $archiveRoot "audio") | Out-Null
+        $env:PAMGUARD_RESULT_ARCHIVE_DIR = Join-Path $archiveRoot "results"
+        $env:PAMGUARD_AUDIO_ARCHIVE_DIR = Join-Path $archiveRoot "audio"
+    }
 
     $process = Start-Process -FilePath $serviceExe -ArgumentList "$Port" -PassThru -WindowStyle Hidden
     $base = "http://127.0.0.1:$Port"
@@ -88,6 +100,12 @@ try {
                 enabled = $true; regionEnabled = $true
                 noise = @{ medianFilter = $true; medianFilterLength = 61; threshold = $true; thresholdDb = 8.0; finalOutput = 2 }
             }
+        }
+        if ($Monitors) {
+            $config.noiseBand = @{ enabled = $true; bandType = "thirdOctave"; minFrequencyHz = 100.0; maxFrequencyHz = 0.0; outputIntervalSeconds = 5.0 }
+            $config.ltsa = @{ enabled = $true; intervalSeconds = 10 }
+            $config.ishmael = @{ enabled = $true; f0 = 500.0; f1 = 8000.0; thresh = 2.0; minTimeSeconds = 0.05; refractoryTimeSeconds = 0.2 }
+            $config.sgramCorr = @{ enabled = $true; segments = @(,@(0.0, 4000.0, 0.2, 8000.0)); spread = 500.0; thresh = 0.5; minTimeSeconds = 0.05; refractoryTimeSeconds = 0.2 }
         }
         $body = $config | ConvertTo-Json -Depth 10
         $created = Invoke-RestMethod -Method Post -Uri "$base/sessions" -ContentType "application/json" -Body $body
@@ -149,6 +167,11 @@ try {
     Write-Host ("Wall time:           {0:N2}s" -f $wallSeconds)
     Write-Host ("Realtime factor:     {0:N2}x  (>= 1.00 sustains {1} live sessions on this machine)" -f $realtimeFactor, $Sessions)
     Write-Host ("Chunk latency ms:    p50={0:N1}  p95={1:N1}  p99={2:N1}  max={3:N1}" -f $p50, $p95, $p99, ($sorted[-1]))
+    if ($Archive) {
+        $resultBytes = (Get-ChildItem -Recurse -File (Join-Path $archiveRoot "results") | Measure-Object -Sum Length).Sum
+        $audioBytes = (Get-ChildItem -Recurse -File (Join-Path $archiveRoot "audio") | Measure-Object -Sum Length).Sum
+        Write-Host ("Archive written:     results {0:N1} MB, audio {1:N1} MB" -f ($resultBytes / 1e6), ($audioBytes / 1e6))
+    }
 
     for ($s = 0; $s -lt $Sessions; $s++) {
         $null = Invoke-RestMethod -Method Delete -Uri "$base/sessions/bench-$s"
@@ -163,7 +186,11 @@ finally {
     if ($process -and -not $process.HasExited) {
         Stop-Process -Id $process.Id -Force
     }
+    if ($archiveRoot -and (Test-Path $archiveRoot)) {
+        Remove-Item -Recurse -Force $archiveRoot -ErrorAction SilentlyContinue
+    }
     $env:PAMGUARD_MAX_SESSIONS = $oldMaxSessions
     $env:PAMGUARD_SESSION_CONFIG_DIR = $oldSessionDir
     $env:PAMGUARD_RESULT_ARCHIVE_DIR = $oldArchiveDir
+    $env:PAMGUARD_AUDIO_ARCHIVE_DIR = $oldAudioArchiveDir
 }
