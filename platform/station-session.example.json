@@ -41,9 +41,14 @@
       "peakFrequencySearchHz": [500.0, 20000.0],
       "meanFrequencyRangeHz": [500.0, 20000.0]
     },
-    "basicClassifier": {
-      "enabled": true,
-      "standardTypes": ["beakedWhale", "porpoise"]
+    "classifier": {
+      "type": "basic",
+      "runOnline": true,
+      "discardUnclassifiedClicks": false,
+      "basic": {
+        "enabled": true,
+        "standardTypes": ["beakedWhale", "porpoise"]
+      }
     },
     "train": {
       "enabled": true,
@@ -52,23 +57,30 @@
     }
   },
   "whistle": {
-    "enabled": true,
+    "enabled": false,
     "regionEnabled": true,
-    "detectionThresholdDb": 6.0,
-    "peakTimeConstant0": 10.0,
-    "peakTimeConstant1": 100.0,
-    "maxPercentOverThreshold": 50.0,
-    "minPeakWidth": 3,
-    "maxPeakWidth": 20,
-    "searchBin0": 1,
-    "searchBin1": 0,
-    "warmupSlices": 100,
+    "channelBitmap": 3,
+    "groupingType": "all",
+    "channelGroups": [0, 0],
+    "minFrequencyHz": 0.0,
+    "maxFrequencyHz": 0.0,
+    "backgroundIntervalSeconds": 10.0,
     "minPixels": 20,
     "minLength": 10,
     "connectType": 8,
     "keepShapeStubs": false,
     "fragmentationMethod": 3,
     "maxCrossLength": 5,
-    "rejectFirstQuarterSecond": true
+    "rejectFirstQuarterSecond": true,
+    "noise": {
+      "medianFilter": true,
+      "medianFilterLength": 61,
+      "averageSubtraction": true,
+      "updateConstant": 0.02,
+      "kernelSmoothing": true,
+      "threshold": true,
+      "thresholdDb": 8.0,
+      "finalOutput": 2
+    }
   }
 }

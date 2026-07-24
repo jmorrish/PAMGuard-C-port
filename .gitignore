@@ -5,6 +5,9 @@ cmake-build-*/
 out/
 dist/
 
+# Separately cloned Java oracle repository
+/PAMGuard_Java/
+
 # CMake / Ninja / compiler artifacts
 CMakeCache.txt
 CMakeFiles/

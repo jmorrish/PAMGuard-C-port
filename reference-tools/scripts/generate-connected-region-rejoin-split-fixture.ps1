@@ -3,12 +3,19 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PortRoot = Resolve-Path (Join-Path $ScriptDir "..\..")
 $Output = Join-Path $PortRoot "cpp-engine\tests\fixtures\whistle\connected-region-rejoin-split.csv"
-$JavaHome = if ($env:JAVA_HOME) { $env:JAVA_HOME } else { "C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot" }
-$Java = Join-Path $JavaHome "bin\java.exe"
-$Javac = Join-Path $JavaHome "bin\javac.exe"
 $JavaSrc = Join-Path $PortRoot "reference-tools\java\src\org\pamguard\port\reference\ConnectedRegionRejoinFixtureExporter.java"
 $BuildDir = Join-Path $PortRoot "reference-tools\java\build"
 
+$OracleEnvironment = & (Join-Path $ScriptDir "resolve-pamguard-oracle.ps1") -PortRoot $PortRoot
+$RepoRoot = $OracleEnvironment.JavaRepo
+$JavaHome = $OracleEnvironment.JavaHome
+$Java = $OracleEnvironment.Java
+$Javac = $OracleEnvironment.Javac
+$Maven = Join-Path $ScriptDir "mvn-local.ps1"
+$Mvn = $OracleEnvironment.Maven
+$TargetClasses = $OracleEnvironment.TargetClasses
+$ClasspathFile = $OracleEnvironment.ClasspathFile
+$DependencyClasspath = $OracleEnvironment.DependencyClasspath
 if (-not (Test-Path $Java)) {
     throw "java.exe was not found at $Java"
 }

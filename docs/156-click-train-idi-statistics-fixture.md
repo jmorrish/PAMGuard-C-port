@@ -10,7 +10,10 @@ The click train tracker's ICI summary layer (mean, sorted median, population sta
 
 `ClickTrainIdiFixtureExporter.java` subclasses `PamguardMVC.PamDataUnit` only to override `getTimeNanoseconds()` (the production accessor needs a parent data block's nano-time calculator); everything else — the nanosecond-time sort, IDI series construction, and `PamArrayUtils.mean/median/std` — is the real PAMGuard code path in `IDIInfo.calcTimeSeriesData`.
 
-Because `PamArrayUtils` links against Apache commons-math at class-load time, the generation script (`generate-click-train-idi-fixture.ps1`) appends the saved Maven dependency classpath (`reference-tools/java/pamguard-classpath.txt`) to the run classpath.
+Because `PamArrayUtils` links against Apache commons-math at class-load time,
+the generation script (`generate-click-train-idi-fixture.ps1`) asks the shared
+oracle resolver to generate a local Maven dependency classpath under
+`reference-tools/java/build/` and appends it to the run classpath.
 
 ## Scenarios
 

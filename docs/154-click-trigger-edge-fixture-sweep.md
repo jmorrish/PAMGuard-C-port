@@ -14,6 +14,8 @@ The click trigger had a single PAMGuard Java parity fixture (`basic-2ch-threshol
 - `double-transient`: transients at samples 60-66 and 90-96 with the same per-channel scaling.
 - `long-transient`: one transient spanning samples 60-140.
 - `single-channel-transient`: transient at samples 80-86 on channel 0 only; channel 1 carries background noise only.
+- `boundary-transient`: transient at samples 124-132, crossing a configured
+  128-sample PCM chunk boundary (`docs/237`).
 
 The exporter still drives the real PAMGuard `clickDetector.TriggerFilter` class for all filter maths.
 
@@ -45,8 +47,15 @@ The existing negative-config, trigger-gating, waveform-capture, and reset-reprod
 
 - `generate-click-trigger-fixture.ps1` (unchanged 13-argument path) regenerates `basic-2ch-threshold10.csv` with no diff.
 - Seven `click_trigger_*` CTest cases pass, comparing sample indices, durations, channel/trigger bitmaps, and times exactly, and signal excess within `1e-10` dB.
+- The additional cross-chunk trigger fixture/check in `docs/237` brings this
+  family to eight registered cases.
 - Full CTest suite passes `47/47` on Windows Release, including service smokes.
 
 ## Claim boundary
 
-These fixtures cover single-block processing with block-mean filter initialisation, matching the exporter's reference loop. Cross-chunk trigger initialisation (first-chunk mean in the streaming C++ engine) and PAMGuard's dual-alpha long-filter path remain outside fixture coverage.
+The original seven fixtures cover single-block processing. `docs/237` extends
+the same real-`TriggerFilter` oracle across two PCM chunks, including
+first-chunk filter initialisation and carried click/filter state. PAMGuard
+2.02.18e constructs the live long filter with the two-argument
+`TriggerFilter(longFilter, 1)` constructor, so persisted `longFilter2` is a
+settings field but not a live dual-alpha path in the authoritative version.

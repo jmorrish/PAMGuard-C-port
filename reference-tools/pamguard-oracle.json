@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/PAMGuard/PAMGuard.git",
+  "checkout": "PAMGuard_Java",
+  "version": "2.02.18e",
+  "commit": "dca55c81ef6f1498a8a3b926c69e7182afb915ee"
+}

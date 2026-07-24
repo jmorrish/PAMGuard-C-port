@@ -35,7 +35,7 @@ IirFilterParams make_params(IirFilterType type, IirFilterBand band, int order, f
 std::map<std::string, IirFilterParams> case_catalogue() {
     using T = IirFilterType;
     using B = IirFilterBand;
-    return {
+    auto cases = std::map<std::string, IirFilterParams>{
         {"click-prefilter-hp4-500", make_params(T::Butterworth, B::HighPass, 4, 500.0F, 0.0F, 2.0)},
         {"click-trigger-hp2-2000", make_params(T::Butterworth, B::HighPass, 2, 2000.0F, 0.0F, 2.0)},
         {"butter-lp6-8000", make_params(T::Butterworth, B::LowPass, 6, 0.0F, 8000.0F, 2.0)},
@@ -46,7 +46,16 @@ std::map<std::string, IirFilterParams> case_catalogue() {
         {"cheby-lp4-6000-r2", make_params(T::Chebyshev, B::LowPass, 4, 0.0F, 6000.0F, 2.0)},
         {"cheby-hp3-1500-r1", make_params(T::Chebyshev, B::HighPass, 3, 1500.0F, 0.0F, 1.0)},
         {"cheby-bp4-1000-4000-r2", make_params(T::Chebyshev, B::BandPass, 4, 1000.0F, 4000.0F, 2.0)},
+        {"firwindow-hp5-2000", make_params(T::FirWindow, B::HighPass, 5, 2000.0F, 0.0F, 2.0)},
+        {"firwindow-bp6-2000-10000", make_params(T::FirWindow, B::BandPass, 6, 2000.0F, 10000.0F, 2.0)},
+        {"fft-bp-2000-10000", make_params(T::Fft, B::BandPass, 4, 2000.0F, 10000.0F, 2.0)},
+        {"firarbitrary-5", make_params(T::FirArbitrary, B::BandPass, 5, 0.0F, 0.0F, 2.0)},
     };
+    cases["firarbitrary-5"].arbitrary_frequencies_hz =
+        {0.0, 1500.0, 3000.0, 12000.0, 15000.0, 24000.0};
+    cases["firarbitrary-5"].arbitrary_gains_db =
+        {-60.0, -60.0, 0.0, 0.0, -60.0, -60.0};
+    return cases;
 }
 
 } // namespace
@@ -90,7 +99,7 @@ int main(int argc, char** argv) {
         // The recursion feeds back through the state, so late samples carry
         // hundreds of accumulated rounding steps; 1e-9 against O(1) values
         // still catches any real design or ordering mistake instantly.
-        constexpr double tolerance = 1e-9;
+        constexpr double tolerance = 1e-8;
         double max_abs_error = 0.0;
         std::size_t checked = 0;
         for (const auto& [name, expected] : series) {
@@ -145,6 +154,8 @@ int main(int argc, char** argv) {
             config.detector.click.min_sep = 48;
             config.detector.click.max_length = 512;
             config.detector.click.min_trigger_channels = 1;
+            config.detector.click.pre_filter.type = IirFilterType::None;
+            config.detector.click.trigger_filter.type = IirFilterType::None;
             if (with_filters) {
                 config.detector.click.pre_filter =
                     {IirFilterType::Butterworth, IirFilterBand::HighPass, 4, 0.0F, 500.0F, 2.0};

@@ -10,6 +10,7 @@
 #include "pamguard/detectors/ClickDetectorEngine.h"
 #include "pamguard/detectors/MhtKernel.h"
 #include "pamguard/detectors/SimpleEchoDetector.h"
+#include "pamguard/detectors/SpectrumBackground.h"
 #include "pamguard/detectors/MhtSimpleChi2Vars.h"
 #include "pamguard/detectors/WhistleDetectionGrouper.h"
 #include "pamguard/detectors/ConnectedRegionTracker.h"
@@ -240,9 +241,36 @@ struct MhtClickTrainResult {
     double template_correlation = 0.0;
 };
 
+struct FftNoiseBandResult {
+    std::string name;
+    double low_frequency_hz = 0.0;
+    double high_frequency_hz = 0.0;
+    detectors::FftNoiseBandStatistics statistics_db;
+};
+
+struct FftNoiseResult {
+    std::size_t channel = 0;
+    std::int64_t end_sample = 0;
+    std::int64_t time_unix_ms = 0;
+    std::size_t n_measurements = 0;
+    std::vector<FftNoiseBandResult> bands;
+};
+
+/** SpecBackgroundDataUnit emitted by WhistleToneConnectProcess. */
+struct WhistleBackgroundResult {
+    std::size_t channel = 0;
+    std::int64_t time_ms = 0;
+    std::int64_t start_sample = 0;
+    double duration_ms = 0.0;
+    std::vector<double> spectrum;
+};
+
 struct AnalysisResult {
     std::vector<dsp::SpectrogramFrame> spectrogram_frames;
     std::vector<detectors::ClickDetectionResult> clicks;
+    std::vector<detectors::ClickNoiseSampleResult> click_noise_samples;
+    std::vector<detectors::ClickTriggerBackgroundResult> click_trigger_background;
+    std::vector<detectors::ClickTriggerFunctionResult> click_trigger_function;
     std::vector<detectors::ClickFeatureResult> click_features;
     std::vector<detectors::ClickClassificationResult> click_classifications;
     std::vector<detectors::ClickTrainSummary> click_trains;
@@ -252,11 +280,13 @@ struct AnalysisResult {
     std::vector<ClickTrainBearingSummary> click_train_bearings;
     std::vector<detectors::WhistlePeak> whistle_peaks;
     std::vector<detectors::ConnectedRegionResult> whistle_regions;
+    std::vector<WhistleBackgroundResult> whistle_backgrounds;
     std::vector<WhistleRegionDelayResult> whistle_delays;
     std::vector<MhtClickTrainResult> mht_click_trains;
     std::vector<ClickTrainClassificationResult> click_train_classifications;
     std::vector<WhistleRegionGroup> whistle_groups;
     std::vector<NoiseBandResult> noise_bands;
+    std::vector<FftNoiseResult> fft_noise;
     std::vector<LtsaResult> ltsa;
     std::vector<detectors::IshmaelDetection> ishmael_detections;
     std::vector<detectors::IshmaelDetection> sgram_corr_detections;
@@ -285,14 +315,23 @@ public:
 private:
     AnalysisConfig config_;
     dsp::SpectrogramEngine spectrogram_;
-    std::optional<detectors::ClickDetectorEngine> click_detector_;
+    std::vector<detectors::ClickDetectorEngine> click_detectors_;
     std::optional<detectors::ClickFeatureExtractor> click_feature_extractor_;
     std::optional<detectors::BasicClickClassifier> click_basic_classifier_;
+    std::optional<detectors::SweepClickClassifier> click_sweep_classifier_;
     std::optional<detectors::ClickTrainTracker> click_train_tracker_;
     localisation::DelayGroupEstimator click_delay_estimator_;
     std::optional<localisation::FarFieldBearingLocaliser> click_bearing_localiser_;
+    std::vector<std::optional<detectors::SimpleEchoDetector>> click_echo_detectors_;
     std::unordered_map<std::size_t, detectors::WhistlePeakDetector> whistle_peak_detectors_;
     std::unordered_map<std::size_t, detectors::ConnectedRegionTracker> whistle_region_trackers_;
+    /** Connector first channel -> all source channels in its PAMGuard group. */
+    std::unordered_map<std::size_t, std::vector<std::size_t>>
+        whistle_group_channels_;
+    /** Raw, pre-noise-reduction background spectrum per connector channel. */
+    std::unordered_map<std::size_t, detectors::SpectrumBackground> whistle_backgrounds_;
+    /** Java keeps one emission clock for the whole WhistleToneConnectProcess. */
+    std::optional<std::int64_t> last_whistle_background_time_ms_;
     std::unordered_map<std::size_t, std::deque<dsp::SpectrogramFrame>> whistle_fft_history_;
 
     struct MhtTrainState {
@@ -346,12 +385,12 @@ private:
      * static; only the earth-frame rotation follows it.
      */
     ArrayOrientation current_orientation_;
-    /** Cross-chunk echo state: the anchor click survives chunk boundaries. */
-    std::optional<detectors::SimpleEchoDetector> echo_detector_;
     /** Per-channel state lives inside; one reducer serves the session. */
     std::optional<detectors::SpectrogramNoiseReducer> whistle_noise_reducer_;
     /** One per channel, keyed by channel number. */
     std::unordered_map<std::size_t, detectors::NoiseBandMonitor> noise_band_monitors_;
+    /** PAMGuard noiseMonitor consumes the selected FFT channels together. */
+    std::optional<detectors::FftNoiseMonitor> fft_noise_monitor_;
     /** One per channel, keyed by channel number (LtsaProcess.ChannelProcess). */
     std::unordered_map<std::size_t, detectors::LtsaMonitor> ltsa_monitors_;
     /**

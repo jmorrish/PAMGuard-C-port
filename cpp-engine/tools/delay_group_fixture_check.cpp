@@ -61,8 +61,8 @@ std::vector<FixtureRow> read_fixture(const std::string& path) {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cerr << "Usage: delay_group_fixture_check <fixture.csv>\n";
+    if (argc != 2 && argc != 3) {
+        std::cerr << "Usage: delay_group_fixture_check <fixture.csv> [raw|restricted|upsample|filter|envelope|leading|combined]\n";
         return 2;
     }
 
@@ -77,7 +77,48 @@ int main(int argc, char** argv) {
         }
 
         pamguard::localisation::DelayGroupEstimator estimator;
-        const auto actual = estimator.estimate_delays(waveforms, {16.0, 16.0, 16.0});
+        pamguard::localisation::DelayMeasurementConfig config;
+        const std::string mode = argc == 3 ? argv[2] : "raw";
+        if (mode == "restricted") {
+            config.use_restricted_bins = true;
+            config.restricted_bins = 40;
+        }
+        else if (mode == "upsample") {
+            config.up_sample = 2;
+        }
+        else if (mode == "filter") {
+            config.filter_bearings = true;
+            config.filter_band = pamguard::localisation::DelayFilterBand::BandPass;
+            config.filter_high_pass_hz = 3500.0;
+            config.filter_low_pass_hz = 14500.0;
+        }
+        else if (mode == "envelope") {
+            config.envelope_bearings = true;
+        }
+        else if (mode == "leading") {
+            config.envelope_bearings = true;
+            config.use_leading_edge = true;
+            config.leading_edge_search_start = 16;
+            config.leading_edge_search_end = 32;
+        }
+        else if (mode == "combined") {
+            config.use_restricted_bins = true;
+            config.restricted_bins = 48;
+            config.up_sample = 2;
+            config.filter_bearings = true;
+            config.filter_band = pamguard::localisation::DelayFilterBand::BandPass;
+            config.filter_high_pass_hz = 3500.0;
+            config.filter_low_pass_hz = 14500.0;
+            config.envelope_bearings = true;
+            config.use_leading_edge = true;
+            config.leading_edge_search_start = 16;
+            config.leading_edge_search_end = 32;
+        }
+        else if (mode != "raw") {
+            throw std::invalid_argument("unknown delay mode: " + mode);
+        }
+        const auto actual = estimator.estimate_delays(
+            waveforms, {16.0, 16.0, 16.0}, 48000.0, config);
         if (!estimator.estimate_delays({waveforms[0]}, {}).empty()) {
             std::cerr << "Single-channel delay group should not produce channel pairs\n";
             return 1;

@@ -20,7 +20,14 @@ namespace pamguard::dsp {
  * it performs). Frequencies are floats because `FilterParams` stores floats,
  * and the float→double promotion is part of the reference's arithmetic.
  */
-enum class IirFilterType { None, Butterworth, Chebyshev };
+enum class IirFilterType {
+    None,
+    Butterworth,
+    Chebyshev,
+    FirWindow,
+    FirArbitrary,
+    Fft,
+};
 enum class IirFilterBand { LowPass, HighPass, BandPass, BandStop };
 
 struct IirFilterParams {
@@ -31,6 +38,12 @@ struct IirFilterParams {
     float high_pass_freq_hz = 0.0F;
     /** Chebyshev only. */
     double pass_band_ripple_db = 2.0;
+    double stop_band_ripple_db = 2.0;
+    /** PAMGuard FilterParams.chebyGamma; FIR stop-band attenuation is 20*gamma dB. */
+    double cheby_gamma = 3.0;
+    /** Arbitrary FIR control points: Hz and dB, including 0 and Nyquist. */
+    std::vector<double> arbitrary_frequencies_hz;
+    std::vector<double> arbitrary_gains_db;
 };
 
 class FastIirFilter {
@@ -49,10 +62,17 @@ public:
     [[nodiscard]] double gain_constant() const noexcept { return gain_; }
 
 private:
+    enum class RuntimeType { None, Iir, Fir, Fft };
     std::vector<double> coefficients_;
     std::vector<double> state_;
+    std::vector<double> fir_taps_;
+    std::vector<double> fir_history_;
+    std::size_t fir_history_position_ = 0;
+    IirFilterParams params_;
+    double sample_rate_hz_ = 0.0;
     double gain_ = 1.0;
     bool active_ = false;
+    RuntimeType runtime_type_ = RuntimeType::None;
 };
 
 } // namespace pamguard::dsp

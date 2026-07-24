@@ -2,10 +2,13 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "pamguard/detectors/ClickDetectorEngine.h"
+#include "pamguard/detectors/ClickAngleVeto.h"
+#include "pamguard/detectors/FftNoiseMonitor.h"
 #include "pamguard/detectors/IshmaelDetector.h"
 #include "pamguard/detectors/LtsaMonitor.h"
 #include "pamguard/detectors/MatchedTemplateClassifier.h"
@@ -15,12 +18,14 @@
 #include "pamguard/detectors/SpectrogramNoiseReducer.h"
 #include "pamguard/detectors/ClickFeatureExtractor.h"
 #include "pamguard/detectors/BasicClickClassifier.h"
+#include "pamguard/detectors/SweepClickClassifier.h"
 #include "pamguard/detectors/ClickTrainTracker.h"
 #include "pamguard/detectors/CtClassifiers.h"
 #include "pamguard/detectors/StandardMhtChi2.h"
 #include "pamguard/detectors/ConnectedRegionTracker.h"
 #include "pamguard/detectors/WhistlePeakDetector.h"
 #include "pamguard/dsp/WindowFunction.h"
+#include "pamguard/localisation/DelayGroupEstimator.h"
 
 namespace pamguard::core {
 
@@ -105,10 +110,26 @@ struct FftConfig {
 };
 
 struct DetectorConfig {
+    enum class ClickClassifierType {
+        Basic,
+        Sweep,
+        None,
+    };
+    enum class ClickGroupingType {
+        Singles = 0,
+        All = 1,
+        User = 2,
+    };
+
     std::string id;
     FftConfig fft;
     bool click_detector_enabled = false;
     detectors::ClickDetectorConfig click;
+    ClickGroupingType click_grouping_type = ClickGroupingType::All;
+    /** Channel-indexed PAMGuard group numbers. */
+    std::vector<int> click_channel_groups;
+    /** Runtime group configs derived from click + grouping settings. */
+    std::vector<detectors::ClickDetectorConfig> click_groups;
     /**
      * PAMGuard's online echo detection gate (ClickParameters.runEchoOnline /
      * discardEchoes + SimpleEchoParams.maxIntervalSeconds). When running, a
@@ -120,10 +141,25 @@ struct DetectorConfig {
     bool click_echo_discard = false;
     double click_echo_max_interval_seconds = 0.1;
     bool click_localisation_enabled = false;
+    /**
+     * Detector Vetoes / AngleVetoParameters. An empty list is PAMGuard's
+     * default. The serialised channel bitmap is retained although Java does
+     * not currently use it.
+     */
+    std::vector<detectors::ClickAngleVeto> click_angle_vetoes;
+    /** Default and optional species-code-specific ClickParameters delay settings. */
+    localisation::DelayMeasurementConfig click_delay_measurement;
+    std::map<int, localisation::DelayMeasurementConfig> click_delay_measurement_by_type;
     bool click_features_enabled = false;
     detectors::ClickFeatureConfig click_features;
+    /** ClickParameters defaults: sweep classifier selected, online classification off. */
+    ClickClassifierType click_classifier_type = ClickClassifierType::Sweep;
+    bool click_classify_online = false;
+    bool click_discard_unclassified = false;
     bool click_basic_classifier_enabled = false;
     detectors::BasicClickClassifierConfig click_basic_classifier;
+    bool click_sweep_classifier_enabled = false;
+    detectors::SweepClickClassifierConfig click_sweep_classifier;
     bool click_train_tracker_enabled = false;
     /** False: PAMGuard-offline-style max-ICI tracker. True: the ported MHT stack. */
     bool click_train_mht = false;
@@ -150,6 +186,8 @@ struct DetectorConfig {
     detectors::SpectrogramNoiseConfig whistle_noise;
     /** PAMGuard noiseBandMonitor: octave-family band noise levels. */
     detectors::NoiseBandConfig noise_band;
+    /** PAMGuard noiseMonitor: FFT-band interval statistics. */
+    detectors::FftNoiseConfig fft_noise;
     /** PAMGuard ltsa: long-term spectral average over the FFT stream. */
     detectors::LtsaConfig ltsa;
     /** PAMGuard IshmaelDetector energy sum + peak picker. */
@@ -164,6 +202,12 @@ struct DetectorConfig {
     detectors::WhistlePeakConfig whistle_peak;
     bool whistle_region_detector_enabled = false;
     detectors::ConnectedRegionConfig whistle_region;
+    /** WhistleToneParameters / GroupedSourceParameters source grouping. */
+    ClickGroupingType whistle_grouping_type = ClickGroupingType::All;
+    /** Zero means the selected FFT channel set. */
+    std::uint32_t whistle_channel_bitmap = 0;
+    /** Group number by audio channel; populated for all grouping modes. */
+    std::vector<int> whistle_channel_groups;
     std::vector<ChannelGroup> channel_groups;
 };
 

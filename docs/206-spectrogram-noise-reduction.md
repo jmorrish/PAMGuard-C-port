@@ -31,13 +31,19 @@ The reduced slice feeds **both** the peak/region detectors and the retained FFT 
 
 The served spectrogram and the click path are untouched: PAMGuard's noise process feeds the whistle detector specifically.
 
-No result fields change — this is config-side, schema stays at v22. The `whistle` config echo gains four `noise*` booleans.
+No result fields change — this is config-side, schema stays unchanged. The
+`whistle` config echo now includes the complete nested `noise` object as well
+as the older summary booleans.
 
 The project importer maps `SpectrogramNoiseSettings` (which rides inside `WhistleToneParameters`: `runMethod` flags parallel to the fixed method order, per-method settings in the same order), and the sample `.psfx` now enables median + average + threshold with non-default values.
 
 ## Validation
 
-`spectrogram_noise_parity` (new) replays the fixture — 8 cases, exact. `session_whistle_delay_wiring` gains a placement check: a 200 dB threshold mutes every whistle region from a signal that otherwise produces them, and a −100 dB threshold leaves them detectable — pinning that the reducer actually sits in the path, distinct from the fixture pinning its maths. Full CTest suite passes `74/74`.
+`spectrogram_noise_parity` replays the fixture — 8 cases, exact.
+`session_whistle_delay_wiring` has a placement check: a 200 dB threshold mutes
+every whistle region from a signal that PAMGuard's default 8 dB threshold
+admits. It also proves that Whistles & Moans contours do not depend on the
+legacy peak detector and persist across PCM chunk boundaries (`docs/231`).
 
 ## Claim boundary
 

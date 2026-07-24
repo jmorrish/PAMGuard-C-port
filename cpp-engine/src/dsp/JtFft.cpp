@@ -110,13 +110,25 @@ std::vector<double> JtFft::real_inverse(const std::vector<double>& packed) {
     if (n == 0) {
         return {};
     }
-    // Even-length packed layout: a[0]=Re[0], a[1]=Re[n/2].
     const std::size_t half = n / 2;
     spectrum[0] = {packed[0], 0.0};
-    spectrum[half] = {packed[1], 0.0};
-    for (std::size_t k = 1; k < half; ++k) {
-        spectrum[k] = {packed[2 * k], packed[2 * k + 1]};
-        spectrum[n - k] = std::conj(spectrum[k]);
+    if (n % 2 == 0) {
+        // Even JTransforms layout: a[1]=Re[n/2].
+        spectrum[half] = {packed[1], 0.0};
+        for (std::size_t k = 1; k < half; ++k) {
+            spectrum[k] = {packed[2 * k], packed[2 * k + 1]};
+            spectrum[n - k] = std::conj(spectrum[k]);
+        }
+    }
+    else {
+        // Odd layout: a[1]=Im[(n-1)/2], while that bin's real part is
+        // the final array element.
+        for (std::size_t k = 1; k < half; ++k) {
+            spectrum[k] = {packed[2 * k], packed[2 * k + 1]};
+            spectrum[n - k] = std::conj(spectrum[k]);
+        }
+        spectrum[half] = {packed[n - 1], packed[1]};
+        spectrum[n - half] = std::conj(spectrum[half]);
     }
     const auto out = transform(std::move(spectrum), +1);
     std::vector<double> signal(n, 0.0);

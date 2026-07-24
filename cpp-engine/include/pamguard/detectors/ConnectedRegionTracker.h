@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace pamguard::detectors {
@@ -14,9 +15,14 @@ struct ConnectedRegionConfig {
     std::size_t min_pixels = 20;
     std::size_t min_length = 10;
     int connect_type = 8;
+    /** WhistleToneParameters frequency limits; max <= 0 means Nyquist. */
+    double min_frequency_hz = 0.0;
+    double max_frequency_hz = 0.0;
+    /** WhistleToneParameters.backgroundInterval, seconds. */
+    double background_interval_seconds = 10.0;
     bool reject_first_quarter_second = true;
     bool keep_shape_stubs = false;
-    int fragmentation_method = 0;
+    int fragmentation_method = 3;
     std::size_t max_cross_length = 5;
 };
 
@@ -55,6 +61,18 @@ struct ConnectedRegionResult {
     std::vector<int> peak_freqs_bins;
     std::vector<ConnectedRegionSlice> slices;
 };
+
+/**
+ * WhistleToneConnectProcess.ShapeConnector.initialise frequency conversion:
+ * value2bin truncation followed by clamping both limits to [0, width - 1].
+ * The returned upper bin is exclusive, matching its `i < searchBin2` loop.
+ */
+[[nodiscard]] std::pair<std::size_t, std::size_t> whistle_frequency_bin_range(
+    double min_frequency_hz,
+    double max_frequency_hz,
+    double sample_rate_hz,
+    std::size_t fft_length,
+    std::size_t slice_height);
 
 class ConnectedRegionTracker {
 public:

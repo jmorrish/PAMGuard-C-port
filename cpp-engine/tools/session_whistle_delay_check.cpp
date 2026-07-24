@@ -23,8 +23,18 @@ pamguard::core::AnalysisConfig base_config(bool with_hydrophones) {
     config.channel_count = 2;
     config.detector.fft.fft_length = fft_length;
     config.detector.fft.fft_hop = fft_hop;
-    config.detector.whistle_peak_detector_enabled = true;
+    // WhistlesAndMoans consumes the noise-reduced FFT directly; the older
+    // BetterPeakDetector is an independent output and must not be required.
+    config.detector.whistle_peak_detector_enabled = false;
     config.detector.whistle_region_detector_enabled = true;
+    config.detector.whistle_region.min_frequency_hz =
+        25.0 * sample_rate_hz / static_cast<double>(fft_length);
+    config.detector.whistle_region.max_frequency_hz =
+        36.0 * sample_rate_hz / static_cast<double>(fft_length);
+    config.detector.whistle_noise.run_median_filter = true;
+    config.detector.whistle_noise.run_average_subtraction = true;
+    config.detector.whistle_noise.run_kernel_smoothing = true;
+    config.detector.whistle_noise.run_threshold = true;
 
     config.array.speed_of_sound_mps = 1500.0;
     config.array.spacing_error_m = 0.02;
@@ -112,6 +122,59 @@ pamguard::core::AudioChunk synthetic_chunk() {
 int main() {
     try {
         {
+            // WhistleToneParameters + DataBlock2D.value2bin semantics:
+            // truncation (not rounding), max <= 0 / >= Nyquist becomes
+            // Nyquist, and ShapeConnector clamps both ends to width - 1.
+            const auto defaults = pamguard::detectors::whistle_frequency_bin_range(
+                0.0, 0.0, 48000.0, 256, 128);
+            const auto limited = pamguard::detectors::whistle_frequency_bin_range(
+                2000.0, 20000.0, 96000.0, 512, 256);
+            const auto clamped = pamguard::detectors::whistle_frequency_bin_range(
+                -100.0, 60000.0, 96000.0, 512, 256);
+            if (defaults != std::pair<std::size_t, std::size_t>{0, 127} ||
+                limited != std::pair<std::size_t, std::size_t>{10, 106} ||
+                clamped != std::pair<std::size_t, std::size_t>{0, 255}) {
+                std::cerr << "Whistle frequency-to-bin settings semantics diverged from PAMGuard\n";
+                return 1;
+            }
+        }
+
+        {
+            auto config = base_config(true);
+            config.detector.whistle_region.background_interval_seconds = 0.1;
+            config.detector.whistle_grouping_type =
+                pamguard::core::DetectorConfig::ClickGroupingType::Singles;
+            pamguard::core::AnalysisSession session(config);
+            const auto result = session.process(synthetic_chunk());
+            if (result.whistle_backgrounds.size() < 4 ||
+                result.whistle_backgrounds.size() % 2 != 0) {
+                std::cerr << "Whistle background snapshots were not emitted for both channels\n";
+                return 1;
+            }
+            for (std::size_t i = 0; i < result.whistle_backgrounds.size();
+                 i += 2) {
+                const auto& channel_0 = result.whistle_backgrounds[i];
+                const auto& channel_1 = result.whistle_backgrounds[i + 1];
+                if (channel_0.channel != 0 || channel_1.channel != 1 ||
+                    channel_0.time_ms != channel_1.time_ms ||
+                    channel_0.duration_ms != 100.0 ||
+                    channel_0.spectrum.size() != fft_length / 2 ||
+                    channel_1.spectrum.size() != fft_length / 2) {
+                    std::cerr << "Whistle background snapshot metadata mismatch\n";
+                    return 1;
+                }
+                if (!std::all_of(
+                        channel_0.spectrum.begin(), channel_0.spectrum.end(),
+                        [](double value) {
+                            return std::isfinite(value) && value >= 0.0;
+                        })) {
+                    std::cerr << "Whistle background spectrum was not finite and non-negative\n";
+                    return 1;
+                }
+            }
+        }
+
+        {
             pamguard::core::AnalysisSession session(base_config(true));
             auto result = session.process(synthetic_chunk());
             const auto flushed = session.flush();
@@ -122,6 +185,13 @@ int main() {
 
             if (result.whistle_regions.empty()) {
                 std::cerr << "Whistle delay check produced no whistle regions\n";
+                return 1;
+            }
+            if (std::any_of(
+                    result.whistle_regions.begin(),
+                    result.whistle_regions.end(),
+                    [](const auto& region) { return region.channel != 0; })) {
+                std::cerr << "One PAMGuard all-channel group should create contours only on its first channel\n";
                 return 1;
             }
             if (result.whistle_delays.empty()) {
@@ -160,7 +230,7 @@ int main() {
                     best_delay[whistle_delay.channel] = delay.delay.delay_samples;
                 }
             }
-            for (std::size_t channel = 0; channel < 2; ++channel) {
+            for (std::size_t channel = 0; channel < 1; ++channel) {
                 if (best_score[channel] < 0.0) {
                     std::cerr << "Channel " << channel << " produced no whistle delays\n";
                     return 1;
@@ -229,7 +299,10 @@ int main() {
             // Cross-chunk grouping: the same two-channel burst fed as two
             // successive chunks must still associate contours across
             // channels, which needs the retained region history.
-            pamguard::core::AnalysisSession session(base_config(true));
+            auto grouping_config = base_config(true);
+            grouping_config.detector.whistle_grouping_type =
+                pamguard::core::DetectorConfig::ClickGroupingType::Singles;
+            pamguard::core::AnalysisSession session(grouping_config);
             auto first = session.process(synthetic_chunk());
             auto second_chunk = synthetic_chunk();
             const auto frames = second_chunk.interleaved_pcm.size() / second_chunk.channel_count;
@@ -314,7 +387,10 @@ int main() {
             tail.start_sample = static_cast<std::int64_t>(split_frame);
             tail.time_unix_ms = static_cast<std::int64_t>(split_frame) / 48;
 
-            pamguard::core::AnalysisSession session(base_config(true));
+            auto grouping_config = base_config(true);
+            grouping_config.detector.whistle_grouping_type =
+                pamguard::core::DetectorConfig::ClickGroupingType::Singles;
+            pamguard::core::AnalysisSession session(grouping_config);
             const auto head_result = session.process(head);
             const auto tail_result = session.process(tail);
             const auto tail_flush = session.flush();
@@ -346,6 +422,49 @@ int main() {
                 return 1;
             }
             (void)head_result;
+        }
+
+        {
+            // One contour starts in the head chunk and ends in the tail. The
+            // FFT and region state must remain continuous, so nothing closes
+            // in the head and the eventual contour keeps its true pre-split
+            // start sample.
+            auto whole = synthetic_chunk();
+            constexpr std::size_t split_frame = 125 * fft_hop;
+            pamguard::core::AudioChunk head = whole;
+            pamguard::core::AudioChunk tail = whole;
+            head.interleaved_pcm.assign(
+                whole.interleaved_pcm.begin(),
+                whole.interleaved_pcm.begin() + static_cast<std::ptrdiff_t>(split_frame * 2));
+            tail.interleaved_pcm.assign(
+                whole.interleaved_pcm.begin() + static_cast<std::ptrdiff_t>(split_frame * 2),
+                whole.interleaved_pcm.end());
+            tail.start_sample = static_cast<std::int64_t>(split_frame);
+            tail.time_unix_ms = static_cast<std::int64_t>(split_frame) / 48;
+
+            pamguard::core::AnalysisSession session(base_config(false));
+            const auto head_result = session.process(head);
+            auto tail_result = session.process(tail);
+            auto flushed = session.flush();
+            if (!head_result.whistle_regions.empty()) {
+                std::cerr << "An in-progress contour must not close at an audio chunk boundary\n";
+                return 1;
+            }
+            tail_result.whistle_regions.insert(
+                tail_result.whistle_regions.end(),
+                flushed.whistle_regions.begin(), flushed.whistle_regions.end());
+            if (tail_result.whistle_regions.empty()) {
+                std::cerr << "A contour crossing an audio chunk boundary was lost\n";
+                return 1;
+            }
+            if (std::none_of(
+                    tail_result.whistle_regions.begin(), tail_result.whistle_regions.end(),
+                    [](const auto& region) {
+                        return region.start_sample < static_cast<std::int64_t>(split_frame);
+                    })) {
+                std::cerr << "A cross-chunk contour did not retain its pre-split start sample\n";
+                return 1;
+            }
         }
 
         {
@@ -389,11 +508,11 @@ int main() {
                 return 1;
             }
 
-            // And a permissive threshold leaves the signal detectable, so the
+            // And PAMGuard's default threshold leaves the signal detectable, so the
             // muting above is the threshold at work rather than a broken path.
             auto open_config = base_config(true);
             open_config.detector.whistle_noise.run_threshold = true;
-            open_config.detector.whistle_noise.threshold_db = -100.0;
+            open_config.detector.whistle_noise.threshold_db = 8.0;
             open_config.detector.whistle_noise.threshold_final_output =
                 pamguard::detectors::SpectrogramNoiseConfig::kOutputRaw;
             pamguard::core::AnalysisSession open_session(open_config);
@@ -403,7 +522,7 @@ int main() {
                                                open_flush.whistle_regions.begin(),
                                                open_flush.whistle_regions.end());
             if (open_result.whistle_regions.empty()) {
-                std::cerr << "A -100 dB noise threshold should leave whistle regions detectable\n";
+                std::cerr << "PAMGuard's default 8 dB noise threshold should leave whistle regions detectable\n";
                 return 1;
             }
         }

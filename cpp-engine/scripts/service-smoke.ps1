@@ -115,8 +115,8 @@ try {
     if (-not $healthy) {
         throw "Service did not become healthy"
     }
-    if ($lastHealth.resultSchemaVersion -ne 28) {
-        throw "Health endpoint did not report result schema version 28"
+    if ($lastHealth.resultSchemaVersion -ne 32) {
+        throw "Health endpoint did not report result schema version 32"
     }
     if (-not $lastHealth.ingestStatusEnabled) {
         throw "Health endpoint did not report enabled ingest status projection"
@@ -215,12 +215,17 @@ try {
             minSep = 8
             maxLength = 128
             featuresEnabled = $true
-            basicClassifier = @{
-                enabled = $true
-                standardTypes = @(
-                    @{ standard = "beakedWhale"; speciesCode = 1; discard = $false },
-                    "porpoise"
-                )
+            classifier = @{
+                type = "basic"
+                runOnline = $true
+                discardUnclassifiedClicks = $false
+                basic = @{
+                    enabled = $true
+                    standardTypes = @(
+                        @{ standard = "beakedWhale"; speciesCode = 1; discard = $false },
+                        "porpoise"
+                    )
+                }
             }
             train = @{
                 enabled = $true
@@ -316,8 +321,11 @@ try {
     }
 
     $first = Post-PcmChunk -Uri "$base/sessions/$SessionId/pcm-f32le?startSample=0" -Path $pcmPath
-    if ($first.schemaVersion -ne 28) {
-        throw "PCM response did not report result schema version 28"
+    if ($first.schemaVersion -ne 32) {
+        throw "PCM response did not report result schema version 32"
+    }
+    if ($null -eq $first.whistleBackgrounds) {
+        throw "PCM response did not expose the schema-v32 whistle background array"
     }
     if ($first.sampleContinuity -ne "first" -or $first.nextExpectedStartSample -ne 256) {
         throw "First PCM continuity mismatch"
@@ -430,8 +438,8 @@ try {
     if ($fullArchive.count -ne 4) {
         throw "Archive query expected four records (three plain chunks plus the attitude chunk)"
     }
-    if ($fullArchive.records[0].schemaVersion -ne 28) {
-        throw "Archived result record did not preserve result schema version 28"
+    if ($fullArchive.records[0].schemaVersion -ne 32) {
+        throw "Archived result record did not preserve result schema version 32"
     }
     $filteredArchive = Invoke-RestMethod -Method Get -Uri "$base/sessions/$SessionId/archive?startSampleFrom=256&startSampleTo=256&limit=10" -Headers $headers
     if ($filteredArchive.count -ne 1 -or $filteredArchive.records[0].startSample -ne 256) {
@@ -579,12 +587,132 @@ try {
         if ($importStatus.click.basicClassifierTypeCount -ne 2) {
             throw "Imported session did not round-trip the .psfx click classifier types"
         }
-        if ($importStatus.click.trainAlgorithm -ne "mht") {
+        if ($importStatus.click.classifier.type -ne "sweep" -or
+            -not $importStatus.click.classifier.runOnline -or
+            -not $importStatus.click.classifier.sweepEnabled -or
+            $importStatus.click.classifier.sweepTypeCount -ne 1 -or
+            -not $importStatus.click.classifier.sweepCheckAllClassifiers) {
+            throw "Imported session did not round-trip the .psfx Sweep classifier settings/runtime"
+        }
+        if ($importStatus.click.angleVetoes.Count -ne 1 -or
+            $importStatus.click.angleVetoes[0].channels -ne 15 -or
+            $importStatus.click.angleVetoes[0].startAngleDegrees -ne 35 -or
+            $importStatus.click.angleVetoes[0].endAngleDegrees -ne 55) {
+            throw "Imported session did not round-trip the .psfx angle veto settings"
+        }
+        if (-not $importStatus.fftNoise.enabled -or
+            $importStatus.fftNoise.measurementIntervalSeconds -ne 2 -or
+            $importStatus.fftNoise.nMeasures -ne 100 -or
+            -not $importStatus.fftNoise.useAll -or
+            $importStatus.fftNoise.channels.Count -ne 4 -or
+            $importStatus.fftNoise.bands.Count -ne 1 -or
+            $importStatus.fftNoise.bands[0].name -ne "Audible" -or
+            $importStatus.fftNoise.bands[0].lowFrequencyHz -ne 100 -or
+            $importStatus.fftNoise.bands[0].highFrequencyHz -ne 20000) {
+            throw "Imported session did not round-trip the .psfx FFT noise monitor settings"
+        }
+        if ($importStatus.acquisition.voltsPeak2Peak -ne 5 -or
+            -not $importStatus.noiseBand.enabled -or
+            $importStatus.noiseBand.bandType -ne "thirdOctave" -or
+            $importStatus.noiseBand.iirOrder -ne 6 -or
+            $importStatus.noiseBand.outputIntervalSeconds -ne 5 -or
+            -not $importStatus.ltsa.enabled -or
+            $importStatus.ltsa.intervalSeconds -ne 10 -or
+            -not $importStatus.ishmael.enabled -or
+            $importStatus.ishmael.f0 -ne 200 -or
+            $importStatus.ishmael.f1 -ne 2500 -or
+            $importStatus.ishmael.thresh -ne 2 -or
+            -not $importStatus.sgramCorr.enabled -or
+            @($importStatus.sgramCorr.segments).Count -ne 1 -or
+            $importStatus.sgramCorr.spread -ne 80 -or
+            -not $importStatus.matchFilt.enabled -or
+            @($importStatus.matchFilt.kernel).Count -lt 100 -or
+            $importStatus.matchFilt.thresh -ne 0.5 -or
+            -not $importStatus.matchedTemplate.enabled -or
+            $importStatus.matchedTemplate.restrictedBins -ne 256 -or
+            @($importStatus.matchedTemplate.classifiers).Count -ne 1 -or
+            $importStatus.matchedTemplate.classifiers[0].thresholdToAccept -ne 0.1 -or
+            @($importStatus.matchedTemplate.classifiers[0].match.waveform).Count -lt 2) {
+            throw "Imported session did not round-trip the .psfx monitoring module settings"
+        }
+        if ($importStatus.whistle.enabled -or
+            -not $importStatus.whistle.regionEnabled -or
+            $importStatus.whistle.minFrequencyHz -ne 2000 -or
+            $importStatus.whistle.maxFrequencyHz -ne 20000 -or
+            $importStatus.whistle.minPixels -ne 25 -or
+            $importStatus.whistle.minLength -ne 12 -or
+            $importStatus.whistle.fragmentationMethod -ne 3 -or
+            -not $importStatus.whistle.keepShapeStubs -or
+            -not $importStatus.whistle.noise.medianFilter -or
+            $importStatus.whistle.noise.medianFilterLength -ne 41 -or
+            -not $importStatus.whistle.noise.averageSubtraction -or
+            $importStatus.whistle.noise.updateConstant -ne 0.03 -or
+            $importStatus.whistle.noise.kernelSmoothing -or
+            -not $importStatus.whistle.noise.threshold -or
+            $importStatus.whistle.noise.thresholdDb -ne 9 -or
+            $importStatus.whistle.noise.finalOutput -ne 2) {
+            throw "Imported session did not round-trip the .psfx Whistles & Moans settings"
+        }
+        if ($importStatus.click.trainAlgorithm -ne "mht" -or
+            $importStatus.click.train.algorithm -ne "mht" -or
+            -not $importStatus.click.train.enabled -or
+            -not $importStatus.click.train.mht.enableIdi -or
+            $importStatus.click.train.mht.maxIci -ne 0.5 -or
+            $importStatus.click.train.mht.nHold -ne 25 -or
+            -not $importStatus.click.train.classifier.enabled -or
+            $importStatus.click.train.classifier.preClassifier.chi2Threshold -ne 1200 -or
+            -not $importStatus.click.train.classifier.idi.enabled -or
+            $importStatus.click.train.classifier.idi.speciesFlag -ne 3 -or
+            -not $importStatus.click.train.classifier.template.enabled -or
+            $importStatus.click.train.classifier.template.correlationThreshold -ne 0.6 -or
+            $importStatus.click.train.classifier.template.speciesFlag -ne 5 -or
+            @($importStatus.click.train.classifier.template.spectrum).Count -lt 2) {
             throw "Imported session did not round-trip the .psfx MHT click train configuration"
         }
         $importRemoved = Invoke-RestMethod -Method Delete -Uri "$base/sessions/$($imported.sessionId)" -Headers $headers
         if (-not $importRemoved.removed) {
             throw "Imported session delete did not report removed=true"
+        }
+
+        # Separate noiseMonitor runtime: a low-rate session completes multiple
+        # intervals cheaply and proves schema-v32 FFT statistics serialize.
+        $fftNoiseSessionId = "$SessionId-fft-noise"
+        $fftNoiseSession = @{
+            sessionId = $fftNoiseSessionId
+            sourceId = "smoke-fft-noise"
+            ownerId = "smoke-owner"
+            tenantId = "smoke-tenant"
+            sampleRateHz = 8
+            channelCount = 2
+            fft = @{ length = 8; hop = 2; windowType = "Rectangular"; channels = @(0, 1) }
+            fftNoise = @{
+                enabled = $true
+                channelBitmap = 3
+                measurementIntervalSeconds = 1
+                nMeasures = 100
+                useAll = $true
+                bands = @(
+                    @{ name = "Fixture"; lowFrequencyHz = 0.5; highFrequencyHz = 3.5 }
+                )
+            }
+        } | ConvertTo-Json -Depth 10
+        $fftNoiseCreated = Invoke-RestMethod -Method Post -Uri "$base/sessions" -Headers $headers -ContentType "application/json" -Body $fftNoiseSession
+        if (-not $fftNoiseCreated.created) {
+            throw "FFT noise smoke session was not created"
+        }
+        $fftNoisePcm = New-PcmBlock -Frames 32 -Channels 2
+        $fftNoisePcmPath = Join-Path $root "fft-noise.f32le"
+        [System.IO.File]::WriteAllBytes($fftNoisePcmPath, $fftNoisePcm)
+        $fftNoiseResult = Post-PcmChunk -Uri "$base/sessions/$fftNoiseSessionId/pcm-f32le?startSample=0&timeMs=1000" -Path $fftNoisePcmPath
+        if (@($fftNoiseResult.fftNoise).Count -lt 2 -or
+            @($fftNoiseResult.fftNoise[0].bands).Count -ne 1 -or
+            $fftNoiseResult.fftNoise[0].bands[0].name -ne "Fixture" -or
+            $null -eq $fftNoiseResult.fftNoise[0].bands[0].meanDb) {
+            throw "FFT noise monitor did not emit calibrated interval statistics through the service"
+        }
+        $fftNoiseRemoved = Invoke-RestMethod -Method Delete -Uri "$base/sessions/$fftNoiseSessionId" -Headers $headers
+        if (-not $fftNoiseRemoved.removed) {
+            throw "FFT noise smoke session delete did not report removed=true"
         }
     }
     else {

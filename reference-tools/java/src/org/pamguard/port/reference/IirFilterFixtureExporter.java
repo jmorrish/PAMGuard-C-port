@@ -1,7 +1,8 @@
 package org.pamguard.port.reference;
 
-import Filters.FastIIRFilter;
+import Filters.Filter;
 import Filters.FilterBand;
+import Filters.FilterMethod;
 import Filters.FilterParams;
 import Filters.FilterType;
 
@@ -42,6 +43,11 @@ public final class IirFilterFixtureExporter {
             params.lowPassFreq = lowPassFreq;
             params.passBandRipple = rippleDb;
         }
+
+        FilterCase arbitrary(double[] frequenciesHz, double[] gainsDb) {
+            params.setArbFilterShape(frequenciesHz, gainsDb);
+            return this;
+        }
     }
 
     private IirFilterFixtureExporter() {
@@ -65,7 +71,9 @@ public final class IirFilterFixtureExporter {
                 writer.printf(Locale.ROOT, "input,%d,%.17g%n", i, signal[i]);
             }
             for (FilterCase filterCase : caseCatalogue()) {
-                FastIIRFilter filter = new FastIIRFilter(0, SAMPLE_RATE, filterCase.params);
+                Filter filter = FilterMethod
+                        .createFilterMethod(SAMPLE_RATE, filterCase.params)
+                        .createFilter(0);
                 double[] filtered = new double[signal.length];
                 filter.runFilter(signal, filtered);
                 for (int i = 0; i < filtered.length; i++) {
@@ -106,6 +114,13 @@ public final class IirFilterFixtureExporter {
                 new FilterCase("cheby-lp4-6000-r2", FilterType.CHEBYCHEV, FilterBand.LOWPASS, 4, 0.0F, 6000.0F, 2.0),
                 new FilterCase("cheby-hp3-1500-r1", FilterType.CHEBYCHEV, FilterBand.HIGHPASS, 3, 1500.0F, 0.0F, 1.0),
                 new FilterCase("cheby-bp4-1000-4000-r2", FilterType.CHEBYCHEV, FilterBand.BANDPASS, 4, 1000.0F, 4000.0F, 2.0),
+                new FilterCase("firwindow-hp5-2000", FilterType.FIRWINDOW, FilterBand.HIGHPASS, 5, 2000.0F, 0.0F, 2.0),
+                new FilterCase("firwindow-bp6-2000-10000", FilterType.FIRWINDOW, FilterBand.BANDPASS, 6, 2000.0F, 10000.0F, 2.0),
+                new FilterCase("fft-bp-2000-10000", FilterType.FFT, FilterBand.BANDPASS, 4, 2000.0F, 10000.0F, 2.0),
+                new FilterCase("firarbitrary-5", FilterType.FIRARBITRARY, FilterBand.BANDPASS, 5, 0.0F, 0.0F, 2.0)
+                        .arbitrary(
+                                new double[] { 0.0, 1500.0, 3000.0, 12000.0, 15000.0, 24000.0 },
+                                new double[] { -60.0, -60.0, 0.0, 0.0, -60.0, -60.0 }),
         };
     }
 }

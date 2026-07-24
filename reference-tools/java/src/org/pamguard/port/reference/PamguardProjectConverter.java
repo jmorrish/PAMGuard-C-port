@@ -8,9 +8,14 @@ import PamController.PSFXReadWriter;
 import PamController.PamControlledUnitSettings;
 import PamController.PamSettingsGroup;
 import Spectrogram.WindowFunction;
+import Localiser.DelayMeasurementParams;
+import angleVetoes.AngleVeto;
+import angleVetoes.AngleVetoParameters;
 import clickDetector.BasicClickIdParameters;
 import clickDetector.ClickParameters;
 import clickDetector.ClickTypeParams;
+import clickDetector.ClickClassifiers.basicSweep.SweepClassifierParameters;
+import clickDetector.ClickClassifiers.basicSweep.SweepClassifierSet;
 import clickDetector.echoDetection.SimpleEchoParams;
 import clickTrainDetector.ClickTrainParams;
 import clickTrainDetector.classification.CTClassifierParams;
@@ -34,6 +39,8 @@ import matchedTemplateClassifer.MTClassifier;
 import matchedTemplateClassifer.MatchTemplate;
 import matchedTemplateClassifer.MatchedTemplateParams;
 import noiseBandMonitor.NoiseBandSettings;
+import noiseMonitor.NoiseMeasurementBand;
+import noiseMonitor.NoiseSettings;
 import spectrogramNoiseReduction.SpectrogramNoiseSettings;
 import spectrogramNoiseReduction.medianFilter.MedianFilterParams;
 import whistlesAndMoans.WhistleToneParameters;
@@ -43,6 +50,7 @@ import java.io.PrintWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Hashtable;
 import java.util.Locale;
 
 /**
@@ -125,10 +133,13 @@ public final class PamguardProjectConverter {
         ClickParameters click = null;
         WhistleToneParameters whistle = null;
         BasicClickIdParameters basicClassifier = null;
+        SweepClassifierParameters sweepClassifier = null;
+        AngleVetoParameters angleVetoes = null;
         ClickTrainParams clickTrain = null;
         MHTParams mht = null;
         SimpleEchoParams echoParams = null;
         NoiseBandSettings noiseBand = null;
+        NoiseSettings fftNoise = null;
         LtsaParameters ltsaParams = null;
         EnergySumParams energySum = null;
         SgramCorrParams sgramCorr = null;
@@ -163,6 +174,12 @@ public final class PamguardProjectConverter {
             else if (settings instanceof BasicClickIdParameters && basicClassifier == null) {
                 basicClassifier = (BasicClickIdParameters) settings;
             }
+            else if (settings instanceof SweepClassifierParameters && sweepClassifier == null) {
+                sweepClassifier = (SweepClassifierParameters) settings;
+            }
+            else if (settings instanceof AngleVetoParameters && angleVetoes == null) {
+                angleVetoes = (AngleVetoParameters) settings;
+            }
             else if (settings instanceof ClickTrainParams && clickTrain == null) {
                 clickTrain = (ClickTrainParams) settings;
             }
@@ -174,6 +191,9 @@ public final class PamguardProjectConverter {
             }
             else if (settings instanceof NoiseBandSettings && noiseBand == null) {
                 noiseBand = (NoiseBandSettings) settings;
+            }
+            else if (settings instanceof NoiseSettings && fftNoise == null) {
+                fftNoise = (NoiseSettings) settings;
             }
             else if (settings instanceof LtsaParameters && ltsaParams == null) {
                 ltsaParams = (LtsaParameters) settings;
@@ -281,17 +301,60 @@ public final class PamguardProjectConverter {
             json.append("    \"enabled\": true,\n");
             json.append("    \"localisation\": ").append(array != null).append(",\n");
             json.append("    \"channelBitmap\": ").append(clickChannelBitmap(click)).append(",\n");
+            String groupingType = click.getGroupingType() == 0 ? "singles"
+                    : click.getGroupingType() == 2 ? "user" : "all";
+            json.append("    \"groupingType\": \"").append(groupingType).append("\",\n");
+            json.append("    \"channelGroups\": [");
+            int[] channelGroups = click.getChannelGroups();
+            for (int channel = 0; channel < acquisition.nChannels; channel++) {
+                if (channel > 0) {
+                    json.append(",");
+                }
+                int groupNumber = groupingType.equals("singles") ? channel : 0;
+                if (groupingType.equals("user") && channelGroups != null
+                        && channel < channelGroups.length) {
+                    groupNumber = channelGroups[channel];
+                }
+                json.append(groupNumber);
+            }
+            json.append("],\n");
             json.append("    \"triggerBitmap\": ").append(click.triggerBitmap).append(",\n");
             json.append("    \"minTriggerChannels\": ").append(click.minTriggerChannels).append(",\n");
             json.append("    \"thresholdDb\": ").append(format(click.dbThreshold)).append(",\n");
             json.append("    \"longFilter\": ").append(format(click.longFilter)).append(",\n");
+            json.append("    \"longFilter2\": ").append(format(click.longFilter2)).append(",\n");
             json.append("    \"shortFilter\": ").append(format(click.shortFilter)).append(",\n");
             json.append("    \"preSample\": ").append(click.preSample).append(",\n");
             json.append("    \"postSample\": ").append(click.postSample).append(",\n");
             json.append("    \"minSep\": ").append(click.minSep).append(",\n");
             json.append("    \"maxLength\": ").append(click.maxLength);
+            json.append(",\n    \"publishTriggerFunction\": ")
+                    .append(click.publishTriggerFunction);
+            json.append(",\n    \"noise\": { \"sampleWaveforms\": ")
+                    .append(click.sampleNoise);
+            json.append(", \"waveformIntervalSeconds\": ")
+                    .append(format(click.noiseSampleInterval));
+            json.append(", \"storeBackground\": ").append(click.storeBackground);
+            json.append(", \"backgroundIntervalMilliseconds\": ")
+                    .append(click.backgroundIntervalMillis).append(" }");
+            appendDelayMeasurement(json, click);
             appendIirFilter(json, "preFilter", click.preFilter);
             appendIirFilter(json, "triggerFilter", click.triggerFilter);
+            if (angleVetoes != null) {
+                json.append(",\n    \"angleVetoes\": [");
+                for (int i = 0; i < angleVetoes.getVetoCount(); i++) {
+                    AngleVeto veto = angleVetoes.getVeto(i);
+                    if (i > 0) {
+                        json.append(",");
+                    }
+                    json.append("\n      { \"channels\": ").append(veto.getChannels());
+                    json.append(", \"startAngleDegrees\": ")
+                            .append(format(veto.getStartAngle()));
+                    json.append(", \"endAngleDegrees\": ")
+                            .append(format(veto.getEndAngle())).append(" }");
+                }
+                json.append("\n    ]");
+            }
             if (click.runEchoOnline || echoParams != null) {
                 json.append(",\n    \"echo\": { \"runOnline\": ").append(click.runEchoOnline);
                 json.append(", \"discardEchoes\": ").append(click.discardEchoes);
@@ -300,15 +363,22 @@ public final class PamguardProjectConverter {
                 }
                 json.append(" }");
             }
+            String classifierType = click.clickClassifierType == 0 ? "basic"
+                    : click.clickClassifierType == 1 ? "sweep" : "none";
+            json.append(",\n    \"classifier\": {\n");
+            json.append("      \"type\": \"").append(classifierType).append("\",\n");
+            json.append("      \"runOnline\": ").append(click.classifyOnline).append(",\n");
+            json.append("      \"discardUnclassifiedClicks\": ")
+                    .append(click.discardUnclassifiedClicks);
             if (basicClassifier != null && basicClassifier.clickTypeParams != null
                     && !basicClassifier.clickTypeParams.isEmpty()) {
-                json.append(",\n    \"basicClassifier\": {\n      \"enabled\": true,\n      \"types\": [");
+                json.append(",\n      \"basic\": {\n        \"enabled\": true,\n        \"types\": [");
                 for (int i = 0; i < basicClassifier.clickTypeParams.size(); i++) {
                     ClickTypeParams type = basicClassifier.clickTypeParams.get(i);
                     if (i > 0) {
                         json.append(",");
                     }
-                    json.append("\n        { \"speciesCode\": ").append(type.getSpeciesCode());
+                    json.append("\n          { \"speciesCode\": ").append(type.getSpeciesCode());
                     json.append(", \"discard\": ").append(type.getDiscard());
                     json.append(", \"whichSelections\": ").append(type.whichSelections);
                     appendRange(json, "band1FreqHz", type.band1Freq);
@@ -326,8 +396,21 @@ public final class PamguardProjectConverter {
                     json.append(", \"lengthEnergyFraction\": ").append(format(type.lengthEnergyFraction));
                     json.append(" }");
                 }
-                json.append("\n      ]\n    }");
+                json.append("\n        ]\n      }");
             }
+            if (sweepClassifier != null && sweepClassifier.getNumSets() > 0) {
+                json.append(",\n      \"sweep\": {\n");
+                json.append("        \"enabled\": true,\n");
+                json.append("        \"checkAllClassifiers\": ")
+                        .append(sweepClassifier.checkAllClassifiers).append(",\n");
+                json.append("        \"types\": [");
+                for (int i = 0; i < sweepClassifier.getNumSets(); i++) {
+                    if (i > 0) json.append(",");
+                    appendSweepType(json, sweepClassifier.getSet(i));
+                }
+                json.append("\n        ]\n      }");
+            }
+            json.append("\n    }");
             if (mht != null && mht.chi2Params instanceof StandardMHTChi2Params && mht.mhtKernal != null) {
                 StandardMHTChi2Params chi2 = (StandardMHTChi2Params) mht.chi2Params;
                 MHTKernelParams kernel = mht.mhtKernal;
@@ -369,19 +452,31 @@ public final class PamguardProjectConverter {
 
         if (whistle != null) {
             if (fft == null) {
-                // Frequency limits convert to FFT bins, so a whistle module
-                // without an FFT module cannot be mapped faithfully.
-                System.out.println("skipped: whistle settings present but no FFT settings to derive search bins from");
+                System.out.println("skipped: whistle settings present but no FFT source settings");
             }
             else {
                 double sampleRate = acquisition.sampleRate;
-                long bin0 = Math.round(whistle.getMinFrequency() / sampleRate * fft.fftLength);
-                long bin1 = Math.round(whistle.getMaxFrequency(sampleRate) / sampleRate * fft.fftLength);
                 json.append(",\n  \"whistle\": {\n");
-                json.append("    \"enabled\": true,\n");
+                // BetterPeakDetector belongs to the older whistleDetector
+                // module. WhistlesAndMoans reads thresholded FFT bins directly.
+                json.append("    \"enabled\": false,\n");
                 json.append("    \"regionEnabled\": true,\n");
-                json.append("    \"searchBin0\": ").append(bin0).append(",\n");
-                json.append("    \"searchBin1\": ").append(bin1).append(",\n");
+                json.append("    \"channelBitmap\": ")
+                        .append(whistle.getChanOrSeqBitmap()).append(",\n");
+                String whistleGrouping;
+                switch (whistle.getGroupingType()) {
+                case 0: whistleGrouping = "singles"; break;
+                case 2: whistleGrouping = "user"; break;
+                default: whistleGrouping = "all"; break;
+                }
+                json.append("    \"groupingType\": \"")
+                        .append(whistleGrouping).append("\",\n");
+                json.append("    \"channelGroups\": ")
+                        .append(intArray(whistle.getChannelGroups())).append(",\n");
+                json.append("    \"minFrequencyHz\": ").append(format(whistle.getMinFrequency())).append(",\n");
+                json.append("    \"maxFrequencyHz\": ").append(format(whistle.getMaxFrequency(sampleRate))).append(",\n");
+                json.append("    \"backgroundIntervalSeconds\": ")
+                        .append(format(whistle.getBackgroundInterval())).append(",\n");
                 json.append("    \"minPixels\": ").append(whistle.minPixels).append(",\n");
                 json.append("    \"minLength\": ").append(whistle.minLength).append(",\n");
                 json.append("    \"maxCrossLength\": ").append(whistle.maxCrossLength).append(",\n");
@@ -417,6 +512,26 @@ public final class PamguardProjectConverter {
                 json.append(", \"outputIntervalSeconds\": ").append(noiseBand.outputIntervalSeconds);
                 json.append(" }");
             }
+        }
+
+        if (fftNoise != null && fftNoise.getNumMeasurementBands() > 0) {
+            json.append(",\n  \"fftNoise\": { \"enabled\": true");
+            json.append(", \"channelBitmap\": ").append(fftNoise.channelBitmap);
+            json.append(", \"measurementIntervalSeconds\": ")
+                    .append(fftNoise.measurementIntervalSeconds);
+            json.append(", \"nMeasures\": ").append(fftNoise.nMeasures);
+            json.append(", \"useAll\": ").append(fftNoise.useAll);
+            json.append(", \"bands\": [");
+            for (int i = 0; i < fftNoise.getNumMeasurementBands(); i++) {
+                NoiseMeasurementBand band = fftNoise.getMeasurementBand(i);
+                if (i > 0) json.append(",");
+                json.append("\n    { \"name\": \"").append(escape(band.name))
+                        .append("\"");
+                json.append(", \"lowFrequencyHz\": ").append(format(band.f1));
+                json.append(", \"highFrequencyHz\": ").append(format(band.f2))
+                        .append(" }");
+            }
+            json.append("\n  ] }");
         }
 
         if (ltsaParams != null) {
@@ -542,7 +657,7 @@ public final class PamguardProjectConverter {
 
         jsonFile.getParentFile().mkdirs();
         try (PrintWriter writer = new PrintWriter(jsonFile)) {
-            writer.print(json);
+            writer.print(json.toString().replace("\n", System.lineSeparator()));
         }
         System.out.printf("converted: acquisition=%s array=%s fft=%s click=%s whistle=%s -> %s%n",
                 acquisition != null, array != null, fft != null, click != null, whistle != null,
@@ -598,6 +713,7 @@ public final class PamguardProjectConverter {
         fft.channelMap = 0xF;
 
         ClickParameters click = new ClickParameters();
+        click.classifyOnline = true;
         click.runEchoOnline = true;
         click.discardEchoes = false;
         click.dbThreshold = 12.0;
@@ -625,6 +741,16 @@ public final class PamguardProjectConverter {
         custom.lengthEnergyFraction = 0.95;
         custom.setDiscard(true);
         basicClassifier.clickTypeParams.add(custom);
+
+        SweepClassifierParameters sweepClassifier = new SweepClassifierParameters();
+        sweepClassifier.checkAllClassifiers = true;
+        SweepClassifierSet beakedSweep = new SweepClassifierSet();
+        beakedSweep.beakedWhaleDefaults();
+        beakedSweep.setSpeciesCode(8);
+        beakedSweep.enableSweep = true;
+        sweepClassifier.addSet(beakedSweep);
+        AngleVetoParameters angleVetoes = new AngleVetoParameters();
+        angleVetoes.addVeto(new AngleVeto(0xF, 35.0, 55.0));
 
         // MHTParams' field initialisers construct the real chi2 var list, whose
         // constructors are safe headlessly (the MHT fixture exporters already
@@ -658,28 +784,35 @@ public final class PamguardProjectConverter {
         ClickTrainParams clickTrain = newWithoutConstructor(ClickTrainParams.class);
         clickTrain.runClassifier = true;
         Chi2ThresholdParams pre = new Chi2ThresholdParams();
+        pre.setUniqueID("00000000-0000-0000-0000-000000000001");
         pre.chi2Threshold = 1200.0;
         pre.minClicks = 6;
         pre.minTime = 2.5;
         clickTrain.simpleCTClassifier = pre;
         IDIClassifierParams idiClassifier = newWithoutConstructor(IDIClassifierParams.class);
+        idiClassifier.setUniqueID("00000000-0000-0000-0000-000000000003");
         idiClassifier.useMedianIDI = true;
         idiClassifier.minMedianIDI = 0.05;
         idiClassifier.maxMedianIDI = 1.5;
         idiClassifier.speciesFlag = 3;
         TemplateClassifierParams templateClassifier = newWithoutConstructor(TemplateClassifierParams.class);
+        templateClassifier.setUniqueID("00000000-0000-0000-0000-000000000005");
         templateClassifier.spectrumTemplate = DefualtSpectrumTemplates.getTemplate(SpectrumTemplateType.BEAKED_WHALE);
         templateClassifier.corrThreshold = 0.6;
         templateClassifier.speciesFlag = 5;
         clickTrain.ctClassifierParams = new CTClassifierParams[]{idiClassifier, templateClassifier};
 
         WhistleToneParameters whistle = new WhistleToneParameters();
+        whistle.setChanOrSeqBitmap(15);
+        whistle.setGroupingType(2);
+        whistle.setChannelGroups(new int[]{0, 0, 1, 1});
         whistle.minPixels = 25;
         whistle.minLength = 12;
         whistle.maxCrossLength = 6;
         whistle.keepShapeStubs = true;
         whistle.setMinFrequency(2000.0);
         whistle.setMaxFrequency(20000.0);
+        whistle.setBackgroundInterval(7.5);
         SpectrogramNoiseSettings noiseSettings = new SpectrogramNoiseSettings();
         noiseSettings.setRunMethod(0, true);
         noiseSettings.setRunMethod(1, true);
@@ -713,6 +846,11 @@ public final class PamguardProjectConverter {
                 WhistleToneParameters.class.getName(), 1, whistle));
         group.addSettings(new PamControlledUnitSettings("Click Detector", "Basic Click Identifier",
                 BasicClickIdParameters.class.getName(), 1, basicClassifier));
+        group.addSettings(new PamControlledUnitSettings("ClickSweepClassifier", "Click Detector",
+                SweepClassifierParameters.class.getName(), 1, sweepClassifier));
+        group.addSettings(new PamControlledUnitSettings("Click Detector", "Detector Vetoes",
+                AngleVetoParameters.class.getName(), AngleVetoParameters.serialVersionUID,
+                angleVetoes));
         group.addSettings(new PamControlledUnitSettings("MHT Click Train Detector", "Click Train Detector",
                 MHTParams.class.getName(), 1, mht));
         group.addSettings(new PamControlledUnitSettings("Click Train Detector", "Click Train Detector",
@@ -727,6 +865,19 @@ public final class PamguardProjectConverter {
         noiseBandSample.outputIntervalSeconds = 5;
         group.addSettings(new PamControlledUnitSettings("Noise Band", "Noise Band Monitor",
                 NoiseBandSettings.class.getName(), 1, noiseBandSample));
+        NoiseSettings fftNoiseSample = new NoiseSettings();
+        fftNoiseSample.channelBitmap = 0xF;
+        fftNoiseSample.measurementIntervalSeconds = 2;
+        fftNoiseSample.nMeasures = 100;
+        fftNoiseSample.useAll = true;
+        NoiseMeasurementBand userNoiseBand = new NoiseMeasurementBand(null);
+        userNoiseBand.name = "Audible";
+        userNoiseBand.f1 = 100.0;
+        userNoiseBand.f2 = 20000.0;
+        fftNoiseSample.addNoiseMeasurementBand(userNoiseBand);
+        group.addSettings(new PamControlledUnitSettings("Noise Monitor", "Noise Monitor",
+                NoiseSettings.class.getName(), NoiseSettings.serialVersionUID,
+                fftNoiseSample));
         LtsaParameters ltsaSample = new LtsaParameters();
         ltsaSample.intervalSeconds = 10;
         group.addSettings(new PamControlledUnitSettings("LTSA", "LTSA",
@@ -856,6 +1007,62 @@ public final class PamguardProjectConverter {
         Field field = ClickParameters.class.getDeclaredField("channelBitmap");
         field.setAccessible(true);
         return field.getInt(click);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void appendDelayMeasurement(StringBuilder json, ClickParameters click)
+            throws Exception {
+        DelayMeasurementParams defaults =
+                click.getDelayMeasurementParams(0, true);
+        json.append(",\n    \"delayMeasurement\": ");
+        appendDelayMeasurementValue(json, defaults);
+        Field field = ClickParameters.class.getDeclaredField(
+                "delayMeasurementTypeParams");
+        field.setAccessible(true);
+        Hashtable<Integer, DelayMeasurementParams> overrides =
+                (Hashtable<Integer, DelayMeasurementParams>) field.get(click);
+        // Replace the just-written closing brace so typeSettings remains part
+        // of the same object.
+        json.setLength(json.length() - 1);
+        json.append(", \"typeSettings\": [");
+        if (overrides != null) {
+            boolean first = true;
+            for (Integer clickType : new java.util.TreeSet<>(overrides.keySet())) {
+                if (!first) {
+                    json.append(",");
+                }
+                first = false;
+                json.append("\n      { \"clickType\": ").append(clickType).append(", ");
+                StringBuilder setting = new StringBuilder();
+                appendDelayMeasurementValue(setting, overrides.get(clickType));
+                json.append(setting.substring(1));
+            }
+            if (!first) {
+                json.append("\n    ");
+            }
+        }
+        json.append("] }");
+    }
+
+    private static void appendDelayMeasurementValue(
+            StringBuilder json, DelayMeasurementParams delay) {
+        json.append("{ \"filterBearings\": ").append(delay.filterBearings);
+        String band = delay.delayFilterParams == null
+                ? "highpass"
+                : delay.delayFilterParams.filterBand.name().toLowerCase(Locale.ROOT);
+        double highPass = delay.delayFilterParams == null
+                ? 0.0 : delay.delayFilterParams.highPassFreq;
+        double lowPass = delay.delayFilterParams == null
+                ? 0.0 : delay.delayFilterParams.lowPassFreq;
+        json.append(", \"filter\": { \"band\": \"").append(band);
+        json.append("\", \"highPassFreq\": ").append(format(highPass));
+        json.append(", \"lowPassFreq\": ").append(format(lowPass)).append(" }");
+        json.append(", \"envelopeBearings\": ").append(delay.envelopeBearings);
+        json.append(", \"useLeadingEdge\": ").append(delay.useLeadingEdge);
+        json.append(", \"upSample\": ").append(delay.getUpSample());
+        json.append(", \"useRestrictedBins\": ").append(delay.useRestrictedBins);
+        json.append(", \"restrictedBins\": ").append(delay.restrictedBins);
+        json.append(" }");
     }
 
     private static void setPrivateInt(Object target, String fieldName, int value) throws Exception {
@@ -1018,10 +1225,14 @@ public final class PamguardProjectConverter {
         if (filter == null || filter.filterType == Filters.FilterType.NONE) {
             return;
         }
-        String type = filter.filterType == Filters.FilterType.BUTTERWORTH ? "butterworth"
-                : filter.filterType == Filters.FilterType.CHEBYCHEV ? "chebyshev" : null;
-        if (type == null) {
-            System.out.println("skipped: click " + key + " (unsupported filter type " + filter.filterType + ")");
+        String type;
+        switch (filter.filterType) {
+        case BUTTERWORTH: type = "butterworth"; break;
+        case CHEBYCHEV: type = "chebyshev"; break;
+        case FIRWINDOW: type = "firwindow"; break;
+        case FIRARBITRARY: type = "firarbitrary"; break;
+        case FFT: type = "fft"; break;
+        default:
             return;
         }
         String band;
@@ -1040,7 +1251,42 @@ public final class PamguardProjectConverter {
         json.append(", \"highPassFreq\": ").append(format(filter.highPassFreq));
         json.append(", \"lowPassFreq\": ").append(format(filter.lowPassFreq));
         json.append(", \"passBandRipple\": ").append(format(filter.passBandRipple));
+        json.append(", \"stopBandRipple\": ").append(format(filter.stopBandRipple));
+        json.append(", \"chebyGamma\": ").append(format(filter.chebyGamma));
+        if (filter.filterType == Filters.FilterType.FIRARBITRARY) {
+            appendNumberArray(json, "arbitraryFrequenciesHz", filter.getArbFreqs());
+            appendNumberArray(json, "arbitraryGainsDb", filter.getArbGainsdB());
+        }
         json.append(" }");
+    }
+
+    private static void appendNumberArray(
+            StringBuilder json, String key, double[] values) {
+        if (values == null) {
+            return;
+        }
+        json.append(", \"").append(key).append("\": [");
+        for (int i = 0; i < values.length; i++) {
+            if (i > 0) {
+                json.append(",");
+            }
+            json.append(format(values[i]));
+        }
+        json.append("]");
+    }
+
+    private static String intArray(int[] values) {
+        if (values == null) {
+            return "[]";
+        }
+        StringBuilder json = new StringBuilder("[");
+        for (int i = 0; i < values.length; i++) {
+            if (i > 0) {
+                json.append(",");
+            }
+            json.append(values[i]);
+        }
+        return json.append("]").toString();
     }
 
     private static void appendNoiseSettings(StringBuilder json, SpectrogramNoiseSettings noise) {
@@ -1066,6 +1312,65 @@ public final class PamguardProjectConverter {
             json.append(", \"thresholdDb\": ").append(format(threshold.thresholdDB));
             json.append(", \"finalOutput\": ").append(threshold.finalOutput);
         }
+        json.append(" }");
+    }
+
+    private static void appendSweepType(StringBuilder json, SweepClassifierSet type) {
+        type.checkEnergyParamsAllocation();
+        type.checkPeakFreqAllocation();
+        type.checkZCAllocation();
+        type.checkXCCorrAllocation();
+        type.checkBearingAllocation();
+        json.append("\n          { \"name\": \"").append(escape(type.getName())).append("\"");
+        json.append(", \"speciesCode\": ").append(type.getSpeciesCode());
+        json.append(", \"discard\": ").append(type.getDiscard());
+        json.append(", \"enabled\": ").append(type.getEnable());
+        json.append(", \"channelChoice\": ").append(type.channelChoices);
+        json.append(", \"restrictLength\": ").append(type.restrictLength);
+        json.append(", \"restrictedBins\": ").append(type.restrictedBins);
+        json.append(", \"restrictedBinType\": ").append(type.restrictedBinstype);
+        json.append(", \"enableLength\": ").append(type.enableLength);
+        json.append(", \"lengthSmoothing\": ").append(type.lengthSmoothing);
+        json.append(", \"lengthDb\": ").append(format(type.lengthdB));
+        json.append(", \"lengthMs\": [").append(format(type.minLength)).append(", ")
+                .append(format(type.maxLength)).append("]");
+        json.append(", \"enableEnergyBands\": ").append(type.enableEnergyBands);
+        appendRange(json, "testEnergyBandHz", type.testEnergyBand);
+        appendRange(json, "controlEnergyBand0Hz", type.controlEnergyBand[0]);
+        appendRange(json, "controlEnergyBand1Hz", type.controlEnergyBand[1]);
+        json.append(", \"energyThreshold0Db\": ").append(format(type.energyThresholds[0]));
+        json.append(", \"energyThreshold1Db\": ").append(format(type.energyThresholds[1]));
+        json.append(", \"testAmplitude\": ").append(type.testAmplitude);
+        appendRange(json, "amplitudeRangeDb", type.amplitudeRange);
+        json.append(", \"enableFftFilter\": ").append(type.enableFFTFilter);
+        if (type.fftFilterParams != null) {
+            String band = type.fftFilterParams.filterBand.name().toLowerCase(Locale.ROOT);
+            json.append(", \"fftFilter\": { \"band\": \"").append(band).append("\"");
+            json.append(", \"lowPassFreqHz\": ").append(format(type.fftFilterParams.lowPassFreq));
+            json.append(", \"highPassFreqHz\": ").append(format(type.fftFilterParams.highPassFreq));
+            json.append(" }");
+        }
+        json.append(", \"enablePeak\": ").append(type.enablePeak);
+        json.append(", \"enableWidth\": ").append(type.enableWidth);
+        json.append(", \"enableMean\": ").append(type.enableMean);
+        appendRange(json, "peakSearchRangeHz", type.peakSearchRange);
+        appendRange(json, "peakRangeHz", type.peakRange);
+        appendRange(json, "peakWidthRangeHz", type.peakWidthRange);
+        appendRange(json, "meanRangeHz", type.meanRange);
+        json.append(", \"peakSmoothing\": ").append(type.peakSmoothing);
+        json.append(", \"peakWidthThresholdDb\": ").append(format(type.peakWidthThreshold));
+        json.append(", \"enableZeroCrossings\": ").append(type.enableZeroCrossings);
+        json.append(", \"zeroCrossingCount\": [").append(type.nCrossings[0]).append(", ")
+                .append(type.nCrossings[1]).append("]");
+        json.append(", \"enableSweep\": ").append(type.enableSweep);
+        appendRange(json, "zeroCrossingSweepKhzPerMs", type.zcSweep);
+        json.append(", \"enableMinCrossCorrelation\": ").append(type.enableMinXCrossCorr);
+        json.append(", \"enablePeakCrossCorrelation\": ").append(type.enablePeakXCorr);
+        json.append(", \"minCorrelation\": ").append(format(type.minCorr));
+        json.append(", \"correlationFactor\": ").append(format(type.corrFactor));
+        json.append(", \"enableBearingLimits\": ").append(type.enableBearingLims);
+        json.append(", \"excludeBearingLimits\": ").append(type.excludeBearingLims);
+        appendRange(json, "bearingLimitsRadians", type.bearingLims);
         json.append(" }");
     }
 

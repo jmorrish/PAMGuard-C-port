@@ -27,24 +27,45 @@
     "enabled": true,
     "localisation": true,
     "channelBitmap": 15,
+    "groupingType": "all",
+    "channelGroups": [0,0,0,0],
     "triggerBitmap": 15,
     "minTriggerChannels": 2,
     "thresholdDb": 12.0,
     "longFilter": 2.0000000000000000e-05,
+    "longFilter2": 1.0000000000000002e-06,
     "shortFilter": 0.20000000000000000,
     "preSample": 30,
     "postSample": 50,
     "minSep": 80,
     "maxLength": 512,
-    "preFilter": { "type": "butterworth", "band": "highpass", "order": 4, "highPassFreq": 500.0, "lowPassFreq": 20000.0, "passBandRipple": 2.0 },
-    "triggerFilter": { "type": "butterworth", "band": "highpass", "order": 2, "highPassFreq": 2000.0, "lowPassFreq": 20000.0, "passBandRipple": 2.0 },
+    "publishTriggerFunction": false,
+    "noise": { "sampleWaveforms": true, "waveformIntervalSeconds": 5.0, "storeBackground": true, "backgroundIntervalMilliseconds": 5000 },
+    "delayMeasurement": { "filterBearings": false, "filter": { "band": "highpass", "highPassFreq": 0.0, "lowPassFreq": 0.0 }, "envelopeBearings": false, "useLeadingEdge": false, "upSample": 1, "useRestrictedBins": false, "restrictedBins": 80 , "typeSettings": [] },
+    "preFilter": { "type": "butterworth", "band": "highpass", "order": 4, "highPassFreq": 500.0, "lowPassFreq": 20000.0, "passBandRipple": 2.0, "stopBandRipple": 2.0, "chebyGamma": 3.0 },
+    "triggerFilter": { "type": "butterworth", "band": "highpass", "order": 2, "highPassFreq": 2000.0, "lowPassFreq": 20000.0, "passBandRipple": 2.0, "stopBandRipple": 2.0, "chebyGamma": 3.0 },
+    "angleVetoes": [
+      { "channels": 15, "startAngleDegrees": 35.0, "endAngleDegrees": 55.0 }
+    ],
     "echo": { "runOnline": true, "discardEchoes": false, "maxIntervalSeconds": 0.080000000000000000 },
-    "basicClassifier": {
-      "enabled": true,
-      "types": [
-        { "speciesCode": 2, "discard": false, "whichSelections": 13, "band1FreqHz": [100000.0, 150000.0], "band2FreqHz": [40000.0, 90000.0], "band1EnergyDb": [0.0, 500.0], "band2EnergyDb": [0.0, 500.0], "bandEnergyDifferenceDb": 5.0, "peakFrequencySearchHz": [20000.0, 250000.0], "peakFrequencyRangeHz": [100000.0, 150000.0], "peakWidthHz": [0.0, 0.0], "widthEnergyFraction": 0.0, "meanSumRangeHz": [20000.0, 250000.0], "meanSelectionRangeHz": [100000.0, 150000.0], "clickLengthMs": [0.0, 0.0], "lengthEnergyFraction": 0.0 },
-        { "speciesCode": 7, "discard": true, "whichSelections": 17, "band1FreqHz": [20000.0, 40000.0], "band2FreqHz": [5000.0, 15000.0], "band1EnergyDb": [6.0, 96.0], "band2EnergyDb": [0.0, 90.0], "bandEnergyDifferenceDb": 6.0, "peakFrequencySearchHz": [0.0, 0.0], "peakFrequencyRangeHz": [0.0, 0.0], "peakWidthHz": [0.0, 0.0], "widthEnergyFraction": 0.0, "meanSumRangeHz": [0.0, 0.0], "meanSelectionRangeHz": [0.0, 0.0], "clickLengthMs": [0.030000000000000000, 0.60000000000000000], "lengthEnergyFraction": 0.95000000000000000 }
-      ]
+    "classifier": {
+      "type": "sweep",
+      "runOnline": true,
+      "discardUnclassifiedClicks": false,
+      "basic": {
+        "enabled": true,
+        "types": [
+          { "speciesCode": 2, "discard": false, "whichSelections": 13, "band1FreqHz": [100000.0, 150000.0], "band2FreqHz": [40000.0, 90000.0], "band1EnergyDb": [0.0, 500.0], "band2EnergyDb": [0.0, 500.0], "bandEnergyDifferenceDb": 5.0, "peakFrequencySearchHz": [20000.0, 250000.0], "peakFrequencyRangeHz": [100000.0, 150000.0], "peakWidthHz": [0.0, 0.0], "widthEnergyFraction": 0.0, "meanSumRangeHz": [20000.0, 250000.0], "meanSelectionRangeHz": [100000.0, 150000.0], "clickLengthMs": [0.0, 0.0], "lengthEnergyFraction": 0.0 },
+          { "speciesCode": 7, "discard": true, "whichSelections": 17, "band1FreqHz": [20000.0, 40000.0], "band2FreqHz": [5000.0, 15000.0], "band1EnergyDb": [6.0, 96.0], "band2EnergyDb": [0.0, 90.0], "bandEnergyDifferenceDb": 6.0, "peakFrequencySearchHz": [0.0, 0.0], "peakFrequencyRangeHz": [0.0, 0.0], "peakWidthHz": [0.0, 0.0], "widthEnergyFraction": 0.0, "meanSumRangeHz": [0.0, 0.0], "meanSelectionRangeHz": [0.0, 0.0], "clickLengthMs": [0.030000000000000000, 0.60000000000000000], "lengthEnergyFraction": 0.95000000000000000 }
+        ]
+      },
+      "sweep": {
+        "enabled": true,
+        "checkAllClassifiers": true,
+        "types": [
+          { "name": "Beaked Whale", "speciesCode": 8, "discard": false, "enabled": true, "channelChoice": 0, "restrictLength": true, "restrictedBins": 128, "restrictedBinType": 0, "enableLength": false, "lengthSmoothing": 5, "lengthDb": 6.0, "lengthMs": [0.10000000000000000, 0.50000000000000000], "enableEnergyBands": true, "testEnergyBandHz": [24000.0, 48000.0], "controlEnergyBand0Hz": [12000.0, 24000.0], "controlEnergyBand1Hz": [12000.0, 24000.0], "energyThreshold0Db": 3.0, "energyThreshold1Db": 3.0, "testAmplitude": false, "enableFftFilter": false, "enablePeak": true, "enableWidth": false, "enableMean": true, "peakSearchRangeHz": [10000.0, 96000.0], "peakRangeHz": [25000.0, 48000.0], "peakWidthRangeHz": [0.0, 0.0], "meanRangeHz": [25000.0, 48000.0], "peakSmoothing": 5, "peakWidthThresholdDb": 6.0, "enableZeroCrossings": true, "zeroCrossingCount": [7, 50], "enableSweep": true, "zeroCrossingSweepKhzPerMs": [1.0, 500.0], "enableMinCrossCorrelation": false, "enablePeakCrossCorrelation": false, "minCorrelation": 0.0, "correlationFactor": 1.0, "enableBearingLimits": false, "excludeBearingLimits": false, "bearingLimitsRadians": [-3.1415926535897930, 3.1415926535897930] }
+        ]
+      }
     },
     "train": {
       "enabled": true,
@@ -80,10 +101,14 @@
     }
   },
   "whistle": {
-    "enabled": true,
+    "enabled": false,
     "regionEnabled": true,
-    "searchBin0": 11,
-    "searchBin1": 107,
+    "channelBitmap": 15,
+    "groupingType": "user",
+    "channelGroups": [0,0,1,1],
+    "minFrequencyHz": 2000.0,
+    "maxFrequencyHz": 20000.0,
+    "backgroundIntervalSeconds": 7.5000000000000000,
     "minPixels": 25,
     "minLength": 12,
     "maxCrossLength": 6,
@@ -93,6 +118,9 @@
     "noise": { "medianFilter": true, "medianFilterLength": 41, "averageSubtraction": true, "updateConstant": 0.030000000000000000, "kernelSmoothing": false, "threshold": true, "thresholdDb": 9.0, "finalOutput": 2 }
   },
   "noiseBand": { "enabled": true, "bandType": "thirdOctave", "minFrequencyHz": 1.7925856629456591, "maxFrequencyHz": 1133.6866687924667, "referenceFrequencyHz": 1000.0, "iirOrder": 6, "outputIntervalSeconds": 5 },
+  "fftNoise": { "enabled": true, "channelBitmap": 15, "measurementIntervalSeconds": 2, "nMeasures": 100, "useAll": true, "bands": [
+    { "name": "Audible", "lowFrequencyHz": 100.0, "highFrequencyHz": 20000.0 }
+  ] },
   "ltsa": { "enabled": true, "intervalSeconds": 10 },
   "ishmael": { "enabled": true, "f0": 200.0, "f1": 2500.0, "ratioF0": 1000.0, "ratioF1": 2000.0, "useRatio": false, "useLog": false, "adaptiveThreshold": false, "longFilter": 0.00010000000000000000, "spikeDecay": 100.0, "outputSmoothing": false, "shortFilter": 0.10000000000000000, "thresh": 2.0, "minTimeSeconds": 0.050000000000000000, "maxTimeSeconds": 99999.0, "refractoryTimeSeconds": 0.20000000000000000 },
   "sgramCorr": { "enabled": true, "segments": [[0.0, 500.0, 0.20000000000000000, 1500.0]], "spread": 80.0, "useLog": false, "thresh": 0.050000000000000000, "minTimeSeconds": 0.050000000000000000, "maxTimeSeconds": 99999.0, "refractoryTimeSeconds": 0.20000000000000000 },

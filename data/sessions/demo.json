@@ -1,0 +1,233 @@
+{
+  "array": {
+    "hydrophones": [
+      {
+        "channel": 0,
+        "sensitivityDb": 0,
+        "xM": 0,
+        "yM": 0,
+        "zM": 0
+      },
+      {
+        "channel": 1,
+        "sensitivityDb": 0,
+        "xM": 1,
+        "yM": 0,
+        "zM": 0
+      }
+    ],
+    "id": "browser-linear-array",
+    "speedOfSoundMps": 1500
+  },
+  "channelCount": 2,
+  "click": {
+    "angleVetoes": [],
+    "channelBitmap": 3,
+    "channelGroups": [
+      0,
+      0
+    ],
+    "classifier": {
+      "basic": {
+        "enabled": false,
+        "standardTypes": []
+      },
+      "discardUnclassifiedClicks": false,
+      "runOnline": false,
+      "sweep": {
+        "checkAllClassifiers": false,
+        "enabled": false,
+        "standardTypes": [],
+        "types": []
+      },
+      "type": "sweep"
+    },
+    "delayMeasurement": {
+      "envelopeBearings": false,
+      "filter": {
+        "band": "highpass",
+        "highPassFreq": 0,
+        "lowPassFreq": 0
+      },
+      "filterBearings": false,
+      "restrictedBins": 80,
+      "typeSettings": [],
+      "upSample": 1,
+      "useLeadingEdge": false,
+      "useRestrictedBins": false
+    },
+    "echo": {
+      "discardEchoes": false,
+      "maxIntervalSeconds": 0.1,
+      "runOnline": false
+    },
+    "enabled": true,
+    "features": {
+      "energyBandsHz": [
+        [
+          1000,
+          6000
+        ],
+        [
+          6000,
+          14000
+        ]
+      ],
+      "fftLength": 1024,
+      "lengthEnergyFraction": 90,
+      "meanFrequencyRangeHz": [
+        500,
+        20000
+      ],
+      "peakFrequencySearchHz": [
+        500,
+        20000
+      ],
+      "widthEnergyFraction": 90
+    },
+    "featuresEnabled": true,
+    "groupingType": "all",
+    "localisation": true,
+    "longFilter": 1e-05,
+    "longFilter2": 1e-06,
+    "maxLength": 1024,
+    "minSep": 100,
+    "minTriggerChannels": 1,
+    "noise": {
+      "backgroundIntervalMilliseconds": 5000,
+      "sampleWaveforms": true,
+      "storeBackground": true,
+      "waveformIntervalSeconds": 5
+    },
+    "postSample": 40,
+    "preFilter": {
+      "arbitraryFrequenciesHz": [],
+      "arbitraryGainsDb": [],
+      "band": "highpass",
+      "chebyGamma": 3,
+      "highPassFreq": 500,
+      "lowPassFreq": 20000,
+      "order": 4,
+      "passBandRipple": 2,
+      "stopBandRipple": 2,
+      "type": "butterworth"
+    },
+    "preSample": 40,
+    "publishTriggerFunction": false,
+    "shortFilter": 0.1,
+    "thresholdDb": 10,
+    "train": {
+      "algorithm": "ici",
+      "classifier": {
+        "enabled": false
+      },
+      "enabled": false,
+      "maxIciSeconds": 0.5,
+      "mht": {},
+      "minClicks": 3
+    },
+    "triggerBitmap": 3,
+    "triggerFilter": {
+      "arbitraryFrequenciesHz": [],
+      "arbitraryGainsDb": [],
+      "band": "highpass",
+      "chebyGamma": 3,
+      "highPassFreq": 2000,
+      "lowPassFreq": 20000,
+      "order": 2,
+      "passBandRipple": 2,
+      "stopBandRipple": 2,
+      "type": "butterworth"
+    }
+  },
+  "fft": {
+    "channels": [
+      0,
+      1
+    ],
+    "hop": 512,
+    "length": 1024,
+    "windowType": "Hann"
+  },
+  "fftNoise": {
+    "bands": [
+      {
+        "highFrequencyHz": 20000,
+        "lowFrequencyHz": 100,
+        "name": "Audible"
+      }
+    ],
+    "channelBitmap": 1,
+    "enabled": false,
+    "measurementIntervalSeconds": 60,
+    "nMeasures": 100,
+    "useAll": true
+  },
+  "ishmael": {
+    "enabled": false
+  },
+  "ltsa": {
+    "enabled": false,
+    "intervalSeconds": 10
+  },
+  "matchFilt": {
+    "enabled": false
+  },
+  "matchedTemplate": {
+    "enabled": false
+  },
+  "noiseBand": {
+    "bandType": "thirdOctave",
+    "enabled": false,
+    "iirOrder": 6,
+    "maxFrequencyHz": 0,
+    "minFrequencyHz": 50,
+    "outputIntervalSeconds": 5,
+    "referenceFrequencyHz": 1000
+  },
+  "sampleRateHz": 48000,
+  "sessionId": "demo",
+  "sgramCorr": {
+    "enabled": false
+  },
+  "sourceId": "browser-synthetic",
+  "whistle": {
+    "backgroundIntervalSeconds": 10,
+    "channelBitmap": 3,
+    "channelGroups": [
+      0,
+      0
+    ],
+    "connectType": 8,
+    "detectionThresholdDb": 6,
+    "enabled": false,
+    "fragmentationMethod": 3,
+    "groupingType": "all",
+    "keepShapeStubs": false,
+    "maxCrossLength": 5,
+    "maxFrequencyHz": 0,
+    "maxPeakWidth": 20,
+    "maxPercentOverThreshold": 50,
+    "minFrequencyHz": 0,
+    "minLength": 10,
+    "minPeakWidth": 3,
+    "minPixels": 20,
+    "noise": {
+      "averageSubtraction": true,
+      "finalOutput": 2,
+      "kernelSmoothing": true,
+      "medianFilter": true,
+      "medianFilterLength": 61,
+      "threshold": true,
+      "thresholdDb": 8,
+      "updateConstant": 0.02
+    },
+    "peakTimeConstant0": 10,
+    "peakTimeConstant1": 100,
+    "regionEnabled": true,
+    "rejectFirstQuarterSecond": true,
+    "searchBin0": 1,
+    "searchBin1": 0,
+    "warmupSlices": 100
+  }
+}

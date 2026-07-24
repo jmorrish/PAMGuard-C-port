@@ -1,4 +1,5 @@
 #include "pamguard/core/AnalysisSession.h"
+#include "pamguard/core/GroupedSource.h"
 
 #include <algorithm>
 #include <cmath>
@@ -9,6 +10,7 @@
 #include <utility>
 
 #include "pamguard/detectors/CtTrainSpectrum.h"
+#include "pamguard/detectors/ClickAngleVeto.h"
 #include "pamguard/detectors/NoiseBandMonitor.h"
 #include "pamguard/detectors/SimpleEchoDetector.h"
 #include "pamguard/detectors/StandardMhtChi2.h"
@@ -591,11 +593,29 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
         picker_config.f1 = static_cast<double>(config_.sample_rate_hz) / 2.0;
         match_filt_picker_.emplace(static_cast<double>(config_.sample_rate_hz), 1, picker_config);
     }
+    if (config_.detector.fft_noise.enabled && config_.sample_rate_hz != 0) {
+        fft_noise_monitor_.emplace(
+            static_cast<double>(config_.sample_rate_hz),
+            config_.detector.fft.fft_length,
+            config_.detector.fft.fft_hop,
+            config_.detector.fft_noise);
+    }
     if (config_.detector.click_detector_enabled) {
-        click_detector_.emplace(config_.detector.click);
+        if (config_.detector.click_groups.empty()) {
+            click_detectors_.emplace_back(config_.detector.click);
+        }
+        else {
+            click_detectors_.reserve(config_.detector.click_groups.size());
+            for (const auto& group : config_.detector.click_groups) {
+                click_detectors_.emplace_back(group);
+            }
+        }
+        click_echo_detectors_.resize(click_detectors_.size());
         if (config_.detector.click_echo_enabled && config_.sample_rate_hz != 0) {
-            echo_detector_.emplace(static_cast<double>(config_.sample_rate_hz),
-                                   config_.detector.click_echo_max_interval_seconds);
+            for (auto& echo : click_echo_detectors_) {
+                echo.emplace(static_cast<double>(config_.sample_rate_hz),
+                             config_.detector.click_echo_max_interval_seconds);
+            }
         }
     }
     if (config_.detector.click_detector_enabled && config_.detector.click_features_enabled) {
@@ -606,10 +626,35 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
         }
         click_feature_extractor_.emplace(std::move(click_feature_config));
     }
-    if (config_.detector.click_detector_enabled && config_.detector.click_basic_classifier_enabled) {
+    if (config_.detector.click_detector_enabled &&
+        config_.detector.click_classify_online &&
+        config_.detector.click_classifier_type == DetectorConfig::ClickClassifierType::Basic &&
+        config_.detector.click_basic_classifier_enabled) {
         auto click_classifier_config = config_.detector.click_basic_classifier;
         click_classifier_config.sample_rate_hz = config_.sample_rate_hz;
         click_basic_classifier_.emplace(std::move(click_classifier_config));
+    }
+    if (config_.detector.click_detector_enabled &&
+        config_.detector.click_classify_online &&
+        config_.detector.click_classifier_type == DetectorConfig::ClickClassifierType::Sweep &&
+        config_.detector.click_sweep_classifier_enabled) {
+        auto classifier_config = config_.detector.click_sweep_classifier;
+        classifier_config.sample_rate_hz = config_.sample_rate_hz;
+        classifier_config.amplitude_db_offset_by_channel.assign(config_.channel_count, 0.0);
+        const double acquisition_offset =
+            20.0 * std::log10(config_.acquisition.volts_peak_to_peak / 2.0) -
+            config_.acquisition.preamp_gain_db;
+        for (std::size_t channel = 0; channel < config_.channel_count; ++channel) {
+            double offset = acquisition_offset;
+            const auto hydrophone = std::find_if(
+                config_.array.hydrophones.begin(), config_.array.hydrophones.end(),
+                [channel](const auto& item) { return item.channel == channel; });
+            if (hydrophone != config_.array.hydrophones.end()) {
+                offset -= hydrophone->sensitivity_db + hydrophone->preamp_gain_db;
+            }
+            classifier_config.amplitude_db_offset_by_channel[channel] = offset;
+        }
+        click_sweep_classifier_.emplace(std::move(classifier_config));
     }
     if (config_.detector.click_detector_enabled && config_.detector.click_train_tracker_enabled &&
         !config_.detector.click_train_mht) {
@@ -660,17 +705,61 @@ AnalysisSession::AnalysisSession(AnalysisConfig config)
         region_config.slice_height = config_.detector.fft.fft_length / 2;
         region_config.sample_rate_hz = config_.sample_rate_hz;
 
-        if (config_.detector.fft.channels.empty()) {
-            for (std::size_t channel = 0; channel < config_.channel_count; ++channel) {
-                region_config.channel = channel;
-                whistle_region_trackers_.try_emplace(channel, region_config);
+        std::vector<std::size_t> selected_channels;
+        if (config_.detector.whistle_channel_bitmap != 0) {
+            for (std::size_t channel = 0; channel < config_.channel_count;
+                 ++channel) {
+                if ((config_.detector.whistle_channel_bitmap &
+                     (std::uint32_t{1} << channel)) != 0) {
+                    selected_channels.push_back(channel);
+                }
             }
         }
+        else if (!config_.detector.fft.channels.empty()) {
+            selected_channels = config_.detector.fft.channels;
+        }
         else {
-            for (const auto channel : config_.detector.fft.channels) {
-                region_config.channel = channel;
-                whistle_region_trackers_.try_emplace(channel, region_config);
+            for (std::size_t channel = 0; channel < config_.channel_count;
+                 ++channel) {
+                selected_channels.push_back(channel);
             }
+        }
+
+        std::vector<int> group_by_channel(config_.channel_count, 0);
+        for (const auto channel : selected_channels) {
+            switch (config_.detector.whistle_grouping_type) {
+            case DetectorConfig::ClickGroupingType::Singles:
+                group_by_channel[channel] = static_cast<int>(channel);
+                break;
+            case DetectorConfig::ClickGroupingType::All:
+                group_by_channel[channel] = 0;
+                break;
+            case DetectorConfig::ClickGroupingType::User:
+                if (channel <
+                    config_.detector.whistle_channel_groups.size()) {
+                    group_by_channel[channel] =
+                        config_.detector.whistle_channel_groups[channel];
+                }
+                break;
+            }
+        }
+        std::uint32_t selected_bitmap = 0;
+        for (const auto channel : selected_channels) {
+            selected_bitmap |= std::uint32_t{1} << channel;
+        }
+        for (auto channels : grouped_source_channels(
+                 selected_bitmap, group_by_channel, config_.channel_count)) {
+            if (channels.empty()) {
+                continue;
+            }
+            const auto first_channel = channels.front();
+            region_config.channel = first_channel;
+            whistle_region_trackers_.try_emplace(first_channel, region_config);
+            whistle_group_channels_.emplace(first_channel, channels);
+            whistle_backgrounds_.try_emplace(
+                first_channel, static_cast<double>(config_.sample_rate_hz),
+                config_.detector.fft.fft_hop,
+                config_.detector.fft.fft_length / 2, 10.0);
         }
     }
 }
@@ -691,6 +780,72 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     }
     AnalysisResult result;
     result.spectrogram_frames = spectrogram_.process(chunk);
+    if (fft_noise_monitor_.has_value()) {
+        // NoiseProcess increments its shared measurement index when the
+        // highest selected channel arrives, so preserve PAMGuard's
+        // slice-major/channel-minor FFT delivery order.
+        std::vector<const dsp::SpectrogramFrame*> ordered;
+        ordered.reserve(result.spectrogram_frames.size());
+        for (const auto& frame : result.spectrogram_frames) {
+            ordered.push_back(&frame);
+        }
+        std::stable_sort(
+            ordered.begin(), ordered.end(),
+            [](const auto* a, const auto* b) {
+                if (a->fft_slice != b->fft_slice) {
+                    return a->fft_slice < b->fft_slice;
+                }
+                return a->channel < b->channel;
+            });
+        const double process_gain_db =
+            20.0 * std::log10(std::abs(spectrogram_.window_gain()));
+        for (const auto* frame : ordered) {
+            auto periods = fft_noise_monitor_->process_frame(
+                frame->channel, frame->time_unix_ms, frame->start_sample,
+                pamguard_packed_magnitude_squared(frame->bins));
+            for (auto& period : periods) {
+                const auto* hydrophone =
+                    find_hydrophone(config_.array, period.channel);
+                double constant_db = config_.acquisition.preamp_gain_db;
+                if (hydrophone != nullptr) {
+                    constant_db += hydrophone->sensitivity_db +
+                                   hydrophone->preamp_gain_db;
+                }
+                const auto calibrate = [&](double power) {
+                    const double raw =
+                        std::sqrt(power) /
+                        static_cast<double>(config_.detector.fft.fft_length) *
+                        std::sqrt(2.0);
+                    double db = 20.0 * std::log10(
+                        raw * config_.acquisition.volts_peak_to_peak / 2.0) -
+                        constant_db;
+                    if (!std::isfinite(db)) {
+                        db = 0.0;
+                    }
+                    return db - process_gain_db;
+                };
+                FftNoiseResult output;
+                output.channel = period.channel;
+                output.end_sample = period.end_sample;
+                output.time_unix_ms = period.time_unix_ms;
+                output.n_measurements = period.n_measurements;
+                for (std::size_t i = 0; i < period.bands.size(); ++i) {
+                    auto stats = period.bands[i];
+                    stats.mean = calibrate(stats.mean);
+                    stats.median = calibrate(stats.median);
+                    stats.low_95 = calibrate(stats.low_95);
+                    stats.high_95 = calibrate(stats.high_95);
+                    stats.minimum = calibrate(stats.minimum);
+                    stats.maximum = calibrate(stats.maximum);
+                    const auto& band = config_.detector.fft_noise.bands[i];
+                    output.bands.push_back({
+                        band.name, band.low_frequency_hz,
+                        band.high_frequency_hz, stats});
+                }
+                result.fft_noise.push_back(std::move(output));
+            }
+        }
+    }
     if (!ltsa_monitors_.empty()) {
         // LTSA sources the FFT data block directly, BEFORE any whistle-path
         // noise reduction, and PAMGuard stamps each FFT unit with a duration
@@ -779,25 +934,204 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
             }
         }
     }
-    if (click_detector_) {
-        result.clicks = click_detector_->process(chunk);
-        if (echo_detector_.has_value()) {
-            // PAMGuard's gate sits before amplitude/classification and before
-            // the click is added, so a discarded echo never reaches features,
-            // classifiers, trains, or localisation. Filtering here, straight
-            // after detection, preserves that.
-            std::vector<detectors::ClickDetectionResult> kept;
-            kept.reserve(result.clicks.size());
-            for (auto& click : result.clicks) {
-                const bool echo = echo_detector_->is_echo(click.start_sample);
-                if (echo && config_.detector.click_echo_discard) {
-                    continue;
+    if (!click_detectors_.empty()) {
+        for (std::size_t group_index = 0; group_index < click_detectors_.size(); ++group_index) {
+            auto group_clicks = click_detectors_[group_index].process(chunk);
+            const auto& noise_samples = click_detectors_[group_index].noise_samples();
+            result.click_noise_samples.insert(result.click_noise_samples.end(),
+                                              noise_samples.begin(), noise_samples.end());
+            const auto& background = click_detectors_[group_index].trigger_background();
+            result.click_trigger_background.insert(
+                result.click_trigger_background.end(),
+                background.begin(), background.end());
+            const auto& trigger_function = click_detectors_[group_index].trigger_function();
+            result.click_trigger_function.insert(result.click_trigger_function.end(),
+                                                 trigger_function.begin(),
+                                                 trigger_function.end());
+            if (click_echo_detectors_[group_index].has_value()) {
+                // PAMGuard owns one echo detector per ChannelGroupDetector.
+                // Its anchor state therefore never leaks between groups.
+                std::vector<detectors::ClickDetectionResult> kept;
+                kept.reserve(group_clicks.size());
+                for (auto& click : group_clicks) {
+                    const bool echo =
+                        click_echo_detectors_[group_index]->is_echo(click.start_sample);
+                    if (echo && config_.detector.click_echo_discard) {
+                        continue;
+                    }
+                    click.echo = echo;
+                    kept.push_back(std::move(click));
                 }
-                click.echo = echo;
-                kept.push_back(std::move(click));
+                group_clicks = std::move(kept);
             }
-            result.clicks = std::move(kept);
+            result.clicks.insert(result.clicks.end(),
+                                 std::make_move_iterator(group_clicks.begin()),
+                                 std::make_move_iterator(group_clicks.end()));
         }
+        std::stable_sort(result.clicks.begin(), result.clicks.end(),
+                         [](const auto& a, const auto& b) {
+                             if (a.start_sample != b.start_sample) {
+                                 return a.start_sample < b.start_sample;
+                             }
+                             return a.channel_bitmap < b.channel_bitmap;
+                         });
+    }
+    if (click_basic_classifier_ || click_sweep_classifier_) {
+        // PAMGuard classifies before delay measurement and removes clicks
+        // rejected by either the matched type or discardUnclassifiedClicks
+        // before any downstream consumer sees them.
+        std::vector<detectors::ClickDetectionResult> kept_clicks;
+        std::vector<detectors::ClickClassificationResult> kept_classifications;
+        kept_clicks.reserve(result.clicks.size());
+        kept_classifications.reserve(result.clicks.size());
+        for (auto& click : result.clicks) {
+            if (click.waveform.empty()) {
+                kept_clicks.push_back(std::move(click));
+                continue;
+            }
+            auto classification = click_basic_classifier_
+                ? click_basic_classifier_->identify(click)
+                : click_sweep_classifier_->identify(click);
+            if (classification.discard ||
+                (classification.click_type == 0 && config_.detector.click_discard_unclassified)) {
+                continue;
+            }
+            classification.click_index = kept_clicks.size();
+            kept_clicks.push_back(std::move(click));
+            kept_classifications.push_back(classification);
+        }
+        result.clicks = std::move(kept_clicks);
+        result.click_classifications = std::move(kept_classifications);
+    }
+    if (config_.detector.click_localisation_enabled ||
+        !config_.detector.click_angle_vetoes.empty()) {
+        std::vector<detectors::ClickDetectionResult> kept_clicks;
+        std::vector<detectors::ClickClassificationResult> kept_classifications;
+        kept_clicks.reserve(result.clicks.size());
+        kept_classifications.reserve(result.click_classifications.size());
+        for (std::size_t i = 0; i < result.clicks.size(); ++i) {
+            auto& click = result.clicks[i];
+            std::optional<ClickLocalisationResult> click_localisation;
+            std::optional<ClickBearingResult> click_bearing;
+            double legacy_angle_degrees = 0.0;
+            const auto classification = std::find_if(
+                result.click_classifications.begin(),
+                result.click_classifications.end(),
+                [i](const auto& item) { return item.click_index == i; });
+
+            if (click.waveform.size() >= 2) {
+                ClickLocalisationResult localisation;
+                localisation.click_start_sample = click.start_sample;
+                localisation.array_shape = sub_array_shape(config_, click.channels);
+                localisation.bearing_localiser =
+                    localisation::select_bearing_localiser(localisation.array_shape);
+                const auto pair_geometry =
+                    click_pair_geometry(config_, click.channels);
+                const auto max_delays =
+                    max_delay_samples_from_geometry(pair_geometry);
+                const int click_type =
+                    classification == result.click_classifications.end()
+                    ? 0
+                    : classification->click_type;
+                auto delay_config = config_.detector.click_delay_measurement;
+                if (const auto override_it =
+                        config_.detector.click_delay_measurement_by_type.find(click_type);
+                    override_it !=
+                    config_.detector.click_delay_measurement_by_type.end()) {
+                    delay_config = override_it->second;
+                }
+                if (delay_config.use_leading_edge && !max_delays.empty()) {
+                    const double largest_delay =
+                        *std::max_element(max_delays.begin(), max_delays.end());
+                    delay_config.leading_edge_search_start =
+                        static_cast<int>(config_.detector.click.pre_sample) -
+                        static_cast<int>(largest_delay);
+                    delay_config.leading_edge_search_end =
+                        static_cast<int>(config_.detector.click.pre_sample) +
+                        static_cast<int>(largest_delay);
+                }
+                localisation.delays = click_delay_estimator_.estimate_delays(
+                    click.waveform,
+                    max_delays,
+                    static_cast<double>(config_.sample_rate_hz),
+                    delay_config);
+
+                // ClickDetection.getAngle() is legacy behavior: it ignores
+                // setAnglesAndErrors and derives the bearing from the first
+                // pair delay and hydrophone separation. Preserve that exact
+                // acos/clamp conversion for Detector Vetoes.
+                if (!localisation.delays.empty() &&
+                    !pair_geometry.empty() &&
+                    pair_geometry.front().constrained &&
+                    pair_geometry.front().max_delay_samples > 0.0) {
+                    const double cosine = std::clamp(
+                        localisation.delays.front().delay.delay_samples /
+                            pair_geometry.front().max_delay_samples,
+                        -1.0, 1.0);
+                    legacy_angle_degrees =
+                        std::acos(cosine) * 180.0 / std::numbers::pi;
+                }
+
+                attach_pair_geometry(localisation.delays, pair_geometry,
+                                     config_, current_orientation_);
+                attach_lsq_bearing(localisation, pair_geometry,
+                                   click.channels.size(), config_,
+                                   current_orientation_);
+                {
+                    std::vector<double> grid_delays_seconds;
+                    grid_delays_seconds.reserve(localisation.delays.size());
+                    for (const auto& delay : localisation.delays) {
+                        grid_delays_seconds.push_back(
+                            delay.delay.delay_samples /
+                            static_cast<double>(config_.sample_rate_hz));
+                    }
+                    localisation.grid_bearing = grid_bearing_for_channels(
+                        config_, click.channels,
+                        localisation.bearing_localiser,
+                        grid_delays_seconds, current_orientation_);
+                }
+                click_localisation = std::move(localisation);
+                if (click_bearing_localiser_) {
+                    ClickBearingResult bearing;
+                    bearing.click_start_sample = click.start_sample;
+                    bearing.bearing = click_bearing_localiser_->estimate(
+                        click_localisation->delays,
+                        click.channels,
+                        i,
+                        click.start_sample);
+                    if (bearing.bearing.valid) {
+                        click_bearing = std::move(bearing);
+                    }
+                }
+            }
+
+            if (!detectors::ClickAngleVetoes::pass_all(
+                    config_.detector.click_angle_vetoes,
+                    legacy_angle_degrees)) {
+                continue;
+            }
+
+            const auto kept_index = kept_clicks.size();
+            kept_clicks.push_back(std::move(click));
+            if (classification != result.click_classifications.end()) {
+                auto kept_classification = *classification;
+                kept_classification.click_index = kept_index;
+                kept_classifications.push_back(std::move(kept_classification));
+            }
+            if (config_.detector.click_localisation_enabled &&
+                click_localisation.has_value()) {
+                click_localisation->click_index = kept_index;
+                result.click_localisations.push_back(
+                    std::move(*click_localisation));
+            }
+            if (config_.detector.click_localisation_enabled &&
+                click_bearing.has_value()) {
+                click_bearing->click_index = kept_index;
+                result.click_bearings.push_back(std::move(*click_bearing));
+            }
+        }
+        result.clicks = std::move(kept_clicks);
+        result.click_classifications = std::move(kept_classifications);
     }
     if (click_feature_extractor_) {
         for (std::size_t i = 0; i < result.clicks.size(); ++i) {
@@ -809,24 +1143,15 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
             result.click_features.push_back(std::move(features));
         }
     }
-    if (click_basic_classifier_) {
-        for (std::size_t i = 0; i < result.clicks.size(); ++i) {
-            if (result.clicks[i].waveform.empty()) {
-                continue;
-            }
-            auto classification = click_basic_classifier_->identify(result.clicks[i]);
-            classification.click_index = i;
-            result.click_classifications.push_back(classification);
-        }
-    }
     if (matched_template_classifier_.has_value()) {
-        // MTProcess consumes finished clicks (after the echo gate), one
+        // MTProcess consumes finished clicks after the angle-veto gate, one
         // annotation per click carrying the best result per template pair.
         for (std::size_t i = 0; i < result.clicks.size(); ++i) {
             if (result.clicks[i].waveform.empty()) {
                 continue;
             }
-            auto outcome = matched_template_classifier_->classify(result.clicks[i].waveform);
+            auto outcome =
+                matched_template_classifier_->classify(result.clicks[i].waveform);
             MatchedTemplateClickResult entry;
             entry.click_index = i;
             entry.click_start_sample = result.clicks[i].start_sample;
@@ -837,49 +1162,6 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
     }
     if (click_train_tracker_) {
         result.click_trains = click_train_tracker_->process(result.clicks);
-    }
-    if (config_.detector.click_localisation_enabled) {
-        for (std::size_t i = 0; i < result.clicks.size(); ++i) {
-            const auto& click = result.clicks[i];
-            if (click.waveform.size() < 2) {
-                continue;
-            }
-            ClickLocalisationResult localisation;
-            localisation.click_index = i;
-            localisation.click_start_sample = click.start_sample;
-            localisation.array_shape = sub_array_shape(config_, click.channels);
-            localisation.bearing_localiser = localisation::select_bearing_localiser(localisation.array_shape);
-            const auto pair_geometry = click_pair_geometry(config_, click.channels);
-            localisation.delays = click_delay_estimator_.estimate_delays(
-                click.waveform,
-                max_delay_samples_from_geometry(pair_geometry));
-            attach_pair_geometry(localisation.delays, pair_geometry, config_, current_orientation_);
-            attach_lsq_bearing(localisation, pair_geometry, click.channels.size(), config_, current_orientation_);
-            {
-                std::vector<double> grid_delays_seconds;
-                grid_delays_seconds.reserve(localisation.delays.size());
-                for (const auto& delay : localisation.delays) {
-                    grid_delays_seconds.push_back(delay.delay.delay_samples / static_cast<double>(config_.sample_rate_hz));
-                }
-                localisation.grid_bearing = grid_bearing_for_channels(config_, click.channels,
-                                                                     localisation.bearing_localiser,
-                                                                     grid_delays_seconds, current_orientation_);
-            }
-            result.click_localisations.push_back(std::move(localisation));
-            if (click_bearing_localiser_) {
-                ClickBearingResult bearing;
-                bearing.click_index = i;
-                bearing.click_start_sample = click.start_sample;
-                bearing.bearing = click_bearing_localiser_->estimate(
-                    result.click_localisations.back().delays,
-                    click.channels,
-                    i,
-                    click.start_sample);
-                if (bearing.bearing.valid) {
-                    result.click_bearings.push_back(std::move(bearing));
-                }
-            }
-        }
     }
     if (!result.click_trains.empty() && !result.click_localisations.empty()) {
         result.click_train_localisations = summarize_click_train_localisations(result.click_trains, result.click_localisations);
@@ -932,6 +1214,70 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
         }
     }
     if (!whistle_peak_detectors_.empty() || !whistle_region_trackers_.empty()) {
+        if (!whistle_backgrounds_.empty()) {
+            // The observer is attached to the RAW FFT block. PAMGuard
+            // delivers FFT units slice-major/channel-minor, and its single
+            // background emission clock snapshots every channel when the
+            // first frame reaches the interval.
+            std::vector<const dsp::SpectrogramFrame*> ordered;
+            ordered.reserve(result.spectrogram_frames.size());
+            for (const auto& frame : result.spectrogram_frames) {
+                ordered.push_back(&frame);
+            }
+            std::stable_sort(
+                ordered.begin(), ordered.end(),
+                [](const auto* a, const auto* b) {
+                    if (a->fft_slice != b->fft_slice) {
+                        return a->fft_slice < b->fft_slice;
+                    }
+                    return a->channel < b->channel;
+                });
+            const double interval_seconds =
+                config_.detector.whistle_region.background_interval_seconds;
+            for (const auto* frame : ordered) {
+                const auto monitor = whistle_backgrounds_.find(frame->channel);
+                if (monitor == whistle_backgrounds_.end()) {
+                    continue;
+                }
+                monitor->second.process(
+                    pamguard_packed_magnitude_squared(frame->bins));
+                if (!last_whistle_background_time_ms_.has_value()) {
+                    last_whistle_background_time_ms_ = frame->time_unix_ms;
+                    continue;
+                }
+                if (static_cast<double>(frame->time_unix_ms) <
+                    static_cast<double>(*last_whistle_background_time_ms_) +
+                        interval_seconds * 1000.0) {
+                    continue;
+                }
+                last_whistle_background_time_ms_ = frame->time_unix_ms;
+                const double scale =
+                    2.0 / static_cast<double>(config_.detector.fft.fft_length);
+                for (std::size_t channel = 0; channel < config_.channel_count;
+                     ++channel) {
+                    const auto found = whistle_backgrounds_.find(channel);
+                    if (found == whistle_backgrounds_.end()) {
+                        continue;
+                    }
+                    const auto& background = found->second;
+                    WhistleBackgroundResult output;
+                    output.channel = channel;
+                    output.time_ms = frame->time_unix_ms;
+                    output.start_sample = static_cast<std::int64_t>(
+                        static_cast<double>(frame->start_sample) -
+                        interval_seconds *
+                            static_cast<double>(config_.sample_rate_hz));
+                    output.duration_ms = static_cast<double>(
+                        static_cast<std::int64_t>(
+                            interval_seconds * 1000.0));
+                    output.spectrum.reserve(background.data().size());
+                    for (const double power : background.data()) {
+                        output.spectrum.push_back(std::sqrt(power * scale));
+                    }
+                    result.whistle_backgrounds.push_back(std::move(output));
+                }
+            }
+        }
         for (const auto& raw_frame : result.spectrogram_frames) {
             // PAMGuard's whistle chain is FFT -> SpectrogramNoiseProcess ->
             // WhistleToneConnectProcess, and WhistleDelays correlates on the
@@ -972,11 +1318,22 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
             auto region_tracker = whistle_region_trackers_.find(frame.channel);
             if (region_tracker != whistle_region_trackers_.end()) {
                 std::vector<bool> active_bins(magnitude_squared.size(), false);
-                for (const auto& peak : frame_peaks) {
-                    const auto hi = std::min<std::size_t>(peak.max_freq, active_bins.size() - 1);
-                    for (std::size_t bin = peak.min_freq; bin <= hi; ++bin) {
-                        active_bins[bin] = true;
-                    }
+                // WhistleToneConnectProcess does not consume BetterPeakDetector
+                // output. It converts the noise-reduced FFT slice directly:
+                //     newCol[i] = complexData.magsq(i) > 0
+                // over [searchBin1, searchBin2). Keep the older peak output as
+                // an independent optional result, but never use it to gate
+                // connected-region pixels.
+                const auto& region_config = region_tracker->second.config();
+                const auto [min_bin, max_bin_exclusive] =
+                    detectors::whistle_frequency_bin_range(
+                        region_config.min_frequency_hz,
+                        region_config.max_frequency_hz,
+                        static_cast<double>(config_.sample_rate_hz),
+                        config_.detector.fft.fft_length,
+                        magnitude_squared.size());
+                for (std::size_t bin = min_bin; bin < max_bin_exclusive; ++bin) {
+                    active_bins[bin] = magnitude_squared[bin] > 0.0;
                 }
                 auto regions = region_tracker->second.process_slice(
                     frame.fft_slice,
@@ -1020,13 +1377,27 @@ AnalysisResult AnalysisSession::flush() {
 }
 
 bool AnalysisSession::whistle_delays_enabled() const {
-    return whistle_region_trackers_.size() >= 2 && config_.array.hydrophones.size() >= 2 &&
-        config_.array.speed_of_sound_mps > 0.0 && config_.sample_rate_hz != 0 &&
+    const bool has_multi_channel_group = std::any_of(
+        whistle_group_channels_.begin(), whistle_group_channels_.end(),
+        [](const auto& item) { return item.second.size() >= 2; });
+    return has_multi_channel_group &&
+        config_.array.hydrophones.size() >= 2 &&
+        config_.array.speed_of_sound_mps > 0.0 &&
+        config_.sample_rate_hz != 0 &&
         config_.detector.fft.fft_length >= 4;
 }
 
 void AnalysisSession::retain_whistle_fft_frame(const dsp::SpectrogramFrame& frame) {
     if (!whistle_delays_enabled()) {
+        return;
+    }
+    const bool grouped_channel = std::any_of(
+        whistle_group_channels_.begin(), whistle_group_channels_.end(),
+        [&](const auto& item) {
+            return std::find(item.second.begin(), item.second.end(),
+                             frame.channel) != item.second.end();
+        });
+    if (!grouped_channel) {
         return;
     }
     // PAMGuard searches backwards through the retained FFT data block and
@@ -1045,15 +1416,14 @@ void AnalysisSession::compute_whistle_delays(AnalysisResult& result) {
         return;
     }
 
-    std::vector<std::size_t> whistle_channels;
-    whistle_channels.reserve(whistle_region_trackers_.size());
-    for (const auto& [channel, _] : whistle_region_trackers_) {
-        whistle_channels.push_back(channel);
-    }
-    std::sort(whistle_channels.begin(), whistle_channels.end());
-
     const auto fft_length = config_.detector.fft.fft_length;
     for (const auto& region : result.whistle_regions) {
+        const auto group = whistle_group_channels_.find(region.channel);
+        if (group == whistle_group_channels_.end() ||
+            group->second.size() < 2) {
+            continue;
+        }
+        const auto& whistle_channels = group->second;
         WhistleRegionDelayResult delay_result;
         delay_result.channel = region.channel;
         delay_result.region_number = region.region_number;
