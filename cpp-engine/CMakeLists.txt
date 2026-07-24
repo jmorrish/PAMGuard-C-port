@@ -15,9 +15,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(pamguard_engine
     src/core/AnalysisSession.cpp
+    src/core/GroupedSource.cpp
     src/core/SessionManager.cpp
     src/detectors/BasicClickClassifier.cpp
+    src/detectors/SweepClickClassifier.cpp
     src/detectors/ClickDetectorEngine.cpp
+    src/detectors/ClickAngleVeto.cpp
+    src/detectors/FftNoiseMonitor.cpp
     src/detectors/ClickFeatureExtractor.cpp
     src/detectors/ClickTrainTracker.cpp
     src/detectors/MhtIdiChi2.cpp
@@ -33,6 +37,7 @@ add_library(pamguard_engine
     src/detectors/LtsaMonitor.cpp
     src/detectors/NoiseBandMonitor.cpp
     src/detectors/SpectrogramNoiseReducer.cpp
+    src/detectors/SpectrumBackground.cpp
     src/detectors/WhistlePeakDetector.cpp
     src/dsp/IirFilter.cpp
     src/dsp/RealFft.cpp
@@ -102,6 +107,13 @@ target_include_directories(pamguard_engine_service
 
 target_link_libraries(pamguard_engine_service PRIVATE pamguard_engine)
 
+if(MSVC)
+    # The single-file HTTP contract intentionally keeps request parsing,
+    # validation, and serialization together; debug builds now exceed COFF's
+    # default section count.
+    target_compile_options(pamguard_engine_service PRIVATE /bigobj)
+endif()
+
 if(WIN32)
     target_link_libraries(pamguard_engine_service PRIVATE ws2_32)
     target_link_libraries(ffmpeg_stream_ingest PRIVATE ws2_32)
@@ -137,6 +149,18 @@ add_executable(click_trigger_fixture_check
 
 target_link_libraries(click_trigger_fixture_check PRIVATE pamguard_engine)
 
+add_executable(click_detector_settings_check
+    tools/click_detector_settings_check.cpp
+)
+
+target_link_libraries(click_detector_settings_check PRIVATE pamguard_engine)
+
+add_executable(click_wav_parity_cli
+    tools/click_wav_parity_cli.cpp
+)
+
+target_link_libraries(click_wav_parity_cli PRIVATE pamguard_engine)
+
 add_executable(click_feature_fixture_check
     tools/click_feature_fixture_check.cpp
 )
@@ -148,6 +172,18 @@ add_executable(click_basic_classifier_fixture_check
 )
 
 target_link_libraries(click_basic_classifier_fixture_check PRIVATE pamguard_engine)
+
+add_executable(click_sweep_classifier_fixture_check
+    tools/click_sweep_classifier_fixture_check.cpp
+)
+
+target_link_libraries(click_sweep_classifier_fixture_check PRIVATE pamguard_engine)
+
+add_executable(click_angle_veto_fixture_check
+    tools/click_angle_veto_fixture_check.cpp
+)
+
+target_link_libraries(click_angle_veto_fixture_check PRIVATE pamguard_engine)
 
 add_executable(click_train_tracker_check
     tools/click_train_tracker_check.cpp
@@ -317,6 +353,21 @@ add_executable(noise_band_fixture_check
 
 target_link_libraries(noise_band_fixture_check PRIVATE pamguard_engine)
 
+add_executable(fft_noise_fixture_check
+    tools/fft_noise_fixture_check.cpp
+)
+target_link_libraries(fft_noise_fixture_check PRIVATE pamguard_engine)
+
+add_executable(spectrum_background_fixture_check
+    tools/spectrum_background_fixture_check.cpp
+)
+target_link_libraries(spectrum_background_fixture_check PRIVATE pamguard_engine)
+
+add_executable(grouped_source_fixture_check
+    tools/grouped_source_fixture_check.cpp
+)
+target_link_libraries(grouped_source_fixture_check PRIVATE pamguard_engine)
+
 add_executable(ltsa_fixture_check
     tools/ltsa_fixture_check.cpp
 )
@@ -480,6 +531,11 @@ add_test(
 )
 
 add_test(
+    NAME click_detector_settings_parity
+    COMMAND click_detector_settings_check
+)
+
+add_test(
     NAME click_trigger_double_split_minsep8_parity
     COMMAND click_trigger_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-trigger/double-split-minsep8.csv
         0x3 0x3 10.0 0.1 0.00001 10 12 8 128 1 48000 256 double-transient 2
@@ -516,6 +572,12 @@ add_test(
 )
 
 add_test(
+    NAME click_trigger_cross_chunk_parity
+    COMMAND click_trigger_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-trigger/boundary-transient-chunk128.csv
+        0x3 0x3 10.0 0.1 0.00001 10 12 8 128 1 48000 256 boundary-transient 1 128
+)
+
+add_test(
     NAME click_feature_basic_parity
     COMMAND click_feature_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-feature/basic-features.csv
 )
@@ -523,6 +585,19 @@ add_test(
 add_test(
     NAME click_basic_classifier_parity
     COMMAND click_basic_classifier_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-classifier/basic-click-classifier.csv
+)
+
+add_test(
+    NAME click_sweep_classifier_parity
+    COMMAND click_sweep_classifier_fixture_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-classifier/sweep-click-classifier.csv
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-classifier/sweep-click-defaults.csv
+)
+
+add_test(
+    NAME click_angle_veto_parity
+    COMMAND click_angle_veto_fixture_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-angle-veto/angle-veto.csv
 )
 
 add_test(
@@ -609,6 +684,14 @@ add_test(
     NAME delay_group_3ch_basic_parity
     COMMAND delay_group_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/delay-group-3ch-basic.csv
 )
+foreach(delay_mode restricted upsample filter envelope leading combined)
+    add_test(
+        NAME delay_group_3ch_${delay_mode}_parity
+        COMMAND delay_group_fixture_check
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/delay-group-3ch-${delay_mode}.csv
+            ${delay_mode}
+    )
+endforeach()
 
 add_test(
     NAME far_field_bearing_foundation
@@ -673,6 +756,24 @@ add_test(
 add_test(
     NAME noise_band_parity
     COMMAND noise_band_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/noise/noise-bands.csv
+)
+
+add_test(
+    NAME fft_noise_monitor_parity
+    COMMAND fft_noise_fixture_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/fft-noise/fft-noise.csv
+)
+
+add_test(
+    NAME spectrum_background_parity
+    COMMAND spectrum_background_fixture_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/spectrum-background/spectrum-background.csv
+)
+
+add_test(
+    NAME grouped_source_parity
+    COMMAND grouped_source_fixture_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/grouped-source/grouped-source.csv
 )
 
 add_test(

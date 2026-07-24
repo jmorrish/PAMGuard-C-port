@@ -27,9 +27,9 @@ public final class ClickTriggerFixtureExporter {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 13 && args.length != 14) {
-            System.err.println("Usage: ClickTriggerFixtureExporter <channelBitmap> <triggerBitmap> <thresholdDb> <shortFilter> <longFilter> <preSample> <postSample> <minSep> <maxLength> <minTriggerChannels> <sampleRate> <chunkLength> <output.csv> [scenario]");
-            System.err.println("Scenarios: single-transient (default), double-transient, long-transient, single-channel-transient");
+        if (args.length < 13 || args.length > 15) {
+            System.err.println("Usage: ClickTriggerFixtureExporter <channelBitmap> <triggerBitmap> <thresholdDb> <shortFilter> <longFilter> <preSample> <postSample> <minSep> <maxLength> <minTriggerChannels> <sampleRate> <totalLength> <output.csv> [scenario] [processChunkLength]");
+            System.err.println("Scenarios: single-transient (default), double-transient, long-transient, single-channel-transient, boundary-transient");
             System.exit(2);
         }
 
@@ -46,9 +46,18 @@ public final class ClickTriggerFixtureExporter {
         int maxLength = Integer.parseInt(args[arg++]);
         int minTriggerChannels = Integer.parseInt(args[arg++]);
         int sampleRate = Integer.parseInt(args[arg++]);
-        int chunkLength = Integer.parseInt(args[arg++]);
+        int totalLength = Integer.parseInt(args[arg++]);
         File output = new File(args[arg++]);
         String scenario = args.length > arg ? args[arg] : "single-transient";
+        if (args.length > arg) {
+            arg++;
+        }
+        int processChunkLength = args.length > arg
+                ? Integer.parseInt(args[arg])
+                : totalLength;
+        if (processChunkLength <= 0 || processChunkLength > totalLength) {
+            throw new IllegalArgumentException("processChunkLength must be in 1..totalLength");
+        }
 
         List<Integer> channels = channelList(channelBitmap);
         TriggerFilter[] shortFilters = new TriggerFilter[channels.size()];
@@ -59,14 +68,18 @@ public final class ClickTriggerFixtureExporter {
         }
 
         double threshold = Math.pow(10.0, thresholdDb / 20.0);
-        double[][] triggerData = new double[channels.size()][chunkLength];
+        double[][] triggerData = new double[channels.size()][totalLength];
         for (int iChan = 0; iChan < channels.size(); iChan++) {
             int channel = channels.get(iChan);
-            for (int i = 0; i < chunkLength; i++) {
+            for (int i = 0; i < totalLength; i++) {
                 triggerData[iChan][i] = syntheticSample(scenario, channel, i);
             }
         }
 
+        // ClickDetector initialises its trigger memories from the first
+        // incoming RawDataUnit only, then carries both TriggerFilter memories
+        // across subsequent units.
+        int firstChunkLength = Math.min(processChunkLength, totalLength);
         for (int iChan = 0; iChan < channels.size(); iChan++) {
             int channel = channels.get(iChan);
             if ((1 << channel & triggerBitmap) == 0) {
@@ -74,12 +87,12 @@ public final class ClickTriggerFixtureExporter {
             }
             double shortVal = 0.0;
             double longVal = 0.0;
-            for (int i = 0; i < chunkLength; i++) {
+            for (int i = 0; i < firstChunkLength; i++) {
                 shortVal += Math.abs(triggerData[iChan][i]);
                 longVal += Math.abs(triggerData[iChan][i]);
             }
-            shortFilters[iChan].setMemory(shortVal / chunkLength * threshold);
-            longFilters[iChan].setMemory(longVal / chunkLength);
+            shortFilters[iChan].setMemory(shortVal / firstChunkLength * threshold);
+            longFilters[iChan].setMemory(longVal / firstChunkLength);
         }
 
         ClickStatus clickStatus = ClickStatus.CLICK_OFF;
@@ -94,7 +107,7 @@ public final class ClickTriggerFixtureExporter {
         int upCount = 0;
         List<ClickRow> detections = new ArrayList<>();
 
-        for (int iSamp = 0; iSamp < chunkLength; iSamp++) {
+        for (int iSamp = 0; iSamp < totalLength; iSamp++) {
             double maxSE = -10000.0;
             for (int iChan = 0; iChan < channels.size(); iChan++) {
                 int channel = channels.get(iChan);
@@ -202,6 +215,8 @@ public final class ClickTriggerFixtureExporter {
                 return background + transientSample(sample, 60, 140, channel == 0 ? 1.0 : 0.82);
             case "single-channel-transient":
                 return background + transientSample(sample, 80, 86, channel == 0 ? 1.0 : 0.0);
+            case "boundary-transient":
+                return background + transientSample(sample, 124, 132, channel == 0 ? 1.0 : 0.82);
             default:
                 throw new IllegalArgumentException("unknown scenario: " + scenario);
         }

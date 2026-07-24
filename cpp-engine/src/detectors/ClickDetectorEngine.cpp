@@ -44,11 +44,24 @@ ClickDetectorEngine::ClickDetectorEngine(ClickDetectorConfig config)
     if (config_.channel_bitmap == 0) {
         throw std::invalid_argument("click detector channel_bitmap must include at least one channel");
     }
-    if (config_.short_filter < 0.0 || config_.short_filter > 1.0 || config_.long_filter < 0.0 || config_.long_filter > 1.0) {
+    if (config_.short_filter < 0.0 || config_.short_filter > 1.0 ||
+        config_.long_filter < 0.0 || config_.long_filter > 1.0 ||
+        config_.long_filter_2 < 0.0 || config_.long_filter_2 > 1.0) {
         throw std::invalid_argument("click detector filter alphas must be in the range 0..1");
     }
     if (config_.max_length == 0) {
         throw std::invalid_argument("click detector max_length must be non-zero");
+    }
+    if (config_.sample_noise &&
+        (!std::isfinite(config_.noise_sample_interval_seconds) ||
+         config_.noise_sample_interval_seconds <= 0.0)) {
+        throw std::invalid_argument(
+            "click detector noise_sample_interval_seconds must be positive and finite");
+    }
+    if (config_.store_background &&
+        config_.background_interval_milliseconds <= 0) {
+        throw std::invalid_argument(
+            "click detector background_interval_milliseconds must be positive");
     }
     setup_channels();
     reset();
@@ -56,6 +69,20 @@ ClickDetectorEngine::ClickDetectorEngine(ClickDetectorConfig config)
 
 const ClickDetectorConfig& ClickDetectorEngine::config() const noexcept {
     return config_;
+}
+
+const std::vector<ClickNoiseSampleResult>& ClickDetectorEngine::noise_samples() const noexcept {
+    return noise_samples_;
+}
+
+const std::vector<ClickTriggerBackgroundResult>&
+ClickDetectorEngine::trigger_background() const noexcept {
+    return trigger_background_;
+}
+
+const std::vector<ClickTriggerFunctionResult>&
+ClickDetectorEngine::trigger_function() const noexcept {
+    return trigger_function_;
 }
 
 void ClickDetectorEngine::reset() {
@@ -77,9 +104,14 @@ void ClickDetectorEngine::reset() {
     over_threshold_ = 0;
     down_count_ = 0;
     up_count_ = 0;
+    next_noise_sample_ = static_cast<std::int64_t>(config_.max_length);
+    next_background_time_ms_ = 0;
     waveform_history_.assign(channels_.size(), {});
     history_start_sample_ = 0;
     history_initialized_ = false;
+    noise_samples_.clear();
+    trigger_background_.clear();
+    trigger_function_.clear();
 }
 
 std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::AudioChunk& chunk) {
@@ -89,6 +121,9 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
     if (!std::all_of(channels_.begin(), channels_.end(), [&](std::size_t channel) { return channel < chunk.channel_count; })) {
         throw std::invalid_argument("audio chunk does not contain all click detector channels");
     }
+    noise_samples_.clear();
+    trigger_background_.clear();
+    trigger_function_.clear();
     // PAMGuard's newData: raw -> preFilter -> waveformData (what click
     // waveforms are captured from), then triggerFilter over waveformData ->
     // triggerData (what the short/long trigger consumes). Filter state runs
@@ -111,9 +146,9 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
             pre[i_samp] = chunk.sample(i_samp, channels_[i_chan]);
         }
         if (pre_iir_filters_[i_chan].active()) {
-            for (auto& sample : pre) {
-                sample = pre_iir_filters_[i_chan].run_sample(sample);
-            }
+            std::vector<double> filtered;
+            pre_iir_filters_[i_chan].run(pre, filtered);
+            pre = std::move(filtered);
         }
         auto& trigger = trigger_data_[i_chan];
         if (trigger_iir_filters_[i_chan].active()) {
@@ -132,6 +167,15 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
     }
 
     std::vector<ClickDetectionResult> detections;
+    ClickTriggerFunctionResult trigger_function;
+    if (config_.publish_trigger_function) {
+        trigger_function.channel_bitmap = config_.channel_bitmap;
+        trigger_function.start_sample = static_cast<std::int64_t>(chunk.start_sample);
+        trigger_function.time_unix_ms = chunk.time_unix_ms;
+        trigger_function.channels = channels_;
+        trigger_function.signal_excess_db.assign(
+            channels_.size(), std::vector<double>(frame_total, 0.0));
+    }
     const auto threshold = std::pow(10.0, config_.threshold_db / 20.0);
     const auto frame_count = chunk.frame_count();
 
@@ -149,6 +193,9 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
             over_threshold_ = set_bit(over_threshold_, channel, short_value > long_value * threshold);
             const double db = long_value > 0.0 ? 20.0 * std::log10(short_value / long_value) : -100.0;
             max_signal_excess = std::max(max_signal_excess, db);
+            if (config_.publish_trigger_function) {
+                trigger_function.signal_excess_db[i_chan][i_samp] = db;
+            }
         }
 
         const auto absolute_sample = static_cast<std::int64_t>(chunk.start_sample + i_samp);
@@ -198,9 +245,50 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
             }
         }
 
+        if (config_.sample_noise && samples_processed_ > next_noise_sample_) {
+            ClickNoiseSampleResult noise;
+            noise.channel_bitmap = config_.channel_bitmap;
+            noise.start_sample =
+                next_noise_sample_ - static_cast<std::int64_t>(config_.max_length);
+            noise.duration_samples = config_.max_length;
+            noise.time_unix_ms = estimate_time_ms(chunk, noise.start_sample);
+            noise.channels = channels_;
+            noise.waveform = extract_waveform(noise.start_sample, noise.duration_samples);
+            if (!noise.waveform.empty()) {
+                noise_samples_.push_back(std::move(noise));
+            }
+            next_noise_sample_ += static_cast<std::int64_t>(
+                config_.noise_sample_interval_seconds *
+                static_cast<double>(chunk.sample_rate_hz));
+        }
         ++samples_processed_;
     }
 
+    if (config_.publish_trigger_function) {
+        trigger_function.long_filter_values.reserve(long_filters_.size());
+        for (const auto& filter : long_filters_) {
+            trigger_function.long_filter_values.push_back(filter.memory());
+        }
+        trigger_function_.push_back(std::move(trigger_function));
+    }
+    if (config_.store_background) {
+        const auto end_sample = static_cast<std::int64_t>(
+            chunk.start_sample + chunk.frame_count());
+        const auto end_time_ms = estimate_time_ms(chunk, end_sample);
+        if (end_time_ms >= next_background_time_ms_) {
+            ClickTriggerBackgroundResult background;
+            background.channel_bitmap = config_.channel_bitmap;
+            background.time_unix_ms = end_time_ms;
+            background.channels = channels_;
+            background.values.reserve(long_filters_.size());
+            for (const auto& filter : long_filters_) {
+                background.values.push_back(filter.memory());
+            }
+            trigger_background_.push_back(std::move(background));
+            next_background_time_ms_ =
+                end_time_ms + config_.background_interval_milliseconds;
+        }
+    }
     trim_waveform_history();
     return detections;
 }

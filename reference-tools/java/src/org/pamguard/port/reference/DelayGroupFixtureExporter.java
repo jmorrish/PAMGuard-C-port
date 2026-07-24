@@ -3,6 +3,8 @@ package org.pamguard.port.reference;
 import Localiser.DelayMeasurementParams;
 import Localiser.algorithms.DelayGroup;
 import Localiser.algorithms.TimeDelayData;
+import Filters.FilterBand;
+import fftFilter.FFTFilterParams;
 
 import java.io.File;
 import java.io.PrintWriter;
@@ -13,8 +15,8 @@ public final class DelayGroupFixtureExporter {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 4) {
-            System.err.println("Usage: DelayGroupFixtureExporter <sampleRate> <signalLength> <maxDelaySamples> <output.csv>");
+        if (args.length != 4 && args.length != 5) {
+            System.err.println("Usage: DelayGroupFixtureExporter <sampleRate> <signalLength> <maxDelaySamples> <output.csv> [raw|restricted|upsample|filter|envelope|leading|combined]");
             System.exit(2);
         }
 
@@ -23,6 +25,7 @@ public final class DelayGroupFixtureExporter {
         int signalLength = Integer.parseInt(args[1]);
         double maxDelaySamples = Double.parseDouble(args[2]);
         File output = new File(args[3]);
+        String mode = args.length == 5 ? args[4] : "raw";
 
         double[][] waveforms = new double[3][signalLength];
         for (int i = 0; i < signalLength; i++) {
@@ -32,6 +35,47 @@ public final class DelayGroupFixtureExporter {
         }
 
         DelayMeasurementParams params = new DelayMeasurementParams();
+        switch (mode) {
+        case "raw":
+            break;
+        case "restricted":
+            params.useRestrictedBins = true;
+            params.restrictedBins = 40;
+            break;
+        case "upsample":
+            params.setUpSample(2);
+            break;
+        case "filter":
+            params.filterBearings = true;
+            params.delayFilterParams = new FFTFilterParams();
+            params.delayFilterParams.filterBand = FilterBand.BANDPASS;
+            params.delayFilterParams.highPassFreq = 3500.0;
+            params.delayFilterParams.lowPassFreq = 14500.0;
+            break;
+        case "envelope":
+            params.envelopeBearings = true;
+            break;
+        case "leading":
+            params.envelopeBearings = true;
+            params.useLeadingEdge = true;
+            params.leadingEdgeSearchRegion = new int[] { 16, 32 };
+            break;
+        case "combined":
+            params.useRestrictedBins = true;
+            params.restrictedBins = 48;
+            params.setUpSample(2);
+            params.filterBearings = true;
+            params.delayFilterParams = new FFTFilterParams();
+            params.delayFilterParams.filterBand = FilterBand.BANDPASS;
+            params.delayFilterParams.highPassFreq = 3500.0;
+            params.delayFilterParams.lowPassFreq = 14500.0;
+            params.envelopeBearings = true;
+            params.useLeadingEdge = true;
+            params.leadingEdgeSearchRegion = new int[] { 16, 32 };
+            break;
+        default:
+            throw new IllegalArgumentException("unknown mode: " + mode);
+        }
         DelayGroup delayGroup = new DelayGroup();
         TimeDelayData[] delays = delayGroup.getDelays(waveforms, sampleRate, params, new double[] {
                 maxDelaySamples, maxDelaySamples, maxDelaySamples

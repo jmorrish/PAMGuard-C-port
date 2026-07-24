@@ -4,7 +4,7 @@ All engine result JSON bodies now include:
 
 ```json
 {
-  "schemaVersion": 15
+  "schemaVersion": 32
 }
 ```
 
@@ -22,6 +22,12 @@ The HTTP service smoke asserts the health endpoint, live PCM result body, and ar
 
 ## Version history
 
+- `32`: Adds `whistleBackgrounds`, the Whistles & Moans raw-FFT background
+  spectrum snapshots corresponding to `SpecBackgroundDataUnit`. Each item
+  carries channel/time/sample metadata and the full scaled spectrum.
+- `31`: Adds `fftNoise`, the separate PAMGuard `noiseMonitor` output. Each channel/interval contains the measurement count and configured bands with calibrated mean, median, lower/upper 95%, minimum, and maximum dB values.
+- `30`: Adds `classifiersPassed` to click-classification entries when Sweep `checkAllClassifiers` is enabled. Sweep runtime is configured under `click.classifier.sweep`; single-match output remains unchanged.
+- `29`: Adds the click detector's Java-equivalent auxiliary output streams: `clickNoiseSamples`, `clickTriggerBackground`, and opt-in `clickTriggerFunction`.
 - `28`: Adds a `matchFiltDetections` array (ported PAMGuard Ishmael matched filter, `MatchFiltProcess2`): overlap-save normalised cross-correlation of raw audio against an inline kernel waveform, through the shared Ishmael peak picker at the audio rate, with 0..sr/2 as the reported band. Configured via `matchFilt: {enabled, kernel: [samples], channels (empty = channel 0, the reference's no-groups default), thresh, minTimeSeconds, maxTimeSeconds, refractoryTimeSeconds}`.
 - `27`: Adds a `sgramCorrDetections` array (ported PAMGuard Ishmael spectrogram correlation, Mellinger & Clark 2000): kernel/spectrogram dot-product threshold crossings through the same peak picker as the energy sum, with the kernel's frequency span as the reported band. Configured via `sgramCorr: {enabled, segments: [[t0, f0, t1, f1], ...], spread, useLog, thresh, minTimeSeconds, maxTimeSeconds, refractoryTimeSeconds}`.
 - `26`: Adds a `matchedTemplateClassifications` array (ported PAMGuard matched-template click classifier): per click, the best match/reject correlation result per template pair across channels (`threshold`, `matchCorr`, `rejectCorr` — omitted when the reject template yields NaN) and the aggregated `classified` flag. Configured via `matchedTemplate: {enabled, normalisationType, peakSearch, peakSmoothing, lengthDb, restrictedBins, channelClassification, classifiers: [{thresholdToAccept, match: {name, sampleRateHz, waveform}, reject: {...}}]}`. Template rates above the session rate are rejected at session creation (decimation is not ported).

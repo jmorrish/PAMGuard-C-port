@@ -53,6 +53,8 @@ struct ClickClassificationResult {
     std::int64_t click_start_sample = 0;
     int click_type = 0;
     bool discard = false;
+    /** SweepClassifierParameters.checkAllClassifiers output, in set order. */
+    std::vector<int> classifiers_passed;
 };
 
 class BasicClickClassifier {

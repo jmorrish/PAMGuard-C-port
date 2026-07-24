@@ -6,7 +6,7 @@ The C++ engine is correct only when it can reproduce PAMGuard behaviour for the 
 
 ## Reference Implementation
 
-The Java source in the parent repository is the oracle. Important reference areas include:
+The pinned Java source in `PAMGuard_Java/` is the oracle. Its exact version and commit are declared in `reference-tools/pamguard-oracle.json` and explained in `docs/225-java-oracle-pinning.md`. Important reference areas include:
 
 - `src/Spectrogram/WindowFunction.java`
 - `src/fftManager/PamFFTProcess.java`

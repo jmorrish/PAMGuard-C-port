@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -37,7 +38,7 @@ using json = nlohmann::json;
 namespace {
 
 constexpr std::size_t kMaxServiceChannelCount = 1024;
-constexpr int kResultSchemaVersion = 28;
+constexpr int kResultSchemaVersion = 32;
 
 struct ResultJsonOptions {
     bool include_spectrogram = false;
@@ -1906,6 +1907,167 @@ pamguard::detectors::BasicClickTypeConfig parse_basic_click_standard_type(const 
     return type;
 }
 
+pamguard::detectors::SweepRange parse_sweep_range(const json& value) {
+    const auto range = parse_frequency_range(value);
+    return {range.low_hz, range.high_hz};
+}
+
+pamguard::detectors::SweepChannelChoice parse_sweep_channel_choice(const json& value) {
+    if (value.is_number_integer()) {
+        const int choice = value.get<int>();
+        if (choice >= 0 && choice <= 2) {
+            return static_cast<pamguard::detectors::SweepChannelChoice>(choice);
+        }
+    }
+    if (value.is_string()) {
+        const auto choice = normalized_token(value.get<std::string>());
+        if (choice == "requireall" || choice == "all") {
+            return pamguard::detectors::SweepChannelChoice::RequireAll;
+        }
+        if (choice == "requireone" || choice == "one") {
+            return pamguard::detectors::SweepChannelChoice::RequireOne;
+        }
+        if (choice == "usemeans" || choice == "means" || choice == "mean") {
+            return pamguard::detectors::SweepChannelChoice::UseMeans;
+        }
+    }
+    throw std::invalid_argument("sweep channelChoice must be requireAll, requireOne, useMeans, or 0..2");
+}
+
+pamguard::detectors::SweepFftFilterBand parse_sweep_filter_band(const json& value) {
+    const auto band = normalized_token(value.get<std::string>());
+    if (band == "highpass") return pamguard::detectors::SweepFftFilterBand::HighPass;
+    if (band == "lowpass") return pamguard::detectors::SweepFftFilterBand::LowPass;
+    if (band == "bandpass") return pamguard::detectors::SweepFftFilterBand::BandPass;
+    if (band == "bandstop") return pamguard::detectors::SweepFftFilterBand::BandStop;
+    throw std::invalid_argument("sweep fftFilter.band must be highPass, lowPass, bandPass, or bandStop");
+}
+
+pamguard::detectors::SweepClickTypeConfig parse_sweep_click_type(const json& value) {
+    pamguard::detectors::SweepClickTypeConfig type;
+    type.name = value.value("name", type.name);
+    type.species_code = value.value("speciesCode", type.species_code);
+    type.discard = value.value("discard", type.discard);
+    type.enabled = value.value("enabled", type.enabled);
+    if (value.contains("channelChoice")) {
+        type.channel_choice = parse_sweep_channel_choice(value.at("channelChoice"));
+    }
+    type.restrict_length = value.value("restrictLength", type.restrict_length);
+    type.restricted_bins = value.value("restrictedBins", type.restricted_bins);
+    if (value.contains("restrictedBinType")) {
+        const auto& bin_type = value.at("restrictedBinType");
+        if (bin_type.is_number_integer()) {
+            type.restricted_bin_type = bin_type.get<int>() == 1
+                ? pamguard::detectors::SweepRestrictedBinType::ClickStart
+                : pamguard::detectors::SweepRestrictedBinType::ClickCenter;
+        }
+        else {
+            const auto name = normalized_token(bin_type.get<std::string>());
+            type.restricted_bin_type = name == "clickstart" || name == "start"
+                ? pamguard::detectors::SweepRestrictedBinType::ClickStart
+                : pamguard::detectors::SweepRestrictedBinType::ClickCenter;
+        }
+    }
+    type.enable_length = value.value("enableLength", type.enable_length);
+    type.length_smoothing = value.value("lengthSmoothing", type.length_smoothing);
+    type.length_db = value.value("lengthDb", type.length_db);
+    if (value.contains("lengthMs")) type.length_ms = parse_sweep_range(value.at("lengthMs"));
+
+    type.enable_energy_bands = value.value("enableEnergyBands", type.enable_energy_bands);
+    if (value.contains("testEnergyBandHz")) {
+        type.test_energy_band_hz = parse_sweep_range(value.at("testEnergyBandHz"));
+    }
+    if (value.contains("controlEnergyBand0Hz")) {
+        type.control_energy_band_0_hz = parse_sweep_range(value.at("controlEnergyBand0Hz"));
+    }
+    if (value.contains("controlEnergyBand1Hz")) {
+        type.control_energy_band_1_hz = parse_sweep_range(value.at("controlEnergyBand1Hz"));
+    }
+    type.energy_threshold_0_db = value.value("energyThreshold0Db", type.energy_threshold_0_db);
+    type.energy_threshold_1_db = value.value("energyThreshold1Db", type.energy_threshold_1_db);
+
+    type.test_amplitude = value.value("testAmplitude", type.test_amplitude);
+    if (value.contains("amplitudeRangeDb")) {
+        type.amplitude_range_db = parse_sweep_range(value.at("amplitudeRangeDb"));
+    }
+
+    type.enable_fft_filter = value.value("enableFftFilter", type.enable_fft_filter);
+    if (value.contains("fftFilter")) {
+        const auto& filter = value.at("fftFilter");
+        if (filter.contains("band")) type.fft_filter.band = parse_sweep_filter_band(filter.at("band"));
+        type.fft_filter.low_pass_freq_hz =
+            filter.value("lowPassFreqHz", type.fft_filter.low_pass_freq_hz);
+        type.fft_filter.high_pass_freq_hz =
+            filter.value("highPassFreqHz", type.fft_filter.high_pass_freq_hz);
+    }
+
+    type.enable_peak = value.value("enablePeak", type.enable_peak);
+    type.enable_width = value.value("enableWidth", type.enable_width);
+    type.enable_mean = value.value("enableMean", type.enable_mean);
+    if (value.contains("peakSearchRangeHz")) {
+        type.peak_search_range_hz = parse_sweep_range(value.at("peakSearchRangeHz"));
+    }
+    if (value.contains("peakRangeHz")) {
+        type.peak_range_hz = parse_sweep_range(value.at("peakRangeHz"));
+    }
+    if (value.contains("peakWidthRangeHz")) {
+        type.peak_width_range_hz = parse_sweep_range(value.at("peakWidthRangeHz"));
+    }
+    if (value.contains("meanRangeHz")) {
+        type.mean_range_hz = parse_sweep_range(value.at("meanRangeHz"));
+    }
+    type.peak_smoothing = value.value("peakSmoothing", type.peak_smoothing);
+    type.peak_width_threshold_db =
+        value.value("peakWidthThresholdDb", type.peak_width_threshold_db);
+
+    type.enable_zero_crossings =
+        value.value("enableZeroCrossings", type.enable_zero_crossings);
+    if (value.contains("zeroCrossingCount")) {
+        type.zero_crossing_count = parse_sweep_range(value.at("zeroCrossingCount"));
+    }
+    type.enable_sweep = value.value("enableSweep", type.enable_sweep);
+    if (value.contains("zeroCrossingSweepKhzPerMs")) {
+        type.zero_crossing_sweep_khz_per_ms =
+            parse_sweep_range(value.at("zeroCrossingSweepKhzPerMs"));
+    }
+
+    type.enable_min_cross_correlation =
+        value.value("enableMinCrossCorrelation", type.enable_min_cross_correlation);
+    type.enable_peak_cross_correlation =
+        value.value("enablePeakCrossCorrelation", type.enable_peak_cross_correlation);
+    type.min_correlation = value.value("minCorrelation", type.min_correlation);
+    type.correlation_factor = value.value("correlationFactor", type.correlation_factor);
+
+    type.enable_bearing_limits =
+        value.value("enableBearingLimits", type.enable_bearing_limits);
+    type.exclude_bearing_limits =
+        value.value("excludeBearingLimits", type.exclude_bearing_limits);
+    if (value.contains("bearingLimitsRadians")) {
+        type.bearing_limits_radians = parse_sweep_range(value.at("bearingLimitsRadians"));
+    }
+    return type;
+}
+
+pamguard::detectors::SweepClickTypeConfig parse_sweep_click_standard_type(const json& value) {
+    if (value.is_string()) {
+        const auto standard = parse_basic_click_standard(value.get<std::string>());
+        const int code = standard == pamguard::detectors::BasicClickStandardType::BeakedWhale ? 1 : 2;
+        return pamguard::detectors::standard_sweep_click_type(code, standard);
+    }
+    if (!value.is_object()) {
+        throw std::invalid_argument("standard sweep classifier type must be a string or object");
+    }
+    const auto standard = parse_basic_click_standard(value.at("standard").get<std::string>());
+    const int default_code =
+        standard == pamguard::detectors::BasicClickStandardType::BeakedWhale ? 1 : 2;
+    auto type = pamguard::detectors::standard_sweep_click_type(
+        value.value("speciesCode", default_code), standard);
+    type.name = value.value("name", type.name);
+    type.discard = value.value("discard", type.discard);
+    type.enabled = value.value("enabled", type.enabled);
+    return type;
+}
+
 void validate_analysis_config(const pamguard::core::AnalysisConfig& config) {
     validate_base_config(config);
 
@@ -1948,16 +2110,28 @@ void validate_analysis_config(const pamguard::core::AnalysisConfig& config) {
             config.detector.click.min_trigger_channels > bitmap_bit_count(triggerable_channels)) {
             throw std::invalid_argument("click.minTriggerChannels must be between 1 and the number of triggerable detector channels");
         }
-        if (!std::isfinite(config.detector.click.short_filter) || !std::isfinite(config.detector.click.long_filter) ||
+        if (!std::isfinite(config.detector.click.short_filter) ||
+            !std::isfinite(config.detector.click.long_filter) ||
+            !std::isfinite(config.detector.click.long_filter_2) ||
             config.detector.click.short_filter < 0.0 || config.detector.click.short_filter > 1.0 ||
-            config.detector.click.long_filter < 0.0 || config.detector.click.long_filter > 1.0) {
-            throw std::invalid_argument("click.shortFilter and click.longFilter must be in the range 0..1");
+            config.detector.click.long_filter < 0.0 || config.detector.click.long_filter > 1.0 ||
+            config.detector.click.long_filter_2 < 0.0 || config.detector.click.long_filter_2 > 1.0) {
+            throw std::invalid_argument(
+                "click.shortFilter, click.longFilter, and click.longFilter2 must be in the range 0..1");
         }
         if (config.detector.click.max_length == 0) {
             throw std::invalid_argument("click.maxLength must be positive");
         }
-        if (config.detector.click_localisation_enabled && bitmap_bit_count(config.detector.click.channel_bitmap) < 2) {
-            throw std::invalid_argument("click.localisation requires at least two click detector channels");
+        if (config.detector.click.sample_noise &&
+            (!(config.detector.click.noise_sample_interval_seconds > 0.0) ||
+             !std::isfinite(config.detector.click.noise_sample_interval_seconds))) {
+            throw std::invalid_argument(
+                "click.noise.waveformIntervalSeconds must be positive and finite");
+        }
+        if (config.detector.click.store_background &&
+            config.detector.click.background_interval_milliseconds <= 0) {
+            throw std::invalid_argument(
+                "click.noise.backgroundIntervalMilliseconds must be positive");
         }
         if (config.detector.click_features_enabled) {
             if (!is_power_of_two_size(config.detector.click_features.fft_length)) {
@@ -2002,6 +2176,16 @@ void validate_analysis_config(const pamguard::core::AnalysisConfig& config) {
     if (config.detector.whistle_region_detector_enabled) {
         if (config.detector.whistle_region.min_pixels == 0 || config.detector.whistle_region.min_length == 0) {
             throw std::invalid_argument("whistle minPixels and minLength must be positive");
+        }
+        if (!std::isfinite(config.detector.whistle_region.min_frequency_hz) ||
+            !std::isfinite(config.detector.whistle_region.max_frequency_hz)) {
+            throw std::invalid_argument("whistle frequency limits must be finite");
+        }
+        if (!(config.detector.whistle_region.background_interval_seconds > 0.0) ||
+            !std::isfinite(
+                config.detector.whistle_region.background_interval_seconds)) {
+            throw std::invalid_argument(
+                "whistle.backgroundIntervalSeconds must be positive and finite");
         }
         if (config.detector.whistle_region.connect_type != 4 && config.detector.whistle_region.connect_type != 8) {
             throw std::invalid_argument("whistle.connectType must be 4 or 8");
@@ -2236,8 +2420,18 @@ pamguard::dsp::IirFilterParams parse_iir_filter(const json& filter) {
     else if (type == "chebyshev") {
         params.type = pamguard::dsp::IirFilterType::Chebyshev;
     }
+    else if (type == "firwindow") {
+        params.type = pamguard::dsp::IirFilterType::FirWindow;
+    }
+    else if (type == "firarbitrary") {
+        params.type = pamguard::dsp::IirFilterType::FirArbitrary;
+    }
+    else if (type == "fft") {
+        params.type = pamguard::dsp::IirFilterType::Fft;
+    }
     else {
-        throw std::invalid_argument("filter type must be none, butterworth, or chebyshev");
+        throw std::invalid_argument(
+            "filter type must be none, butterworth, chebyshev, firwindow, firarbitrary, or fft");
     }
     const auto band = filter.value("band", std::string("highpass"));
     if (band == "highpass") {
@@ -2259,13 +2453,109 @@ pamguard::dsp::IirFilterParams parse_iir_filter(const json& filter) {
     params.high_pass_freq_hz = filter.value("highPassFreq", 0.0F);
     params.low_pass_freq_hz = filter.value("lowPassFreq", 0.0F);
     params.pass_band_ripple_db = filter.value("passBandRipple", 2.0);
-    if (params.order <= 0 || params.order > 32) {
+    params.stop_band_ripple_db = filter.value("stopBandRipple", 2.0);
+    params.cheby_gamma = filter.value("chebyGamma", 3.0);
+    if (filter.contains("arbitraryFrequenciesHz")) {
+        params.arbitrary_frequencies_hz =
+            filter.at("arbitraryFrequenciesHz").get<std::vector<double>>();
+    }
+    if (filter.contains("arbitraryGainsDb")) {
+        params.arbitrary_gains_db =
+            filter.at("arbitraryGainsDb").get<std::vector<double>>();
+    }
+    if (params.type != pamguard::dsp::IirFilterType::Fft &&
+        (params.order <= 0 || params.order > 32)) {
         throw std::invalid_argument("filter order must be between 1 and 32");
+    }
+    if ((params.type == pamguard::dsp::IirFilterType::FirWindow ||
+         params.type == pamguard::dsp::IirFilterType::FirArbitrary) &&
+        params.order > 16) {
+        throw std::invalid_argument(
+            "FIR filter order exponent must be between 1 and 16");
     }
     if (!std::isfinite(params.high_pass_freq_hz) || !std::isfinite(params.low_pass_freq_hz) ||
         params.high_pass_freq_hz < 0.0F || params.low_pass_freq_hz < 0.0F) {
         throw std::invalid_argument("filter frequencies must be non-negative and finite");
     }
+    if (!(params.cheby_gamma > 0.0) || !std::isfinite(params.cheby_gamma)) {
+        throw std::invalid_argument("filter chebyGamma must be positive and finite");
+    }
+    if (params.type == pamguard::dsp::IirFilterType::FirArbitrary) {
+        if (params.arbitrary_frequencies_hz.size() < 2 ||
+            params.arbitrary_frequencies_hz.size() !=
+                params.arbitrary_gains_db.size()) {
+            throw std::invalid_argument(
+                "arbitrary FIR filter needs equal arbitraryFrequenciesHz and arbitraryGainsDb arrays with at least two points");
+        }
+        for (std::size_t i = 0; i < params.arbitrary_frequencies_hz.size(); ++i) {
+            if (!std::isfinite(params.arbitrary_frequencies_hz[i]) ||
+                !std::isfinite(params.arbitrary_gains_db[i]) ||
+                params.arbitrary_frequencies_hz[i] < 0.0 ||
+                (i > 0 && params.arbitrary_frequencies_hz[i] <
+                              params.arbitrary_frequencies_hz[i - 1])) {
+                throw std::invalid_argument(
+                    "arbitrary FIR control points must be finite, non-negative, and frequency ordered");
+            }
+        }
+    }
+    return params;
+}
+
+pamguard::localisation::DelayMeasurementConfig parse_delay_measurement(
+    const json& value,
+    pamguard::localisation::DelayMeasurementConfig params = {}) {
+    params.filter_bearings = value.value("filterBearings", params.filter_bearings);
+    params.envelope_bearings =
+        value.value("envelopeBearings", params.envelope_bearings);
+    params.use_leading_edge =
+        value.value("useLeadingEdge", params.use_leading_edge);
+    params.up_sample = value.value("upSample", params.up_sample);
+    params.use_restricted_bins =
+        value.value("useRestrictedBins", params.use_restricted_bins);
+    params.restricted_bins =
+        value.value("restrictedBins", params.restricted_bins);
+    if (value.contains("filter")) {
+        const auto& filter = value.at("filter");
+        const auto band = filter.value("band", std::string("highpass"));
+        if (band == "highpass") {
+            params.filter_band = pamguard::localisation::DelayFilterBand::HighPass;
+        }
+        else if (band == "lowpass") {
+            params.filter_band = pamguard::localisation::DelayFilterBand::LowPass;
+        }
+        else if (band == "bandpass") {
+            params.filter_band = pamguard::localisation::DelayFilterBand::BandPass;
+        }
+        else if (band == "bandstop") {
+            params.filter_band = pamguard::localisation::DelayFilterBand::BandStop;
+        }
+        else {
+            throw std::invalid_argument(
+                "click.delayMeasurement.filter.band must be highpass, lowpass, bandpass, or bandstop");
+        }
+        params.filter_high_pass_hz =
+            filter.value("highPassFreq", params.filter_high_pass_hz);
+        params.filter_low_pass_hz =
+            filter.value("lowPassFreq", params.filter_low_pass_hz);
+    }
+    if (params.up_sample < 1 || params.up_sample > 32) {
+        throw std::invalid_argument(
+            "click.delayMeasurement.upSample must be between 1 and 32");
+    }
+    if (params.use_restricted_bins && params.restricted_bins < 10) {
+        throw std::invalid_argument(
+            "click.delayMeasurement.restrictedBins must be at least 10 when enabled");
+    }
+    if (!std::isfinite(params.filter_high_pass_hz) ||
+        !std::isfinite(params.filter_low_pass_hz) ||
+        params.filter_high_pass_hz < 0.0 ||
+        params.filter_low_pass_hz < 0.0) {
+        throw std::invalid_argument(
+            "click.delayMeasurement filter frequencies must be non-negative and finite");
+    }
+    // The Java dialog only permits leading-edge correlation with the envelope.
+    params.use_leading_edge =
+        params.use_leading_edge && params.envelope_bearings;
     return params;
 }
 
@@ -2313,6 +2603,59 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
             if (!(noise_config.min_frequency_hz > 0.0) || noise_config.iir_order <= 0 ||
                 !(noise_config.output_interval_seconds > 0.0)) {
                 throw std::invalid_argument("noiseBand needs positive minFrequencyHz, iirOrder, and outputIntervalSeconds");
+            }
+        }
+        const auto fft_noise = body.value("fftNoise", json::object());
+        auto& fft_noise_config = config.detector.fft_noise;
+        fft_noise_config.enabled = fft_noise.value("enabled", false);
+        if (fft_noise_config.enabled) {
+            const auto bitmap = fft_noise.value("channelBitmap", 1u);
+            for (std::size_t channel = 0;
+                 channel < std::min<std::size_t>(config.channel_count, 32);
+                 ++channel) {
+                if ((bitmap & (1u << channel)) != 0) {
+                    fft_noise_config.channels.push_back(channel);
+                }
+            }
+            fft_noise_config.measurement_interval_seconds =
+                fft_noise.value("measurementIntervalSeconds", 60);
+            fft_noise_config.n_measures =
+                fft_noise.value("nMeasures", 100);
+            fft_noise_config.use_all =
+                fft_noise.value("useAll", true);
+            if (fft_noise.contains("bands")) {
+                if (!fft_noise.at("bands").is_array()) {
+                    throw std::invalid_argument(
+                        "fftNoise.bands must be an array");
+                }
+                for (const auto& item : fft_noise.at("bands")) {
+                    pamguard::detectors::FftNoiseBand band;
+                    band.name = item.value("name", std::string("User"));
+                    band.low_frequency_hz =
+                        item.at("lowFrequencyHz").get<double>();
+                    band.high_frequency_hz =
+                        item.at("highFrequencyHz").get<double>();
+                    if (!std::isfinite(band.low_frequency_hz) ||
+                        !std::isfinite(band.high_frequency_hz) ||
+                        band.low_frequency_hz < 0.0 ||
+                        !(band.high_frequency_hz >
+                          band.low_frequency_hz) ||
+                        band.high_frequency_hz >
+                          static_cast<double>(config.sample_rate_hz) / 2.0) {
+                        throw std::invalid_argument(
+                            "fftNoise bands need 0 <= lowFrequencyHz < highFrequencyHz <= Nyquist");
+                    }
+                    fft_noise_config.bands.push_back(std::move(band));
+                }
+            }
+            if (fft_noise_config.channels.empty() ||
+                fft_noise_config.measurement_interval_seconds <= 0 ||
+                fft_noise_config.n_measures <= 0 ||
+                (!fft_noise_config.use_all &&
+                 fft_noise_config.n_measures < 2) ||
+                fft_noise_config.bands.empty()) {
+                throw std::invalid_argument(
+                    "fftNoise needs selected channels, a positive interval, at least one band, and nMeasures >= 2 when useAll is false");
             }
         }
         const auto ltsa = body.value("ltsa", json::object());
@@ -2498,27 +2841,147 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
             config.detector.fft.channels.push_back(channel);
         }
     }
+    if (config.detector.fft_noise.enabled) {
+        for (const auto channel : config.detector.fft_noise.channels) {
+            if (std::find(config.detector.fft.channels.begin(),
+                          config.detector.fft.channels.end(), channel) ==
+                config.detector.fft.channels.end()) {
+                throw std::invalid_argument(
+                    "fftNoise.channelBitmap must select only FFT source channels");
+            }
+        }
+    }
 
     const auto click = body.value("click", json::object());
     config.detector.click_detector_enabled = click.value("enabled", false);
     config.detector.click_localisation_enabled = click.value("localisation", false);
+    if (click.contains("angleVetoes")) {
+        if (!click.at("angleVetoes").is_array()) {
+            throw std::invalid_argument("click.angleVetoes must be an array");
+        }
+        for (const auto& item : click.at("angleVetoes")) {
+            pamguard::detectors::ClickAngleVeto veto;
+            veto.channels = item.value("channels", 0u);
+            veto.start_angle_degrees =
+                item.value("startAngleDegrees", 0.0);
+            veto.end_angle_degrees =
+                item.value("endAngleDegrees", 0.0);
+            config.detector.click_angle_vetoes.push_back(veto);
+        }
+    }
     if (config.detector.click_detector_enabled) {
         config.detector.click.channel_bitmap = click.value("channelBitmap", channel_bitmap(config.channel_count));
         config.detector.click.trigger_bitmap = click.value("triggerBitmap", config.detector.click.channel_bitmap);
         config.detector.click.min_trigger_channels = click.value("minTriggerChannels", config.detector.click.min_trigger_channels);
         config.detector.click.threshold_db = click.value("thresholdDb", config.detector.click.threshold_db);
         config.detector.click.long_filter = click.value("longFilter", config.detector.click.long_filter);
+        config.detector.click.long_filter_2 = click.value("longFilter2", config.detector.click.long_filter_2);
         config.detector.click.short_filter = click.value("shortFilter", config.detector.click.short_filter);
         config.detector.click.pre_sample = click.value("preSample", config.detector.click.pre_sample);
         config.detector.click.post_sample = click.value("postSample", config.detector.click.post_sample);
         config.detector.click.min_sep = click.value("minSep", config.detector.click.min_sep);
         config.detector.click.max_length = click.value("maxLength", config.detector.click.max_length);
+        config.detector.click.publish_trigger_function =
+            click.value("publishTriggerFunction",
+                        config.detector.click.publish_trigger_function);
+        const auto click_noise = click.value("noise", json::object());
+        config.detector.click.sample_noise =
+            click_noise.value("sampleWaveforms", config.detector.click.sample_noise);
+        config.detector.click.noise_sample_interval_seconds =
+            click_noise.value("waveformIntervalSeconds",
+                              config.detector.click.noise_sample_interval_seconds);
+        config.detector.click.store_background =
+            click_noise.value("storeBackground", config.detector.click.store_background);
+        config.detector.click.background_interval_milliseconds =
+            click_noise.value("backgroundIntervalMilliseconds",
+                              config.detector.click.background_interval_milliseconds);
+        if (click.contains("delayMeasurement")) {
+            const auto& delay = click.at("delayMeasurement");
+            config.detector.click_delay_measurement =
+                parse_delay_measurement(delay);
+            if (delay.contains("typeSettings")) {
+                if (!delay.at("typeSettings").is_array()) {
+                    throw std::invalid_argument(
+                        "click.delayMeasurement.typeSettings must be an array");
+                }
+                for (const auto& item : delay.at("typeSettings")) {
+                    const int click_type = item.at("clickType").get<int>();
+                    if (click_type <= 0 || click_type > 255) {
+                        throw std::invalid_argument(
+                            "click.delayMeasurement.typeSettings clickType must be 1..255");
+                    }
+                    config.detector.click_delay_measurement_by_type[click_type] =
+                        parse_delay_measurement(
+                            item, config.detector.click_delay_measurement);
+                }
+            }
+        }
 
         if (click.contains("preFilter")) {
             config.detector.click.pre_filter = parse_iir_filter(click.at("preFilter"));
         }
         if (click.contains("triggerFilter")) {
             config.detector.click.trigger_filter = parse_iir_filter(click.at("triggerFilter"));
+        }
+
+        const auto grouping = click.value("groupingType", std::string("all"));
+        if (grouping == "all") {
+            config.detector.click_grouping_type =
+                pamguard::core::DetectorConfig::ClickGroupingType::All;
+        }
+        else if (grouping == "singles") {
+            config.detector.click_grouping_type =
+                pamguard::core::DetectorConfig::ClickGroupingType::Singles;
+        }
+        else if (grouping == "user") {
+            config.detector.click_grouping_type =
+                pamguard::core::DetectorConfig::ClickGroupingType::User;
+        }
+        else {
+            throw std::invalid_argument(
+                "click.groupingType must be all, singles, or user");
+        }
+        config.detector.click_channel_groups.assign(config.channel_count, 0);
+        if (config.detector.click_grouping_type ==
+            pamguard::core::DetectorConfig::ClickGroupingType::Singles) {
+            for (std::size_t channel = 0; channel < config.channel_count; ++channel) {
+                config.detector.click_channel_groups[channel] =
+                    static_cast<int>(channel);
+            }
+        }
+        else if (config.detector.click_grouping_type ==
+                 pamguard::core::DetectorConfig::ClickGroupingType::User) {
+            if (!click.contains("channelGroups") ||
+                !click.at("channelGroups").is_array() ||
+                click.at("channelGroups").size() < config.channel_count) {
+                throw std::invalid_argument(
+                    "click.channelGroups must assign every channel for user grouping");
+            }
+            for (std::size_t channel = 0; channel < config.channel_count; ++channel) {
+                const int group = click.at("channelGroups").at(channel).get<int>();
+                if (group < 0 || group >= 32) {
+                    throw std::invalid_argument(
+                        "click.channelGroups values must be between 0 and 31");
+                }
+                config.detector.click_channel_groups[channel] = group;
+            }
+        }
+        std::map<int, std::uint32_t> grouped_channels;
+        for (std::size_t channel = 0;
+             channel < std::min<std::size_t>(config.channel_count, 32);
+             ++channel) {
+            if ((config.detector.click.channel_bitmap & (1u << channel)) == 0) {
+                continue;
+            }
+            grouped_channels[config.detector.click_channel_groups[channel]] |=
+                static_cast<std::uint32_t>(1u << channel);
+        }
+        config.detector.click_groups.clear();
+        for (const auto& [_, bitmap] : grouped_channels) {
+            auto group = config.detector.click;
+            group.channel_bitmap = bitmap;
+            group.trigger_bitmap &= bitmap;
+            config.detector.click_groups.push_back(std::move(group));
         }
 
         const auto echo = click.value("echo", json::object());
@@ -2552,7 +3015,27 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
             config.detector.click_features.fft_length = config.detector.fft.fft_length;
         }
 
-        const auto basic_classifier = click.value("basicClassifier", json::object());
+        const auto classifier = click.value("classifier", json::object());
+        const auto classifier_type = classifier.value("type", std::string("sweep"));
+        if (classifier_type == "basic") {
+            config.detector.click_classifier_type =
+                pamguard::core::DetectorConfig::ClickClassifierType::Basic;
+        }
+        else if (classifier_type == "sweep") {
+            config.detector.click_classifier_type =
+                pamguard::core::DetectorConfig::ClickClassifierType::Sweep;
+        }
+        else if (classifier_type == "none") {
+            config.detector.click_classifier_type =
+                pamguard::core::DetectorConfig::ClickClassifierType::None;
+        }
+        else {
+            throw std::invalid_argument("click.classifier.type must be basic, sweep, or none");
+        }
+        config.detector.click_classify_online = classifier.value("runOnline", false);
+        config.detector.click_discard_unclassified =
+            classifier.value("discardUnclassifiedClicks", false);
+        const auto basic_classifier = classifier.value("basic", json::object());
         config.detector.click_basic_classifier_enabled = basic_classifier.value("enabled", false);
         if (config.detector.click_basic_classifier_enabled && basic_classifier.contains("standardTypes")) {
             for (const auto& type : basic_classifier.at("standardTypes")) {
@@ -2562,6 +3045,23 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         if (config.detector.click_basic_classifier_enabled && basic_classifier.contains("types")) {
             for (const auto& type : basic_classifier.at("types")) {
                 config.detector.click_basic_classifier.click_types.push_back(parse_basic_click_type(type));
+            }
+        }
+        const auto sweep_classifier = classifier.value("sweep", json::object());
+        config.detector.click_sweep_classifier_enabled =
+            sweep_classifier.value("enabled", false);
+        config.detector.click_sweep_classifier.check_all_classifiers =
+            sweep_classifier.value("checkAllClassifiers", false);
+        if (sweep_classifier.contains("standardTypes")) {
+            for (const auto& type : sweep_classifier.at("standardTypes")) {
+                config.detector.click_sweep_classifier.click_types.push_back(
+                    parse_sweep_click_standard_type(type));
+            }
+        }
+        if (sweep_classifier.contains("types")) {
+            for (const auto& type : sweep_classifier.at("types")) {
+                config.detector.click_sweep_classifier.click_types.push_back(
+                    parse_sweep_click_type(type));
             }
         }
 
@@ -2737,6 +3237,13 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         }
     }
     if (config.detector.whistle_region_detector_enabled) {
+        config.detector.whistle_region.min_frequency_hz =
+            whistle.value("minFrequencyHz", config.detector.whistle_region.min_frequency_hz);
+        config.detector.whistle_region.max_frequency_hz =
+            whistle.value("maxFrequencyHz", config.detector.whistle_region.max_frequency_hz);
+        config.detector.whistle_region.background_interval_seconds =
+            whistle.value("backgroundIntervalSeconds",
+                          config.detector.whistle_region.background_interval_seconds);
         config.detector.whistle_region.min_pixels = whistle.value("minPixels", config.detector.whistle_region.min_pixels);
         config.detector.whistle_region.min_length = whistle.value("minLength", config.detector.whistle_region.min_length);
         config.detector.whistle_region.connect_type = whistle.value("connectType", config.detector.whistle_region.connect_type);
@@ -2744,6 +3251,69 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         config.detector.whistle_region.fragmentation_method = whistle.value("fragmentationMethod", config.detector.whistle_region.fragmentation_method);
         config.detector.whistle_region.max_cross_length = whistle.value("maxCrossLength", config.detector.whistle_region.max_cross_length);
         config.detector.whistle_region.reject_first_quarter_second = whistle.value("rejectFirstQuarterSecond", config.detector.whistle_region.reject_first_quarter_second);
+
+        std::uint32_t fft_channel_bitmap = 0;
+        for (const auto channel : config.detector.fft.channels) {
+            if (channel < 32) {
+                fft_channel_bitmap |= std::uint32_t{1} << channel;
+            }
+        }
+        config.detector.whistle_channel_bitmap =
+            whistle.value("channelBitmap", fft_channel_bitmap);
+        if (config.detector.whistle_channel_bitmap == 0 ||
+            (config.detector.whistle_channel_bitmap & ~fft_channel_bitmap) !=
+                0) {
+            throw std::invalid_argument(
+                "whistle.channelBitmap must select one or more FFT source channels");
+        }
+
+        const auto grouping =
+            whistle.value("groupingType", std::string("all"));
+        if (grouping == "all") {
+            config.detector.whistle_grouping_type =
+                pamguard::core::DetectorConfig::ClickGroupingType::All;
+        }
+        else if (grouping == "singles") {
+            config.detector.whistle_grouping_type =
+                pamguard::core::DetectorConfig::ClickGroupingType::Singles;
+        }
+        else if (grouping == "user") {
+            config.detector.whistle_grouping_type =
+                pamguard::core::DetectorConfig::ClickGroupingType::User;
+        }
+        else {
+            throw std::invalid_argument(
+                "whistle.groupingType must be all, singles, or user");
+        }
+        config.detector.whistle_channel_groups.assign(
+            config.channel_count, 0);
+        if (config.detector.whistle_grouping_type ==
+            pamguard::core::DetectorConfig::ClickGroupingType::Singles) {
+            for (std::size_t channel = 0; channel < config.channel_count;
+                 ++channel) {
+                config.detector.whistle_channel_groups[channel] =
+                    static_cast<int>(channel);
+            }
+        }
+        else if (config.detector.whistle_grouping_type ==
+                 pamguard::core::DetectorConfig::ClickGroupingType::User) {
+            if (!whistle.contains("channelGroups") ||
+                !whistle.at("channelGroups").is_array() ||
+                whistle.at("channelGroups").size() < config.channel_count) {
+                throw std::invalid_argument(
+                    "whistle.channelGroups must assign every channel for user grouping");
+            }
+            for (std::size_t channel = 0; channel < config.channel_count;
+                 ++channel) {
+                const int group =
+                    whistle.at("channelGroups").at(channel).get<int>();
+                if (group < 0 || group >= 32) {
+                    throw std::invalid_argument(
+                        "whistle.channelGroups values must be between 0 and 31");
+                }
+                config.detector.whistle_channel_groups[channel] = group;
+            }
+        }
     }
 
     validate_analysis_config(config);
@@ -2851,6 +3421,44 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
         }
         attach_related_train_ids(item, click.start_sample, train_ids_by_sample);
         out["clicks"].push_back(std::move(item));
+    }
+
+    out["clickNoiseSamples"] = json::array();
+    for (const auto& noise : result.click_noise_samples) {
+        json item = {
+            {"channelBitmap", noise.channel_bitmap},
+            {"startSample", noise.start_sample},
+            {"durationSamples", noise.duration_samples},
+            {"timeMs", noise.time_unix_ms},
+            {"channels", noise.channels},
+            {"waveformChannels", noise.waveform.size()},
+            {"waveformSamples",
+             noise.waveform.empty() ? 0 : noise.waveform.front().size()},
+        };
+        if (options.include_click_waveforms) {
+            item["waveform"] = noise.waveform;
+        }
+        out["clickNoiseSamples"].push_back(std::move(item));
+    }
+    out["clickTriggerBackground"] = json::array();
+    for (const auto& background : result.click_trigger_background) {
+        out["clickTriggerBackground"].push_back({
+            {"channelBitmap", background.channel_bitmap},
+            {"timeMs", background.time_unix_ms},
+            {"channels", background.channels},
+            {"values", background.values},
+        });
+    }
+    out["clickTriggerFunction"] = json::array();
+    for (const auto& trigger : result.click_trigger_function) {
+        out["clickTriggerFunction"].push_back({
+            {"channelBitmap", trigger.channel_bitmap},
+            {"startSample", trigger.start_sample},
+            {"timeMs", trigger.time_unix_ms},
+            {"channels", trigger.channels},
+            {"signalExcessDb", trigger.signal_excess_db},
+            {"longFilterValues", trigger.long_filter_values},
+        });
     }
 
     out["clickLocalisations"] = json::array();
@@ -3053,6 +3661,9 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             {"clickType", classification.click_type},
             {"discard", classification.discard},
         };
+        if (!classification.classifiers_passed.empty()) {
+            item["classifiersPassed"] = classification.classifiers_passed;
+        }
         attach_related_train_ids(item, classification.click_start_sample, train_ids_by_sample);
         out["clickClassifications"].push_back(std::move(item));
     }
@@ -3210,6 +3821,20 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
         out["whistleRegions"].push_back(std::move(item));
     }
 
+    out["whistleBackgrounds"] = json::array();
+    for (const auto& background : result.whistle_backgrounds) {
+        out["whistleBackgrounds"].push_back({
+            {"channel", background.channel},
+            {"channelBitmap", std::uint64_t{1} << background.channel},
+            {"timeMs", background.time_ms},
+            {"startSample", background.start_sample},
+            {"durationMs", background.duration_ms},
+            {"loBin", 0},
+            {"hiBin", background.spectrum.size()},
+            {"spectrum", background.spectrum},
+        });
+    }
+
     out["noiseBands"] = json::array();
     for (const auto& noise : result.noise_bands) {
         out["noiseBands"].push_back({
@@ -3218,6 +3843,31 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
             {"timeMs", noise.time_unix_ms},
             {"rmsDb", noise.rms_db},
             {"peakDb", noise.peak_db},
+        });
+    }
+
+    out["fftNoise"] = json::array();
+    for (const auto& noise : result.fft_noise) {
+        json bands = json::array();
+        for (const auto& band : noise.bands) {
+            bands.push_back({
+                {"name", band.name},
+                {"lowFrequencyHz", band.low_frequency_hz},
+                {"highFrequencyHz", band.high_frequency_hz},
+                {"meanDb", band.statistics_db.mean},
+                {"medianDb", band.statistics_db.median},
+                {"low95Db", band.statistics_db.low_95},
+                {"high95Db", band.statistics_db.high_95},
+                {"minDb", band.statistics_db.minimum},
+                {"maxDb", band.statistics_db.maximum},
+            });
+        }
+        out["fftNoise"].push_back({
+            {"channel", noise.channel},
+            {"endSample", noise.end_sample},
+            {"timeMs", noise.time_unix_ms},
+            {"nMeasurements", noise.n_measurements},
+            {"bands", std::move(bands)},
         });
     }
 
@@ -3407,6 +4057,70 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
     auto range_to_json = [](const pamguard::detectors::FrequencyRange& range) {
         return json::array({range.low_hz, range.high_hz});
     };
+    auto sweep_range_to_json = [](const pamguard::detectors::SweepRange& range) {
+        return json::array({range.low, range.high});
+    };
+    auto iir_filter_to_json = [](const pamguard::dsp::IirFilterParams& filter) {
+        std::string type;
+        switch (filter.type) {
+        case pamguard::dsp::IirFilterType::None: type = "none"; break;
+        case pamguard::dsp::IirFilterType::Butterworth: type = "butterworth"; break;
+        case pamguard::dsp::IirFilterType::Chebyshev: type = "chebyshev"; break;
+        case pamguard::dsp::IirFilterType::FirWindow: type = "firwindow"; break;
+        case pamguard::dsp::IirFilterType::FirArbitrary: type = "firarbitrary"; break;
+        case pamguard::dsp::IirFilterType::Fft: type = "fft"; break;
+        }
+        std::string band;
+        switch (filter.band) {
+        case pamguard::dsp::IirFilterBand::HighPass: band = "highpass"; break;
+        case pamguard::dsp::IirFilterBand::LowPass: band = "lowpass"; break;
+        case pamguard::dsp::IirFilterBand::BandPass: band = "bandpass"; break;
+        case pamguard::dsp::IirFilterBand::BandStop: band = "bandstop"; break;
+        }
+        return json{
+            {"type", type},
+            {"band", band},
+            {"order", filter.order},
+            {"highPassFreq", filter.high_pass_freq_hz},
+            {"lowPassFreq", filter.low_pass_freq_hz},
+            {"passBandRipple", filter.pass_band_ripple_db},
+            {"stopBandRipple", filter.stop_band_ripple_db},
+            {"chebyGamma", filter.cheby_gamma},
+            {"arbitraryFrequenciesHz", filter.arbitrary_frequencies_hz},
+            {"arbitraryGainsDb", filter.arbitrary_gains_db},
+        };
+    };
+    auto delay_measurement_to_json =
+        [](const pamguard::localisation::DelayMeasurementConfig& delay) {
+            std::string band;
+            switch (delay.filter_band) {
+            case pamguard::localisation::DelayFilterBand::HighPass:
+                band = "highpass";
+                break;
+            case pamguard::localisation::DelayFilterBand::LowPass:
+                band = "lowpass";
+                break;
+            case pamguard::localisation::DelayFilterBand::BandPass:
+                band = "bandpass";
+                break;
+            case pamguard::localisation::DelayFilterBand::BandStop:
+                band = "bandstop";
+                break;
+            }
+            return json{
+                {"filterBearings", delay.filter_bearings},
+                {"filter", {
+                    {"band", band},
+                    {"highPassFreq", delay.filter_high_pass_hz},
+                    {"lowPassFreq", delay.filter_low_pass_hz},
+                }},
+                {"envelopeBearings", delay.envelope_bearings},
+                {"useLeadingEdge", delay.use_leading_edge},
+                {"upSample", delay.up_sample},
+                {"useRestrictedBins", delay.use_restricted_bins},
+                {"restrictedBins", delay.restricted_bins},
+            };
+        };
     body["sessionId"] = config.session_id;
     body["sourceId"] = config.source_id;
     body["ownerId"] = config.owner_id.empty() ? json(nullptr) : json(config.owner_id);
@@ -3428,11 +4142,13 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"minTriggerChannels", config.detector.click.min_trigger_channels},
         {"thresholdDb", config.detector.click.threshold_db},
         {"longFilter", config.detector.click.long_filter},
+        {"longFilter2", config.detector.click.long_filter_2},
         {"shortFilter", config.detector.click.short_filter},
         {"preSample", config.detector.click.pre_sample},
         {"postSample", config.detector.click.post_sample},
         {"minSep", config.detector.click.min_sep},
         {"maxLength", config.detector.click.max_length},
+        {"publishTriggerFunction", config.detector.click.publish_trigger_function},
         {"featuresEnabled", config.detector.click_features_enabled},
         {"preFilterActive", config.detector.click.pre_filter.type != pamguard::dsp::IirFilterType::None},
         {"triggerFilterActive", config.detector.click.trigger_filter.type != pamguard::dsp::IirFilterType::None},
@@ -3447,10 +4163,217 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"trainMinClicks", config.detector.click_train.min_clicks},
         {"trainClassifierEnabled", config.detector.click_train_classifier_enabled},
     };
+    switch (config.detector.click_grouping_type) {
+    case pamguard::core::DetectorConfig::ClickGroupingType::Singles:
+        body["click"]["groupingType"] = "singles";
+        break;
+    case pamguard::core::DetectorConfig::ClickGroupingType::All:
+        body["click"]["groupingType"] = "all";
+        break;
+    case pamguard::core::DetectorConfig::ClickGroupingType::User:
+        body["click"]["groupingType"] = "user";
+        break;
+    }
+
+    body["click"]["channelGroups"] = config.detector.click_channel_groups;
+    body["click"]["angleVetoes"] = json::array();
+    for (const auto& veto : config.detector.click_angle_vetoes) {
+        body["click"]["angleVetoes"].push_back({
+            {"channels", veto.channels},
+            {"startAngleDegrees", veto.start_angle_degrees},
+            {"endAngleDegrees", veto.end_angle_degrees},
+        });
+    }
+    body["click"]["delayMeasurement"] =
+        delay_measurement_to_json(config.detector.click_delay_measurement);
+    body["click"]["delayMeasurement"]["typeSettings"] = json::array();
+    for (const auto& [click_type, delay] :
+         config.detector.click_delay_measurement_by_type) {
+        auto item = delay_measurement_to_json(delay);
+        item["clickType"] = click_type;
+        body["click"]["delayMeasurement"]["typeSettings"].push_back(
+            std::move(item));
+    }
+    body["click"]["groups"] = json::array();
+    for (const auto& group : config.detector.click_groups) {
+        body["click"]["groups"].push_back({
+            {"channelBitmap", group.channel_bitmap},
+            {"triggerBitmap", group.trigger_bitmap},
+        });
+    }
+    std::string click_classifier_type;
+    switch (config.detector.click_classifier_type) {
+    case pamguard::core::DetectorConfig::ClickClassifierType::Basic:
+        click_classifier_type = "basic";
+        break;
+    case pamguard::core::DetectorConfig::ClickClassifierType::Sweep:
+        click_classifier_type = "sweep";
+        break;
+    case pamguard::core::DetectorConfig::ClickClassifierType::None:
+        click_classifier_type = "none";
+        break;
+    }
+    body["click"]["classifier"] = {
+        {"type", click_classifier_type},
+        {"runOnline", config.detector.click_classify_online},
+        {"discardUnclassifiedClicks", config.detector.click_discard_unclassified},
+        {"basicEnabled", config.detector.click_basic_classifier_enabled},
+        {"basicTypeCount", config.detector.click_basic_classifier.click_types.size()},
+        {"sweepEnabled", config.detector.click_sweep_classifier_enabled},
+        {"sweepTypeCount", config.detector.click_sweep_classifier.click_types.size()},
+        {"sweepCheckAllClassifiers",
+         config.detector.click_sweep_classifier.check_all_classifiers},
+    };
+    body["click"]["classifier"]["sweepTypes"] = json::array();
+    for (const auto& type : config.detector.click_sweep_classifier.click_types) {
+        std::string filter_band;
+        switch (type.fft_filter.band) {
+        case pamguard::detectors::SweepFftFilterBand::HighPass: filter_band = "highPass"; break;
+        case pamguard::detectors::SweepFftFilterBand::LowPass: filter_band = "lowPass"; break;
+        case pamguard::detectors::SweepFftFilterBand::BandPass: filter_band = "bandPass"; break;
+        case pamguard::detectors::SweepFftFilterBand::BandStop: filter_band = "bandStop"; break;
+        }
+        body["click"]["classifier"]["sweepTypes"].push_back({
+            {"name", type.name},
+            {"speciesCode", type.species_code},
+            {"discard", type.discard},
+            {"enabled", type.enabled},
+            {"channelChoice", static_cast<int>(type.channel_choice)},
+            {"restrictLength", type.restrict_length},
+            {"restrictedBins", type.restricted_bins},
+            {"restrictedBinType", static_cast<int>(type.restricted_bin_type)},
+            {"enableLength", type.enable_length},
+            {"lengthSmoothing", type.length_smoothing},
+            {"lengthDb", type.length_db},
+            {"lengthMs", sweep_range_to_json(type.length_ms)},
+            {"enableEnergyBands", type.enable_energy_bands},
+            {"testEnergyBandHz", sweep_range_to_json(type.test_energy_band_hz)},
+            {"controlEnergyBand0Hz", sweep_range_to_json(type.control_energy_band_0_hz)},
+            {"controlEnergyBand1Hz", sweep_range_to_json(type.control_energy_band_1_hz)},
+            {"energyThreshold0Db", type.energy_threshold_0_db},
+            {"energyThreshold1Db", type.energy_threshold_1_db},
+            {"testAmplitude", type.test_amplitude},
+            {"amplitudeRangeDb", sweep_range_to_json(type.amplitude_range_db)},
+            {"enableFftFilter", type.enable_fft_filter},
+            {"fftFilter", {
+                {"band", filter_band},
+                {"lowPassFreqHz", type.fft_filter.low_pass_freq_hz},
+                {"highPassFreqHz", type.fft_filter.high_pass_freq_hz},
+            }},
+            {"enablePeak", type.enable_peak},
+            {"enableWidth", type.enable_width},
+            {"enableMean", type.enable_mean},
+            {"peakSearchRangeHz", sweep_range_to_json(type.peak_search_range_hz)},
+            {"peakRangeHz", sweep_range_to_json(type.peak_range_hz)},
+            {"peakWidthRangeHz", sweep_range_to_json(type.peak_width_range_hz)},
+            {"meanRangeHz", sweep_range_to_json(type.mean_range_hz)},
+            {"peakSmoothing", type.peak_smoothing},
+            {"peakWidthThresholdDb", type.peak_width_threshold_db},
+            {"enableZeroCrossings", type.enable_zero_crossings},
+            {"zeroCrossingCount", sweep_range_to_json(type.zero_crossing_count)},
+            {"enableSweep", type.enable_sweep},
+            {"zeroCrossingSweepKhzPerMs",
+             sweep_range_to_json(type.zero_crossing_sweep_khz_per_ms)},
+            {"enableMinCrossCorrelation", type.enable_min_cross_correlation},
+            {"enablePeakCrossCorrelation", type.enable_peak_cross_correlation},
+            {"minCorrelation", type.min_correlation},
+            {"correlationFactor", type.correlation_factor},
+            {"enableBearingLimits", type.enable_bearing_limits},
+            {"excludeBearingLimits", type.exclude_bearing_limits},
+            {"bearingLimitsRadians", sweep_range_to_json(type.bearing_limits_radians)},
+        });
+    }
+    body["click"]["preFilter"] = iir_filter_to_json(config.detector.click.pre_filter);
+    body["click"]["triggerFilter"] = iir_filter_to_json(config.detector.click.trigger_filter);
+    body["click"]["noise"] = {
+        {"sampleWaveforms", config.detector.click.sample_noise},
+        {"waveformIntervalSeconds",
+         config.detector.click.noise_sample_interval_seconds},
+        {"storeBackground", config.detector.click.store_background},
+        {"backgroundIntervalMilliseconds",
+         config.detector.click.background_interval_milliseconds},
+    };
+    auto& click_train = body["click"]["train"];
+    click_train = {
+        {"enabled", config.detector.click_train_tracker_enabled},
+        {"algorithm", config.detector.click_train_mht ? "mht" : "ici"},
+        {"maxIciSeconds", config.detector.click_train.max_ici_seconds},
+        {"minClicks", config.detector.click_train.min_clicks},
+    };
+    const auto& pre_classifier = config.detector.click_train_pre_classifier;
+    const auto& idi_classifier = config.detector.click_train_idi_classifier;
+    const auto& bearing_classifier =
+        config.detector.click_train_bearing_classifier;
+    const auto& template_classifier =
+        config.detector.click_train_template_classifier;
+    constexpr double radians_to_degrees =
+        180.0 / 3.141592653589793238462643383279502884;
+    click_train["classifier"] = {
+        {"enabled", config.detector.click_train_classifier_enabled},
+        {"preClassifier", {
+            {"chi2Threshold", pre_classifier.chi2_threshold},
+            {"minClicks", pre_classifier.min_clicks},
+            {"minTimeSeconds", pre_classifier.min_time_seconds},
+            {"speciesFlag", pre_classifier.species_flag},
+        }},
+        {"idi", {
+            {"enabled", config.detector.click_train_idi_classifier_enabled},
+            {"useMedianIdi", idi_classifier.use_median_idi},
+            {"minMedianIdi", idi_classifier.min_median_idi},
+            {"maxMedianIdi", idi_classifier.max_median_idi},
+            {"useMeanIdi", idi_classifier.use_mean_idi},
+            {"minMeanIdi", idi_classifier.min_mean_idi},
+            {"maxMeanIdi", idi_classifier.max_mean_idi},
+            {"useStdIdi", idi_classifier.use_std_idi},
+            {"minStdIdi", idi_classifier.min_std_idi},
+            {"maxStdIdi", idi_classifier.max_std_idi},
+            {"speciesFlag", idi_classifier.species_flag},
+        }},
+        {"bearing", {
+            {"enabled",
+             config.detector.click_train_bearing_classifier_enabled},
+            {"bearingLimMinDegrees",
+             bearing_classifier.bearing_lim_min * radians_to_degrees},
+            {"bearingLimMaxDegrees",
+             bearing_classifier.bearing_lim_max * radians_to_degrees},
+            {"useMean", bearing_classifier.use_mean},
+            {"minMeanBearingDerivativeDegrees",
+             bearing_classifier.min_mean_bearing_derivative *
+                 radians_to_degrees},
+            {"maxMeanBearingDerivativeDegrees",
+             bearing_classifier.max_mean_bearing_derivative *
+                 radians_to_degrees},
+            {"useMedian", bearing_classifier.use_median},
+            {"minMedianBearingDerivativeDegrees",
+             bearing_classifier.min_median_bearing_derivative *
+                 radians_to_degrees},
+            {"maxMedianBearingDerivativeDegrees",
+             bearing_classifier.max_median_bearing_derivative *
+                 radians_to_degrees},
+            {"useStd", bearing_classifier.use_std},
+            {"minStdBearingDerivativeDegrees",
+             bearing_classifier.min_std_bearing_derivative *
+                 radians_to_degrees},
+            {"maxStdBearingDerivativeDegrees",
+             bearing_classifier.max_std_bearing_derivative *
+                 radians_to_degrees},
+            {"speciesFlag", bearing_classifier.species_flag},
+        }},
+        {"template", {
+            {"enabled",
+             config.detector.click_train_template_classifier_enabled},
+            {"spectrum", template_classifier.template_spectrum},
+            {"sampleRateHz",
+             template_classifier.template_sample_rate_hz},
+            {"correlationThreshold",
+             template_classifier.correlation_threshold},
+            {"speciesFlag", template_classifier.species_flag},
+        }},
+    };
     if (config.detector.click_train_mht) {
         const auto& chi2 = config.detector.click_train_mht_chi2;
         const auto& kernel = config.detector.click_train_mht_kernel;
-        body["click"]["trainMht"] = {
+        click_train["mht"] = {
             {"enableIdi", chi2.enable_idi},
             {"enableAmplitude", chi2.enable_amplitude},
             {"enableLength", chi2.enable_length},
@@ -3472,6 +4395,9 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
             {"nPrunebackStart", kernel.n_pruneback_start},
             {"maxCoast", kernel.max_coast},
         };
+        // Retained as a diagnostic alias for clients predating the nested
+        // create/status contract symmetry.
+        body["click"]["trainMht"] = click_train["mht"];
     }
     body["click"]["features"] = {
         {"fftLength", config.detector.click_features.fft_length},
@@ -3487,6 +4413,7 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
     body["whistle"] = {
         {"enabled", config.detector.whistle_peak_detector_enabled},
         {"regionEnabled", config.detector.whistle_region_detector_enabled},
+        {"channelBitmap", config.detector.whistle_channel_bitmap},
         {"detectionThresholdDb", config.detector.whistle_peak.detection_threshold_db},
         {"peakTimeConstant0", config.detector.whistle_peak.peak_time_constant_0},
         {"peakTimeConstant1", config.detector.whistle_peak.peak_time_constant_1},
@@ -3500,6 +4427,10 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"noiseAverageSubtraction", config.detector.whistle_noise.run_average_subtraction},
         {"noiseKernelSmoothing", config.detector.whistle_noise.run_kernel_smoothing},
         {"noiseThreshold", config.detector.whistle_noise.run_threshold},
+        {"minFrequencyHz", config.detector.whistle_region.min_frequency_hz},
+        {"maxFrequencyHz", config.detector.whistle_region.max_frequency_hz},
+        {"backgroundIntervalSeconds",
+         config.detector.whistle_region.background_interval_seconds},
         {"minPixels", config.detector.whistle_region.min_pixels},
         {"minLength", config.detector.whistle_region.min_length},
         {"connectType", config.detector.whistle_region.connect_type},
@@ -3508,6 +4439,173 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
         {"maxCrossLength", config.detector.whistle_region.max_cross_length},
         {"rejectFirstQuarterSecond", config.detector.whistle_region.reject_first_quarter_second},
     };
+    switch (config.detector.whistle_grouping_type) {
+    case pamguard::core::DetectorConfig::ClickGroupingType::Singles:
+        body["whistle"]["groupingType"] = "singles";
+        break;
+    case pamguard::core::DetectorConfig::ClickGroupingType::All:
+        body["whistle"]["groupingType"] = "all";
+        break;
+    case pamguard::core::DetectorConfig::ClickGroupingType::User:
+        body["whistle"]["groupingType"] = "user";
+        break;
+    }
+    body["whistle"]["channelGroups"] =
+        config.detector.whistle_channel_groups;
+    body["whistle"]["noise"] = {
+        {"medianFilter", config.detector.whistle_noise.run_median_filter},
+        {"medianFilterLength", config.detector.whistle_noise.median_filter_length},
+        {"averageSubtraction", config.detector.whistle_noise.run_average_subtraction},
+        {"updateConstant", config.detector.whistle_noise.average_update_constant},
+        {"kernelSmoothing", config.detector.whistle_noise.run_kernel_smoothing},
+        {"threshold", config.detector.whistle_noise.run_threshold},
+        {"thresholdDb", config.detector.whistle_noise.threshold_db},
+        {"finalOutput", config.detector.whistle_noise.threshold_final_output},
+    };
+    body["fftNoise"] = {
+        {"enabled", config.detector.fft_noise.enabled},
+        {"measurementIntervalSeconds",
+         config.detector.fft_noise.measurement_interval_seconds},
+        {"nMeasures", config.detector.fft_noise.n_measures},
+        {"useAll", config.detector.fft_noise.use_all},
+        {"channels", config.detector.fft_noise.channels},
+        {"bands", json::array()},
+    };
+    std::uint32_t fft_noise_bitmap = 0;
+    for (const auto channel : config.detector.fft_noise.channels) {
+        if (channel < 32) {
+            fft_noise_bitmap |= 1u << channel;
+        }
+    }
+    body["fftNoise"]["channelBitmap"] = fft_noise_bitmap;
+    for (const auto& band : config.detector.fft_noise.bands) {
+        body["fftNoise"]["bands"].push_back({
+            {"name", band.name},
+            {"lowFrequencyHz", band.low_frequency_hz},
+            {"highFrequencyHz", band.high_frequency_hz},
+        });
+    }
+    std::string noise_band_type;
+    switch (config.detector.noise_band.band_type) {
+    case pamguard::detectors::NoiseBandType::Octave:
+        noise_band_type = "octave";
+        break;
+    case pamguard::detectors::NoiseBandType::ThirdOctave:
+        noise_band_type = "thirdOctave";
+        break;
+    case pamguard::detectors::NoiseBandType::Decidecade:
+        noise_band_type = "decidecade";
+        break;
+    case pamguard::detectors::NoiseBandType::Decade:
+        noise_band_type = "decade";
+        break;
+    case pamguard::detectors::NoiseBandType::TenthOctave:
+        noise_band_type = "tenthOctave";
+        break;
+    case pamguard::detectors::NoiseBandType::TwelfthOctave:
+        noise_band_type = "twelfthOctave";
+        break;
+    }
+    body["acquisition"] = {
+        {"voltsPeak2Peak", config.acquisition.volts_peak_to_peak},
+        {"preampGainDb", config.acquisition.preamp_gain_db},
+    };
+    body["noiseBand"] = {
+        {"enabled", config.detector.noise_band.enabled},
+        {"bandType", noise_band_type},
+        {"minFrequencyHz", config.detector.noise_band.min_frequency_hz},
+        {"maxFrequencyHz", config.detector.noise_band.max_frequency_hz},
+        {"referenceFrequencyHz",
+         config.detector.noise_band.reference_frequency_hz},
+        {"iirOrder", config.detector.noise_band.iir_order},
+        {"outputIntervalSeconds",
+         config.detector.noise_band.output_interval_seconds},
+    };
+    body["ltsa"] = {
+        {"enabled", config.detector.ltsa.enabled},
+        {"intervalSeconds", config.detector.ltsa.interval_seconds},
+    };
+    body["ishmael"] = {
+        {"enabled", config.detector.ishmael.enabled},
+        {"f0", config.detector.ishmael.f0},
+        {"f1", config.detector.ishmael.f1},
+        {"ratioF0", config.detector.ishmael.ratio_f0},
+        {"ratioF1", config.detector.ishmael.ratio_f1},
+        {"useRatio", config.detector.ishmael.use_ratio},
+        {"useLog", config.detector.ishmael.use_log},
+        {"adaptiveThreshold", config.detector.ishmael.adaptive_threshold},
+        {"longFilter", config.detector.ishmael.long_filter},
+        {"spikeDecay", config.detector.ishmael.spike_decay},
+        {"outputSmoothing", config.detector.ishmael.output_smoothing},
+        {"shortFilter", config.detector.ishmael.short_filter},
+        {"thresh", config.detector.ishmael.thresh},
+        {"minTimeSeconds", config.detector.ishmael.min_time_s},
+        {"maxTimeSeconds", config.detector.ishmael.max_time_s},
+        {"refractoryTimeSeconds",
+         config.detector.ishmael.refractory_time_s},
+    };
+    body["sgramCorr"] = {
+        {"enabled", config.detector.sgram_corr.enabled},
+        {"segments", json::array()},
+        {"spread", config.detector.sgram_corr.spread},
+        {"useLog", config.detector.sgram_corr.use_log},
+        {"thresh", config.detector.sgram_corr.thresh},
+        {"minTimeSeconds", config.detector.sgram_corr.min_time_s},
+        {"maxTimeSeconds", config.detector.sgram_corr.max_time_s},
+        {"refractoryTimeSeconds",
+         config.detector.sgram_corr.refractory_time_s},
+    };
+    for (const auto& segment : config.detector.sgram_corr.segments) {
+        body["sgramCorr"]["segments"].push_back(
+            {segment[0], segment[1], segment[2], segment[3]});
+    }
+    body["matchFilt"] = {
+        {"enabled", config.detector.match_filt.enabled},
+        {"kernel", config.detector.match_filt.kernel},
+        {"channels", config.detector.match_filt.channels},
+        {"thresh", config.detector.match_filt.thresh},
+        {"minTimeSeconds", config.detector.match_filt.min_time_s},
+        {"maxTimeSeconds", config.detector.match_filt.max_time_s},
+        {"refractoryTimeSeconds",
+         config.detector.match_filt.refractory_time_s},
+    };
+    body["matchedTemplate"] = {
+        {"enabled", config.detector.matched_template.enabled},
+        {"normalisationType",
+         config.detector.matched_template.normalisation_type},
+        {"peakSearch", config.detector.matched_template.peak_search},
+        {"peakSmoothing",
+         config.detector.matched_template.peak_smoothing},
+        {"lengthDb", config.detector.matched_template.length_db},
+        {"restrictedBins",
+         config.detector.matched_template.restricted_bins},
+        {"channelClassification",
+         config.detector.matched_template.channel_classification},
+        {"classifiers", json::array()},
+    };
+    for (const auto& classifier :
+         config.detector.matched_template.classifiers) {
+        json pair = {
+            {"thresholdToAccept", classifier.threshold_to_accept},
+            {"match", {
+                {"name", classifier.match_template.name},
+                {"sampleRateHz",
+                 classifier.match_template.sample_rate_hz},
+                {"waveform", classifier.match_template.waveform},
+            }},
+        };
+        if (!classifier.reject_template.waveform.empty() &&
+            classifier.reject_template.sample_rate_hz > 0.0) {
+            pair["reject"] = {
+                {"name", classifier.reject_template.name},
+                {"sampleRateHz",
+                 classifier.reject_template.sample_rate_hz},
+                {"waveform", classifier.reject_template.waveform},
+            };
+        }
+        body["matchedTemplate"]["classifiers"].push_back(
+            std::move(pair));
+    }
     body["array"] = {
         {"id", config.array.id},
         {"speedOfSoundMps", config.array.speed_of_sound_mps},

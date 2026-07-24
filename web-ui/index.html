@@ -465,6 +465,41 @@
 
   .hint { font-size: 12px; color: var(--text-dim); margin: 4px 0 0; }
 
+  .click-settings-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin: 4px 0 10px;
+  }
+
+  .click-settings-nav button {
+    background: var(--bg);
+    color: var(--text-dim);
+    border: 1px solid var(--line-soft);
+    border-radius: 7px;
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  .click-settings-nav button:hover,
+  .click-settings-nav button.active {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .click-pane-meta {
+    min-height: 30px;
+    margin: 0 0 10px;
+    padding: 7px 9px;
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+  }
+
+  @media (max-width: 620px) {
+    .click-settings-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
   /* ---------------- click detector display ---------------- */
   .click-grid {
     display: grid;
@@ -546,8 +581,9 @@
         <button data-dialog="dlgArray">Hydrophone array&hellip;</button>
         <button data-dialog="dlgClick">Click detector&hellip;</button>
         <button data-dialog="dlgClickFeatures">Click features&hellip;</button>
-        <button data-dialog="dlgWhistlePeaks">Whistle &amp; moan peaks&hellip;</button>
+        <button data-dialog="dlgWhistlePeaks">Legacy whistle peaks&hellip;</button>
         <button data-dialog="dlgWhistleContours">Whistle &amp; moan contours&hellip;</button>
+        <button data-dialog="dlgWhistleNoise">Whistle noise reduction&hellip;</button>
         <button data-dialog="dlgMonitoring">Noise &amp; monitoring modules&hellip;</button>
       </div>
     </div>
@@ -642,10 +678,11 @@
       <div class="side-card">
         <h3>Modules</h3>
         <div class="module-row"><span>Hydrophone array</span><button data-dialog="dlgArray">Settings</button></div>
-        <div class="module-row"><span>Click detector</span><button data-dialog="dlgClick">Settings</button></div>
+        <div class="module-row"><span>Click detector · 8 sections</span><button data-dialog="dlgClick">Settings</button></div>
         <div class="module-row"><span>Click features</span><button data-dialog="dlgClickFeatures">Settings</button></div>
-        <div class="module-row"><span>Whistle &amp; moan peaks</span><button data-dialog="dlgWhistlePeaks">Settings</button></div>
+        <div class="module-row"><span>Legacy whistle peaks</span><button data-dialog="dlgWhistlePeaks">Settings</button></div>
         <div class="module-row"><span>Whistle &amp; moan contours</span><button data-dialog="dlgWhistleContours">Settings</button></div>
+        <div class="module-row"><span>Whistle noise reduction</span><button data-dialog="dlgWhistleNoise">Settings</button></div>
         <div class="module-row"><span>Noise &amp; monitoring</span><button data-dialog="dlgMonitoring">Settings</button></div>
         <div class="module-row"><span>Test signal &amp; preview</span><button data-dialog="dlgTest">Settings</button></div>
         <p class="hint">Settings apply when the session is (re)created.</p>
@@ -747,6 +784,7 @@
           <div class="metric"><strong id="mPeaks">0</strong><span>Whistle peaks</span></div>
           <div class="metric"><strong id="mRegions">0</strong><span>Contours</span></div>
           <div class="metric"><strong id="mNoiseBands">0</strong><span>Noise bands</span></div>
+          <div class="metric"><strong id="mFftNoise">0</strong><span>FFT noise stats</span></div>
           <div class="metric"><strong id="mLtsa">0</strong><span>LTSA periods</span></div>
           <div class="metric"><strong id="mIshmael">0</strong><span>Energy sum</span></div>
           <div class="metric"><strong id="mSgramCorr">0</strong><span>Sgram corr</span></div>
@@ -762,7 +800,7 @@
           <div id="monitorList" class="contour-list">
             <div class="contour-card">
               <strong>Waiting for monitoring output</strong>
-              <span>Enable noiseBand, ltsa, ishmael, sgramCorr, matchFilt, or matchedTemplate (Detection &rarr; Noise &amp; monitoring modules) to see band levels and detections here.</span>
+              <span>Enable noiseBand, fftNoise, ltsa, ishmael, sgramCorr, matchFilt, or matchedTemplate (Detection &rarr; Noise &amp; monitoring modules) to see band levels and detections here.</span>
             </div>
           </div>
         </div>
@@ -929,7 +967,25 @@
 <dialog class="cfg-dialog" id="dlgClick">
   <div class="dlg-head"><h3>Click detector</h3><button data-close="dlgClick">&#10005;</button></div>
   <div class="dlg-body">
+    <nav class="click-settings-nav" aria-label="Click detector settings sections">
+      <button type="button" class="active" data-click-pane-target="detection">Detection</button>
+      <button type="button" data-click-pane-target="filters">Filters</button>
+      <button type="button" data-click-pane-target="channels">Channels</button>
+      <button type="button" data-click-pane-target="classification">Classification</button>
+      <button type="button" data-click-pane-target="echo">Echo &amp; vetoes</button>
+      <button type="button" data-click-pane-target="delay">Delay &amp; localisation</button>
+      <button type="button" data-click-pane-target="noise">Noise &amp; output</button>
+      <button type="button" data-click-pane-target="trains">Click trains</button>
+    </nav>
+    <p class="hint click-pane-meta" id="clickPaneMeta"></p>
     <div class="grid">
+      <div>
+        <label for="clickEnabled">Click detector</label>
+        <select id="clickEnabled">
+          <option value="true" selected>Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
       <div>
         <label for="clickThresholdDb">Threshold dB</label>
         <input id="clickThresholdDb" type="number" value="10" step="0.1">
@@ -947,12 +1003,29 @@
         <input id="clickTriggerBitmap" type="number" placeholder="Default channel bitmap" min="0">
       </div>
       <div>
+        <label for="clickGroupingType">Channel grouping</label>
+        <select id="clickGroupingType">
+          <option value="singles">One group per channel</option>
+          <option value="all" selected>All channels together (PAMGuard default)</option>
+          <option value="user">User groups</option>
+        </select>
+      </div>
+      <div>
+        <label for="clickChannelGroups">User group numbers</label>
+        <input id="clickChannelGroups" placeholder="Example: 0,0,1,1">
+      </div>
+      <div>
         <label for="shortFilter">Short filter</label>
         <input id="shortFilter" type="number" value="0.1" step="0.00001">
       </div>
       <div>
         <label for="longFilter">Long filter</label>
         <input id="longFilter" type="number" value="0.00001" step="0.000001">
+      </div>
+      <div>
+        <label for="longFilter2">Long filter 2</label>
+        <input id="longFilter2" type="number" value="0.000001" step="0.0000001"
+               title="PAMGuard exposes this value but 2.02.18e does not use it in the live click trigger.">
       </div>
       <div>
         <label for="preSample">Pre samples</label>
@@ -970,6 +1043,223 @@
         <label for="maxLength">Max length</label>
         <input id="maxLength" type="number" value="1024" min="1">
       </div>
+      <h4 style="grid-column: 1 / -1; margin: 8px 0 0;">Pre-filter</h4>
+      <div>
+        <label for="preFilterType">Type</label>
+        <select id="preFilterType">
+          <option value="none">None</option>
+          <option value="butterworth" selected>IIR Butterworth</option>
+          <option value="chebyshev">IIR Chebyshev</option>
+          <option value="firwindow">FIR window method</option>
+          <option value="firarbitrary">Arbitrary FIR</option>
+          <option value="fft">FFT filter</option>
+        </select>
+      </div>
+      <div>
+        <label for="preFilterBand">Band</label>
+        <select id="preFilterBand">
+          <option value="highpass" selected>High-pass</option>
+          <option value="lowpass">Low-pass</option>
+          <option value="bandpass">Band-pass</option>
+          <option value="bandstop">Band-stop</option>
+        </select>
+      </div>
+      <div>
+        <label for="preFilterOrder">Order</label>
+        <input id="preFilterOrder" type="number" value="4" min="1" max="32">
+      </div>
+      <div>
+        <label for="preFilterHighPassFreq">High-pass frequency (Hz)</label>
+        <input id="preFilterHighPassFreq" type="number" value="500" min="0" step="1">
+      </div>
+      <div>
+        <label for="preFilterLowPassFreq">Low-pass frequency (Hz)</label>
+        <input id="preFilterLowPassFreq" type="number" value="20000" min="0" step="1">
+      </div>
+      <div>
+        <label for="preFilterRipple">Pass-band ripple (dB)</label>
+        <input id="preFilterRipple" type="number" value="2" min="0" step="0.1">
+      </div>
+      <div>
+        <label for="preFilterStopRipple">Stop-band ripple (dB)</label>
+        <input id="preFilterStopRipple" type="number" value="2" min="0" step="0.1">
+      </div>
+      <div>
+        <label for="preFilterChebyGamma">FIR Chebyshev gamma</label>
+        <input id="preFilterChebyGamma" type="number" value="3" min="0.01" step="0.1">
+      </div>
+      <div class="wide">
+        <label for="preFilterArbitrary">Arbitrary FIR points (JSON)</label>
+        <textarea id="preFilterArbitrary" placeholder='{"frequenciesHz":[0,500,20000,24000],"gainsDb":[-80,0,0,-80]}'></textarea>
+      </div>
+      <h4 style="grid-column: 1 / -1; margin: 8px 0 0;">Trigger filter</h4>
+      <div>
+        <label for="triggerFilterType">Type</label>
+        <select id="triggerFilterType">
+          <option value="none">None</option>
+          <option value="butterworth" selected>IIR Butterworth</option>
+          <option value="chebyshev">IIR Chebyshev</option>
+          <option value="firwindow">FIR window method</option>
+          <option value="firarbitrary">Arbitrary FIR</option>
+          <option value="fft">FFT filter</option>
+        </select>
+      </div>
+      <div>
+        <label for="triggerFilterBand">Band</label>
+        <select id="triggerFilterBand">
+          <option value="highpass" selected>High-pass</option>
+          <option value="lowpass">Low-pass</option>
+          <option value="bandpass">Band-pass</option>
+          <option value="bandstop">Band-stop</option>
+        </select>
+      </div>
+      <div>
+        <label for="triggerFilterOrder">Order</label>
+        <input id="triggerFilterOrder" type="number" value="2" min="1" max="32">
+      </div>
+      <div>
+        <label for="triggerFilterHighPassFreq">High-pass frequency (Hz)</label>
+        <input id="triggerFilterHighPassFreq" type="number" value="2000" min="0" step="1">
+      </div>
+      <div>
+        <label for="triggerFilterLowPassFreq">Low-pass frequency (Hz)</label>
+        <input id="triggerFilterLowPassFreq" type="number" value="20000" min="0" step="1">
+      </div>
+      <div>
+        <label for="triggerFilterRipple">Pass-band ripple (dB)</label>
+        <input id="triggerFilterRipple" type="number" value="2" min="0" step="0.1">
+      </div>
+      <div>
+        <label for="triggerFilterStopRipple">Stop-band ripple (dB)</label>
+        <input id="triggerFilterStopRipple" type="number" value="2" min="0" step="0.1">
+      </div>
+      <div>
+        <label for="triggerFilterChebyGamma">FIR Chebyshev gamma</label>
+        <input id="triggerFilterChebyGamma" type="number" value="3" min="0.01" step="0.1">
+      </div>
+      <div class="wide">
+        <label for="triggerFilterArbitrary">Arbitrary FIR points (JSON)</label>
+        <textarea id="triggerFilterArbitrary" placeholder='{"frequenciesHz":[0,2000,20000,24000],"gainsDb":[-80,0,0,-80]}'></textarea>
+      </div>
+      <h4 style="grid-column: 1 / -1; margin: 8px 0 0;">Echo detection</h4>
+      <div>
+        <label for="echoRunOnline">Run echo detector online</label>
+        <select id="echoRunOnline">
+          <option value="false" selected>Disabled (PAMGuard default)</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="echoDiscard">Discard echoes</label>
+        <select id="echoDiscard">
+          <option value="false" selected>No</option>
+          <option value="true">Yes</option>
+        </select>
+      </div>
+      <div>
+        <label for="echoMaxIntervalSeconds">Maximum echo interval (s)</label>
+        <input id="echoMaxIntervalSeconds" type="number" value="0.1" min="0" step="0.001">
+      </div>
+      <h4 style="grid-column: 1 / -1; margin: 8px 0 0;">Delay measurement / bearings</h4>
+      <div>
+        <label for="clickLocalisationEnabled">Delay measurement / localisation</label>
+        <select id="clickLocalisationEnabled">
+          <option value="true" selected>Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="delayFilterBearings">Filter before delay measurement</label>
+        <select id="delayFilterBearings">
+          <option value="false" selected>Disabled (PAMGuard default)</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="delayFilterBand">Delay filter band</label>
+        <select id="delayFilterBand">
+          <option value="highpass" selected>High-pass</option>
+          <option value="lowpass">Low-pass</option>
+          <option value="bandpass">Band-pass</option>
+          <option value="bandstop">Band-stop</option>
+        </select>
+      </div>
+      <div>
+        <label for="delayHighPassFreq">High-pass frequency (Hz)</label>
+        <input id="delayHighPassFreq" type="number" value="0" min="0" step="1">
+      </div>
+      <div>
+        <label for="delayLowPassFreq">Low-pass frequency (Hz)</label>
+        <input id="delayLowPassFreq" type="number" value="0" min="0" step="1">
+      </div>
+      <div>
+        <label for="delayEnvelopeBearings">Correlate waveform envelope</label>
+        <select id="delayEnvelopeBearings">
+          <option value="false" selected>Disabled (PAMGuard default)</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="delayUseLeadingEdge">Use envelope leading edge only</label>
+        <select id="delayUseLeadingEdge">
+          <option value="false" selected>Disabled (PAMGuard default)</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="delayUpSample">Upsample factor</label>
+        <input id="delayUpSample" type="number" value="1" min="1" max="32" step="1">
+      </div>
+      <div>
+        <label for="delayUseRestrictedBins">Restrict waveform samples</label>
+        <select id="delayUseRestrictedBins">
+          <option value="false" selected>Disabled (PAMGuard default)</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="delayRestrictedBins">Restricted samples</label>
+        <input id="delayRestrictedBins" type="number" value="80" min="10" step="1">
+      </div>
+      <div class="wide">
+        <label for="delayTypeSettingsJson">Per-click-type delay overrides</label>
+        <textarea id="delayTypeSettingsJson" placeholder='Optional JSON array. Example: [{"clickType":1,"upSample":2,"envelopeBearings":true}]'></textarea>
+      </div>
+      <div class="wide">
+        <label for="angleVetoesJson">Detector angle vetoes</label>
+        <textarea id="angleVetoesJson" placeholder='PAMGuard default is empty. Example: [{"channels":0,"startAngleDegrees":35,"endAngleDegrees":55}]'></textarea>
+        <div class="hint">Clicks inside any range, including either boundary, are rejected. PAMGuard currently stores but ignores the channels value.</div>
+      </div>
+      <h4 style="grid-column: 1 / -1; margin: 8px 0 0;">Noise and trigger output</h4>
+      <div>
+        <label for="sampleClickNoise">Create sample noise measurements</label>
+        <select id="sampleClickNoise">
+          <option value="true" selected>Enabled (PAMGuard default)</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="clickNoiseIntervalSeconds">Noise interval (s)</label>
+        <input id="clickNoiseIntervalSeconds" type="number" value="5" min="0.001" step="0.1">
+      </div>
+      <div>
+        <label for="storeClickBackground">Sample trigger background</label>
+        <select id="storeClickBackground">
+          <option value="true" selected>Enabled (PAMGuard default)</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="clickBackgroundIntervalSeconds">Background interval (s)</label>
+        <input id="clickBackgroundIntervalSeconds" type="number" value="5" min="0.001" step="0.1">
+      </div>
+      <div>
+        <label for="publishTriggerFunction">Publish trigger function</label>
+        <select id="publishTriggerFunction">
+          <option value="false" selected>Disabled (PAMGuard default)</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
       <div>
         <label for="featuresEnabled">Features</label>
         <select id="featuresEnabled">
@@ -977,20 +1267,66 @@
           <option value="false">Disabled</option>
         </select>
       </div>
+      <h4 style="grid-column: 1 / -1; margin: 8px 0 0;">Classification</h4>
       <div>
-        <label for="classifierPreset">Classifier</label>
+        <label for="classifierAlgorithm">Classifier algorithm</label>
+        <select id="classifierAlgorithm">
+          <option value="sweep" selected>Sweep classifier (PAMGuard default)</option>
+          <option value="basic">Basic classifier</option>
+          <option value="none">None</option>
+        </select>
+      </div>
+      <div>
+        <label for="classifierPreset">Basic classifier presets</label>
         <select id="classifierPreset">
-          <option value="none">Disabled</option>
+          <option value="none" selected>Disabled</option>
           <option value="beakedWhale">Beaked whale</option>
           <option value="porpoise">Porpoise</option>
-          <option value="both" selected>Both presets</option>
+          <option value="both">Both presets</option>
+        </select>
+      </div>
+      <div>
+        <label for="classifyOnline">Run classification online</label>
+        <select id="classifyOnline">
+          <option value="false" selected>Disabled (PAMGuard default)</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="discardUnclassifiedClicks">Discard unclassified clicks</label>
+        <select id="discardUnclassifiedClicks">
+          <option value="false" selected>No</option>
+          <option value="true">Yes</option>
+        </select>
+      </div>
+      <div>
+        <label for="sweepPreset">Sweep classifier presets</label>
+        <select id="sweepPreset">
+          <option value="none" selected>No preset set</option>
+          <option value="beakedWhale">Beaked whale</option>
+          <option value="porpoise">Porpoise</option>
+          <option value="both">Both presets</option>
+        </select>
+      </div>
+      <div>
+        <label for="sweepCheckAll">Check all Sweep classifiers</label>
+        <select id="sweepCheckAll">
+          <option value="false" selected>Stop at first match (default)</option>
+          <option value="true">Record every matching type</option>
         </select>
       </div>
       <div>
         <label for="trainEnabled">Click trains</label>
         <select id="trainEnabled">
-          <option value="true" selected>Enabled</option>
-          <option value="false">Disabled</option>
+          <option value="true">Enabled</option>
+          <option value="false" selected>Disabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="trainAlgorithm">Train former</label>
+        <select id="trainAlgorithm">
+          <option value="ici" selected>Max ICI tracker</option>
+          <option value="mht">PAMGuard MHT</option>
         </select>
       </div>
       <div>
@@ -1001,9 +1337,28 @@
         <label for="trainMinClicks">Train min clicks</label>
         <input id="trainMinClicks" type="number" value="3" min="1">
       </div>
+      <div>
+        <label for="trainClassifierEnabled">Train classifier chain</label>
+        <select id="trainClassifierEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
       <div class="wide">
-        <label for="classifierTypesJson">Classifier type JSON override</label>
+        <label for="trainMhtJson">MHT settings JSON</label>
+        <textarea id="trainMhtJson" placeholder='Optional object; omitted values keep PAMGuard defaults. Example: {"enableIdi":true,"enableAmplitude":true,"enableLength":true,"enableBearing":false,"enablePeakFrequency":false,"enableTimeDelay":false,"enableCorrelation":false,"maxIci":0.4,"nHold":20,"nPruneback":4,"nPrunebackStart":5,"maxCoast":3}'></textarea>
+      </div>
+      <div class="wide">
+        <label for="trainClassifierJson">Train classifier settings JSON</label>
+        <textarea id="trainClassifierJson" placeholder='Optional object containing preClassifier, idi, bearing, and template. Example: {"preClassifier":{"chi2Threshold":0,"minClicks":3,"minTimeSeconds":0},"idi":{"enabled":true,"useMedianIdi":true,"minMedianIdi":0.01,"maxMedianIdi":2,"speciesFlag":1}}'></textarea>
+      </div>
+      <div class="wide">
+        <label for="classifierTypesJson">Basic classifier type JSON override</label>
         <textarea id="classifierTypesJson" placeholder='Optional JSON array. Example: [{"standard":"beakedWhale","speciesCode":11,"discard":false},{"standard":"porpoise","speciesCode":22,"whichSelections":127}]'></textarea>
+      </div>
+      <div class="wide">
+        <label for="sweepTypesJson">Sweep classifier type JSON (all PAMGuard settings)</label>
+        <textarea id="sweepTypesJson" style="min-height: 180px;" placeholder='Optional JSON array of complete Sweep sets. Example: [{"name":"Custom","speciesCode":3,"enabled":true,"discard":false,"channelChoice":"requireAll","restrictLength":true,"restrictedBins":128,"restrictedBinType":"clickCenter","enableLength":true,"lengthSmoothing":5,"lengthDb":6,"lengthMs":[0,1],"enableEnergyBands":false,"testEnergyBandHz":[0,0],"controlEnergyBand0Hz":[0,0],"controlEnergyBand1Hz":[0,0],"energyThreshold0Db":0,"energyThreshold1Db":0,"testAmplitude":false,"amplitudeRangeDb":[0,0],"enableFftFilter":false,"fftFilter":{"band":"highPass","highPassFreqHz":0,"lowPassFreqHz":0},"enablePeak":false,"enableWidth":false,"enableMean":false,"peakSearchRangeHz":[0,0],"peakRangeHz":[0,0],"peakWidthRangeHz":[0,0],"meanRangeHz":[0,0],"peakSmoothing":5,"peakWidthThresholdDb":6,"enableZeroCrossings":false,"zeroCrossingCount":[0,0],"enableSweep":false,"zeroCrossingSweepKhzPerMs":[0,0],"enableMinCrossCorrelation":false,"enablePeakCrossCorrelation":false,"minCorrelation":0,"correlationFactor":1,"enableBearingLimits":false,"excludeBearingLimits":false,"bearingLimitsRadians":[-3.141592653589793,3.141592653589793]}]'></textarea>
       </div>
     </div>
   </div>
@@ -1064,9 +1419,17 @@
 </dialog>
 
 <dialog class="cfg-dialog" id="dlgWhistlePeaks">
-  <div class="dlg-head"><h3>Whistle &amp; moan peaks</h3><button data-close="dlgWhistlePeaks">&#10005;</button></div>
+  <div class="dlg-head"><h3>Legacy whistle peak detector</h3><button data-close="dlgWhistlePeaks">&#10005;</button></div>
   <div class="dlg-body">
+    <p class="hint">This is PAMGuard's older BetterPeakDetector output. Whistles &amp; Moans contour detection does not depend on it.</p>
     <div class="grid">
+      <div>
+        <label for="whistlePeakEnabled">Legacy peak output</label>
+        <select id="whistlePeakEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
       <div>
         <label for="whistleThresholdDb">Threshold dB</label>
         <input id="whistleThresholdDb" type="number" value="6" step="0.1">
@@ -1112,6 +1475,42 @@
   <div class="dlg-head"><h3>Whistle &amp; moan contours</h3><button data-close="dlgWhistleContours">&#10005;</button></div>
   <div class="dlg-body">
     <div class="grid">
+      <div>
+        <label for="whistleRegionEnabled">Contour detector</label>
+        <select id="whistleRegionEnabled">
+          <option value="true" selected>Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="whistleChannelBitmap">Channel bitmap</label>
+        <input id="whistleChannelBitmap" type="number" placeholder="Default all FFT channels" min="1">
+      </div>
+      <div>
+        <label for="whistleGroupingType">Channel grouping</label>
+        <select id="whistleGroupingType">
+          <option value="all" selected>One group (PAMGuard default)</option>
+          <option value="singles">Each channel separately</option>
+          <option value="user">User groups</option>
+        </select>
+      </div>
+      <div>
+        <label for="whistleChannelGroups">User group per channel</label>
+        <input id="whistleChannelGroups" placeholder="Example: 0,0,1,1">
+      </div>
+      <div>
+        <label for="whistleMinFrequencyHz">Minimum frequency Hz</label>
+        <input id="whistleMinFrequencyHz" type="number" value="0" min="0" step="1">
+      </div>
+      <div>
+        <label for="whistleMaxFrequencyHz">Maximum frequency Hz</label>
+        <input id="whistleMaxFrequencyHz" type="number" value="0" min="0" step="1">
+        <span class="hint">0 uses Nyquist, matching PAMGuard.</span>
+      </div>
+      <div>
+        <label for="whistleBackgroundIntervalSeconds">Background interval seconds</label>
+        <input id="whistleBackgroundIntervalSeconds" type="number" value="10" min="0.001" step="0.1">
+      </div>
       <div>
         <label for="fragmentationMethod">Fragmentation</label>
         <select id="fragmentationMethod">
@@ -1159,12 +1558,216 @@
   <div class="dlg-foot"><button data-close="dlgWhistleContours">Close</button></div>
 </dialog>
 
+<dialog class="cfg-dialog" id="dlgWhistleNoise">
+  <div class="dlg-head"><h3>Whistle spectrogram noise reduction</h3><button data-close="dlgWhistleNoise">&#10005;</button></div>
+  <div class="dlg-body">
+    <p class="hint">PAMGuard runs these in order: median filter, average subtraction, Gaussian smoothing, then threshold.</p>
+    <div class="grid">
+      <div>
+        <label for="whistleNoiseMedian">Median filter</label>
+        <select id="whistleNoiseMedian">
+          <option value="true" selected>Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="whistleNoiseMedianLength">Median filter length</label>
+        <input id="whistleNoiseMedianLength" type="number" value="61" min="1">
+      </div>
+      <div>
+        <label for="whistleNoiseAverage">Average subtraction</label>
+        <select id="whistleNoiseAverage">
+          <option value="true" selected>Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="whistleNoiseUpdateConstant">Average update constant</label>
+        <input id="whistleNoiseUpdateConstant" type="number" value="0.02" min="0.000001" max="0.999999" step="0.001">
+      </div>
+      <div>
+        <label for="whistleNoiseKernel">Gaussian kernel smoothing</label>
+        <select id="whistleNoiseKernel">
+          <option value="true" selected>Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="whistleNoiseThreshold">Threshold</label>
+        <select id="whistleNoiseThreshold">
+          <option value="true" selected>Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="whistleNoiseThresholdDb">Threshold dB</label>
+        <input id="whistleNoiseThresholdDb" type="number" value="8" step="0.1">
+      </div>
+      <div>
+        <label for="whistleNoiseFinalOutput">Threshold output</label>
+        <select id="whistleNoiseFinalOutput">
+          <option value="2" selected>Raw input where detected</option>
+          <option value="1">Noise-reduced input</option>
+          <option value="0">Binary mask</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="dlg-foot"><button data-close="dlgWhistleNoise">Close</button></div>
+</dialog>
+
 <dialog class="cfg-dialog" id="dlgMonitoring">
   <div class="dlg-head"><h3>Noise &amp; monitoring modules</h3><button data-close="dlgMonitoring">&#10005;</button></div>
   <div class="dlg-body">
-    <label for="monitoringJson">Module configuration JSON (merged into the session config)</label>
-    <textarea id="monitoringJson" style="min-height: 160px;" placeholder='Optional JSON object merged into the session config. Example: {"noiseBand":{"enabled":true,"bandType":"thirdOctave","minFrequencyHz":50,"maxFrequencyHz":0,"outputIntervalSeconds":5},"ltsa":{"enabled":true,"intervalSeconds":10},"ishmael":{"enabled":true,"f0":200,"f1":2000,"thresh":2},"sgramCorr":{"enabled":true,"segments":[[0,500,0.2,1500]],"spread":80,"thresh":0.05},"matchFilt":{"enabled":true,"kernel":[0.1,-0.2,0.1],"thresh":0.5},"acquisition":{"voltsPeak2Peak":5}}'></textarea>
-    <p class="hint">Covers noiseBand, ltsa, ishmael, sgramCorr, matchFilt, matchedTemplate, and acquisition calibration. See Help &rarr; OpenAPI for every field.</p>
+    <nav class="click-settings-nav" aria-label="Noise and monitoring module sections">
+      <button type="button" class="active" data-monitoring-pane-target="fftNoise">FFT noise</button>
+      <button type="button" data-monitoring-pane-target="noiseBand">Filter-bank noise</button>
+      <button type="button" data-monitoring-pane-target="ltsa">LTSA</button>
+      <button type="button" data-monitoring-pane-target="ishmael">Ishmael energy</button>
+      <button type="button" data-monitoring-pane-target="sgramCorr">Sgram correlation</button>
+      <button type="button" data-monitoring-pane-target="matchFilt">Matched filter</button>
+      <button type="button" data-monitoring-pane-target="matchedTemplate">Matched template</button>
+      <button type="button" data-monitoring-pane-target="advanced">Advanced</button>
+    </nav>
+    <p class="hint click-pane-meta" id="monitoringPaneMeta"></p>
+    <div class="grid">
+      <div>
+        <label for="fftNoiseEnabled">FFT noise monitor</label>
+        <select id="fftNoiseEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="fftNoiseChannelBitmap">Channel bitmap</label>
+        <input id="fftNoiseChannelBitmap" type="number" value="1" min="1">
+      </div>
+      <div>
+        <label for="fftNoiseInterval">Measurement interval (s)</label>
+        <input id="fftNoiseInterval" type="number" value="60" min="1">
+      </div>
+      <div>
+        <label for="fftNoiseMeasures">Measures per interval</label>
+        <input id="fftNoiseMeasures" type="number" value="100" min="1">
+      </div>
+      <div>
+        <label for="fftNoiseUseAll">Use all FFT slices</label>
+        <select id="fftNoiseUseAll">
+          <option value="true" selected>Yes (PAMGuard default)</option>
+          <option value="false">Subsample n measures</option>
+        </select>
+      </div>
+      <div class="wide">
+        <label for="fftNoiseBandsJson">Frequency bands JSON</label>
+        <textarea id="fftNoiseBandsJson">[{"name":"Audible","lowFrequencyHz":100,"highFrequencyHz":20000}]</textarea>
+      </div>
+
+      <div>
+        <label for="noiseBandEnabled">Filter-bank noise monitor</label>
+        <select id="noiseBandEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="noiseBandType">Band family</label>
+        <select id="noiseBandType">
+          <option value="thirdOctave" selected>Third octave</option>
+          <option value="octave">Octave</option>
+          <option value="decidecade">Decidecade</option>
+          <option value="decade">Decade</option>
+          <option value="tenthOctave">Tenth octave</option>
+          <option value="twelfthOctave">Twelfth octave</option>
+        </select>
+      </div>
+      <div>
+        <label for="noiseBandMinFrequency">Minimum frequency (Hz)</label>
+        <input id="noiseBandMinFrequency" type="number" value="50" min="0.001" step="1">
+      </div>
+      <div>
+        <label for="noiseBandMaxFrequency">Maximum frequency (Hz)</label>
+        <input id="noiseBandMaxFrequency" type="number" value="0" min="0" step="1">
+        <span class="hint">0 uses the module default.</span>
+      </div>
+      <div>
+        <label for="noiseBandReferenceFrequency">Reference frequency (Hz)</label>
+        <input id="noiseBandReferenceFrequency" type="number" value="1000" min="0.001" step="1">
+      </div>
+      <div>
+        <label for="noiseBandIirOrder">IIR order</label>
+        <input id="noiseBandIirOrder" type="number" value="6" min="1">
+      </div>
+      <div>
+        <label for="noiseBandOutputInterval">Output interval (s)</label>
+        <input id="noiseBandOutputInterval" type="number" value="5" min="0.001" step="0.1">
+      </div>
+
+      <div>
+        <label for="ltsaEnabled">Long-term spectral average</label>
+        <select id="ltsaEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div>
+        <label for="ltsaInterval">Interval (s)</label>
+        <input id="ltsaInterval" type="number" value="10" min="1">
+      </div>
+
+      <div>
+        <label for="ishmaelEnabled">Ishmael energy-sum detector</label>
+        <select id="ishmaelEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div class="wide">
+        <label for="ishmaelJson">Energy-sum settings JSON</label>
+        <textarea id="ishmaelJson" placeholder='{"f0":200,"f1":2500,"ratioF0":1000,"ratioF1":2000,"useRatio":false,"useLog":false,"adaptiveThreshold":false,"longFilter":0.0001,"spikeDecay":100,"outputSmoothing":false,"shortFilter":0.1,"thresh":2,"minTimeSeconds":0.05,"maxTimeSeconds":99999,"refractoryTimeSeconds":0.2}'></textarea>
+      </div>
+
+      <div>
+        <label for="sgramCorrEnabled">Spectrogram correlation detector</label>
+        <select id="sgramCorrEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div class="wide">
+        <label for="sgramCorrJson">Correlation settings JSON</label>
+        <textarea id="sgramCorrJson" placeholder='{"segments":[[0,500,0.2,1500]],"spread":80,"useLog":false,"thresh":0.05,"minTimeSeconds":0.05,"maxTimeSeconds":99999,"refractoryTimeSeconds":0.2}'></textarea>
+      </div>
+
+      <div>
+        <label for="matchFiltEnabled">Ishmael matched filter</label>
+        <select id="matchFiltEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div class="wide">
+        <label for="matchFiltJson">Matched-filter settings JSON</label>
+        <textarea id="matchFiltJson" placeholder='{"kernel":[0,1,0,-1],"channels":[0],"thresh":0.5,"minTimeSeconds":0.002,"maxTimeSeconds":99999,"refractoryTimeSeconds":0.05}'></textarea>
+      </div>
+
+      <div>
+        <label for="matchedTemplateEnabled">Matched-template classifier</label>
+        <select id="matchedTemplateEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div class="wide">
+        <label for="matchedTemplateJson">Matched-template settings JSON</label>
+        <textarea id="matchedTemplateJson" placeholder='{"normalisationType":1,"peakSearch":true,"peakSmoothing":5,"lengthDb":6,"restrictedBins":256,"channelClassification":0,"classifiers":[{"thresholdToAccept":0.1,"match":{"name":"match","sampleRateHz":48000,"waveform":[0,1,0,-1]},"reject":{"name":"reject","sampleRateHz":48000,"waveform":[0,-1,0,1]}}]}'></textarea>
+      </div>
+
+      <div class="wide">
+        <label for="monitoringJson">Advanced top-level JSON</label>
+        <textarea id="monitoringJson" style="min-height: 160px;" placeholder='Optional object merged first into the session config. Use this for acquisition calibration or future modules, for example {"acquisition":{"voltsPeak2Peak":5,"preampGainDb":0}}.'></textarea>
+        <span class="hint">Structured module panes override matching keys in this object.</span>
+      </div>
+    </div>
   </div>
   <div class="dlg-foot"><button data-close="dlgMonitoring">Close</button></div>
 </dialog>
@@ -1293,6 +1896,7 @@
       const list = $("monitorList");
       const meta = $("monitorMeta");
       const noiseBands = Array.isArray(result.noiseBands) ? result.noiseBands : [];
+      const fftNoise = Array.isArray(result.fftNoise) ? result.fftNoise : [];
       const ltsa = Array.isArray(result.ltsa) ? result.ltsa : [];
       const detectionSources = [
         ["Energy sum", result.ishmaelDetections],
@@ -1313,6 +1917,20 @@
         levels.textContent = rms.length
           ? `rms dB: ${rms.map((v) => formatNumber(v, 1)).join(", ")}`
           : "no bands";
+        card.append(title, levels);
+        cards.push(card);
+      });
+
+      fftNoise.slice(-2).forEach((entry) => {
+        const card = document.createElement("div");
+        card.className = "contour-card";
+        const title = document.createElement("strong");
+        title.textContent = `FFT noise ch ${entry.channel} @ ${entry.endSample ?? "n/a"}`;
+        const levels = document.createElement("span");
+        const bands = Array.isArray(entry.bands) ? entry.bands : [];
+        levels.textContent = bands.map((band) =>
+          `${band.name || "band"}: mean ${formatNumber(band.meanDb, 1)}, median ${formatNumber(band.medianDb, 1)} dB`
+        ).join("; ") || "no bands";
         card.append(title, levels);
         cards.push(card);
       });
@@ -1365,15 +1983,18 @@
         meta.textContent = "No monitoring output in the latest result";
         return;
       }
-      meta.textContent = `${noiseBands.length} noise interval${noiseBands.length === 1 ? "" : "s"}, ${ltsa.length} LTSA, ` +
+      meta.textContent = `${noiseBands.length} filter-bank noise, ${fftNoise.length} FFT noise, ${ltsa.length} LTSA, ` +
         detectionSources.map(([label, d]) => `${Array.isArray(d) ? d.length : 0} ${label.toLowerCase()}`).join(", ") +
         `, ${mtResults.length} MT`;
       list.replaceChildren(...cards);
     }
 
-    function updateMetrics(result) {
+    function updateMetrics(result, ingestClickData = true) {
+      if (ingestClickData) {
+        ingestClicks(result);
+      }
       $("mFrames").textContent = result.spectrogramFrames ?? 0;
-      $("mClicks").textContent = Array.isArray(result.clicks) ? result.clicks.length : 0;
+      $("mClicks").textContent = totalClicksSeen;
       $("mFeatures").textContent = Array.isArray(result.clickFeatures) ? result.clickFeatures.length : 0;
       $("mClasses").textContent = Array.isArray(result.clickClassifications) ? result.clickClassifications.length : 0;
       $("mTrains").textContent = Array.isArray(result.clickTrains) ? result.clickTrains.length : 0;
@@ -1384,6 +2005,7 @@
       $("mPeaks").textContent = Array.isArray(result.whistlePeaks) ? result.whistlePeaks.length : 0;
       $("mRegions").textContent = Array.isArray(result.whistleRegions) ? result.whistleRegions.length : 0;
       $("mNoiseBands").textContent = Array.isArray(result.noiseBands) ? result.noiseBands.length : 0;
+      $("mFftNoise").textContent = Array.isArray(result.fftNoise) ? result.fftNoise.length : 0;
       $("mLtsa").textContent = Array.isArray(result.ltsa) ? result.ltsa.length : 0;
       $("mIshmael").textContent = Array.isArray(result.ishmaelDetections) ? result.ishmaelDetections.length : 0;
       $("mSgramCorr").textContent = Array.isArray(result.sgramCorrDetections) ? result.sgramCorrDetections.length : 0;
@@ -1391,7 +2013,6 @@
       $("mMatchedTemplate").textContent = Array.isArray(result.matchedTemplateClassifications)
         ? result.matchedTemplateClassifications.filter((entry) => entry.classified).length : 0;
       $("mContinuity").textContent = result.sampleContinuity || "n/a";
-      ingestClicks(result);
       renderMonitoring(result);
       renderContourSummaries(result.whistleRegions || []);
       // In live mode the scrolling waterfall owns the canvas; otherwise a
@@ -1550,12 +2171,66 @@
       };
     }
 
+    function clickIirFilter(prefix) {
+      let arbitrary = {};
+      const arbitraryText = $(`${prefix}Arbitrary`).value.trim();
+      if (arbitraryText) {
+        arbitrary = JSON.parse(arbitraryText);
+        if (!Array.isArray(arbitrary.frequenciesHz) ||
+            !Array.isArray(arbitrary.gainsDb)) {
+          throw new Error(`${prefix} arbitrary FIR JSON needs frequenciesHz and gainsDb arrays`);
+        }
+      }
+      return {
+        type: $(`${prefix}Type`).value,
+        band: $(`${prefix}Band`).value,
+        order: Number($(`${prefix}Order`).value),
+        highPassFreq: Number($(`${prefix}HighPassFreq`).value),
+        lowPassFreq: Number($(`${prefix}LowPassFreq`).value),
+        passBandRipple: Number($(`${prefix}Ripple`).value),
+        stopBandRipple: Number($(`${prefix}StopRipple`).value),
+        chebyGamma: Number($(`${prefix}ChebyGamma`).value),
+        arbitraryFrequenciesHz: arbitrary.frequenciesHz || [],
+        arbitraryGainsDb: arbitrary.gainsDb || []
+      };
+    }
+
     function sessionBody() {
       const channels = Number($("channels").value);
       const spacingM = Number($("hydrophoneSpacingM").value);
       const defaultChannelBitmap = Math.pow(2, channels) - 1;
       const clickChannelBitmap = $("clickChannelBitmap").value ? Number($("clickChannelBitmap").value) : defaultChannelBitmap;
       const clickTriggerBitmap = $("clickTriggerBitmap").value ? Number($("clickTriggerBitmap").value) : clickChannelBitmap;
+      const clickGroupingType = $("clickGroupingType").value;
+      let clickChannelGroups = clickGroupingType === "singles"
+        ? Array.from({ length: channels }, (_, channel) => channel)
+        : Array(channels).fill(0);
+      if (clickGroupingType === "user") {
+        clickChannelGroups = $("clickChannelGroups").value
+          .split(",")
+          .map((value) => Number(value.trim()));
+        if (clickChannelGroups.length !== channels ||
+            clickChannelGroups.some((value) => !Number.isInteger(value) || value < 0 || value > 31)) {
+          throw new Error(`User channel groups must contain ${channels} comma-separated integers from 0 to 31`);
+        }
+      }
+      const whistleChannelBitmap = $("whistleChannelBitmap").value
+        ? Number($("whistleChannelBitmap").value)
+        : defaultChannelBitmap;
+      const whistleGroupingType = $("whistleGroupingType").value;
+      let whistleChannelGroups = whistleGroupingType === "singles"
+        ? Array.from({ length: channels }, (_, channel) => channel)
+        : Array(channels).fill(0);
+      if (whistleGroupingType === "user") {
+        whistleChannelGroups = $("whistleChannelGroups").value
+          .split(",")
+          .map((value) => Number(value.trim()));
+        if (whistleChannelGroups.length !== channels ||
+            whistleChannelGroups.some((value) =>
+              !Number.isInteger(value) || value < 0 || value > 31)) {
+          throw new Error(`Whistle channel groups must contain ${channels} comma-separated integers from 0 to 31`);
+        }
+      }
       const clickFeatureFftLength = $("clickFeatureFftLength").value
         ? Number($("clickFeatureFftLength").value)
         : Number($("fftLength").value);
@@ -1578,8 +2253,102 @@
           throw new Error("Monitoring JSON must be an object (e.g. {\"noiseBand\":{...}})");
         }
       }
+      const monitoringModuleObject = (id, label) => {
+        const text = $(id).value.trim();
+        const value = text ? JSON.parse(text) : {};
+        if (!value || Array.isArray(value) || typeof value !== "object") {
+          throw new Error(`${label} settings JSON must be an object`);
+        }
+        return value;
+      };
+      const fftNoiseBands = JSON.parse($("fftNoiseBandsJson").value);
+      if (!Array.isArray(fftNoiseBands)) {
+        throw new Error("FFT noise frequency bands JSON must be an array");
+      }
+      const monitoringModules = {
+        fftNoise: {
+          enabled: $("fftNoiseEnabled").value === "true",
+          channelBitmap: Number($("fftNoiseChannelBitmap").value),
+          measurementIntervalSeconds: Number($("fftNoiseInterval").value),
+          nMeasures: Number($("fftNoiseMeasures").value),
+          useAll: $("fftNoiseUseAll").value === "true",
+          bands: fftNoiseBands
+        },
+        noiseBand: {
+          enabled: $("noiseBandEnabled").value === "true",
+          bandType: $("noiseBandType").value,
+          minFrequencyHz: Number($("noiseBandMinFrequency").value),
+          maxFrequencyHz: Number($("noiseBandMaxFrequency").value),
+          referenceFrequencyHz: Number($("noiseBandReferenceFrequency").value),
+          iirOrder: Number($("noiseBandIirOrder").value),
+          outputIntervalSeconds: Number($("noiseBandOutputInterval").value)
+        },
+        ltsa: {
+          enabled: $("ltsaEnabled").value === "true",
+          intervalSeconds: Number($("ltsaInterval").value)
+        },
+        ishmael: {
+          ...monitoringModuleObject("ishmaelJson", "Ishmael energy"),
+          enabled: $("ishmaelEnabled").value === "true"
+        },
+        sgramCorr: {
+          ...monitoringModuleObject("sgramCorrJson", "Spectrogram correlation"),
+          enabled: $("sgramCorrEnabled").value === "true"
+        },
+        matchFilt: {
+          ...monitoringModuleObject("matchFiltJson", "Matched filter"),
+          enabled: $("matchFiltEnabled").value === "true"
+        },
+        matchedTemplate: {
+          ...monitoringModuleObject("matchedTemplateJson", "Matched template"),
+          enabled: $("matchedTemplateEnabled").value === "true"
+        }
+      };
+      const sweepPreset = $("sweepPreset").value;
+      const sweepStandardTypes = sweepPreset === "both"
+        ? ["beakedWhale", "porpoise"]
+        : sweepPreset === "none" ? [] : [sweepPreset];
+      let sweepTypes = [];
+      const sweepTypesJson = $("sweepTypesJson").value.trim();
+      if (sweepTypesJson) {
+        sweepTypes = JSON.parse(sweepTypesJson);
+        if (!Array.isArray(sweepTypes)) {
+          throw new Error("Sweep classifier type JSON must be an array");
+        }
+      }
+      const classifierAlgorithm = $("classifierAlgorithm").value;
+      const delayTypeSettingsJson = $("delayTypeSettingsJson").value.trim();
+      let delayTypeSettings = [];
+      if (delayTypeSettingsJson) {
+        delayTypeSettings = JSON.parse(delayTypeSettingsJson);
+        if (!Array.isArray(delayTypeSettings)) {
+          throw new Error("Per-click-type delay overrides must be a JSON array");
+        }
+      }
+      const angleVetoesJson = $("angleVetoesJson").value.trim();
+      let angleVetoes = [];
+      if (angleVetoesJson) {
+        angleVetoes = JSON.parse(angleVetoesJson);
+        if (!Array.isArray(angleVetoes)) {
+          throw new Error("Detector angle vetoes must be a JSON array");
+        }
+      }
+      const trainMhtJson = $("trainMhtJson").value.trim();
+      const trainMht = trainMhtJson ? JSON.parse(trainMhtJson) : {};
+      if (!trainMht || Array.isArray(trainMht) || typeof trainMht !== "object") {
+        throw new Error("MHT settings JSON must be an object");
+      }
+      const trainClassifierJson = $("trainClassifierJson").value.trim();
+      const trainClassifier = trainClassifierJson
+        ? JSON.parse(trainClassifierJson)
+        : {};
+      if (!trainClassifier || Array.isArray(trainClassifier) ||
+          typeof trainClassifier !== "object") {
+        throw new Error("Train classifier settings JSON must be an object");
+      }
       return {
         ...monitoringExtras,
+        ...monitoringModules,
         sessionId: $("sessionId").value,
         sourceId: "browser-synthetic",
         ownerId: $("ownerId").value.trim() || undefined,
@@ -1594,18 +2363,51 @@
         },
         array: arrayGeometry(channels, spacingM),
         click: {
-          enabled: true,
-          localisation: true,
+          enabled: $("clickEnabled").value === "true",
+          localisation: $("clickLocalisationEnabled").value === "true",
           channelBitmap: clickChannelBitmap,
           triggerBitmap: clickTriggerBitmap,
+          groupingType: clickGroupingType,
+          channelGroups: clickChannelGroups,
           thresholdDb: Number($("clickThresholdDb").value),
           minTriggerChannels: Number($("minTriggerChannels").value),
           shortFilter: Number($("shortFilter").value),
           longFilter: Number($("longFilter").value),
+          longFilter2: Number($("longFilter2").value),
           preSample: Number($("preSample").value),
           postSample: Number($("postSample").value),
           minSep: Number($("minSep").value),
           maxLength: Number($("maxLength").value),
+          angleVetoes,
+          preFilter: clickIirFilter("preFilter"),
+          triggerFilter: clickIirFilter("triggerFilter"),
+          delayMeasurement: {
+            filterBearings: $("delayFilterBearings").value === "true",
+            filter: {
+              band: $("delayFilterBand").value,
+              highPassFreq: Number($("delayHighPassFreq").value),
+              lowPassFreq: Number($("delayLowPassFreq").value)
+            },
+            envelopeBearings: $("delayEnvelopeBearings").value === "true",
+            useLeadingEdge: $("delayUseLeadingEdge").value === "true",
+            upSample: Number($("delayUpSample").value),
+            useRestrictedBins: $("delayUseRestrictedBins").value === "true",
+            restrictedBins: Number($("delayRestrictedBins").value),
+            typeSettings: delayTypeSettings
+          },
+          publishTriggerFunction: $("publishTriggerFunction").value === "true",
+          noise: {
+            sampleWaveforms: $("sampleClickNoise").value === "true",
+            waveformIntervalSeconds: Number($("clickNoiseIntervalSeconds").value),
+            storeBackground: $("storeClickBackground").value === "true",
+            backgroundIntervalMilliseconds:
+              Number($("clickBackgroundIntervalSeconds").value) * 1000
+          },
+          echo: {
+            runOnline: $("echoRunOnline").value === "true",
+            discardEchoes: $("echoDiscard").value === "true",
+            maxIntervalSeconds: Number($("echoMaxIntervalSeconds").value)
+          },
           featuresEnabled: $("featuresEnabled").value === "true",
           features: {
             fftLength: clickFeatureFftLength,
@@ -1618,19 +2420,40 @@
             peakFrequencySearchHz: [Number($("peakSearchLow").value), Number($("peakSearchHigh").value)],
             meanFrequencyRangeHz: [Number($("meanRangeLow").value), Number($("meanRangeHigh").value)]
           },
-          basicClassifier: {
-            enabled: standardTypes.length > 0,
-            standardTypes
+          classifier: {
+            type: classifierAlgorithm,
+            runOnline: $("classifyOnline").value === "true",
+            discardUnclassifiedClicks: $("discardUnclassifiedClicks").value === "true",
+            basic: {
+              enabled: classifierAlgorithm === "basic" && standardTypes.length > 0,
+              standardTypes
+            },
+            sweep: {
+              enabled: classifierAlgorithm === "sweep" &&
+                (sweepStandardTypes.length > 0 || sweepTypes.length > 0),
+              checkAllClassifiers: $("sweepCheckAll").value === "true",
+              standardTypes: sweepStandardTypes,
+              types: sweepTypes
+            }
           },
           train: {
             enabled: $("trainEnabled").value === "true",
+            algorithm: $("trainAlgorithm").value,
             maxIciSeconds: Number($("maxIciSeconds").value),
-            minClicks: Number($("trainMinClicks").value)
+            minClicks: Number($("trainMinClicks").value),
+            mht: trainMht,
+            classifier: {
+              ...trainClassifier,
+              enabled: $("trainClassifierEnabled").value === "true"
+            }
           }
         },
         whistle: {
-          enabled: true,
-          regionEnabled: true,
+          enabled: $("whistlePeakEnabled").value === "true",
+          regionEnabled: $("whistleRegionEnabled").value === "true",
+          channelBitmap: whistleChannelBitmap,
+          groupingType: whistleGroupingType,
+          channelGroups: whistleChannelGroups,
           detectionThresholdDb: Number($("whistleThresholdDb").value),
           peakTimeConstant0: Number($("peakTimeConstant0").value),
           peakTimeConstant1: Number($("peakTimeConstant1").value),
@@ -1640,13 +2463,27 @@
           searchBin0: Number($("searchBin0").value),
           searchBin1: Number($("searchBin1").value),
           warmupSlices: Number($("warmupSlices").value),
+          minFrequencyHz: Number($("whistleMinFrequencyHz").value),
+          maxFrequencyHz: Number($("whistleMaxFrequencyHz").value),
+          backgroundIntervalSeconds:
+            Number($("whistleBackgroundIntervalSeconds").value),
           minPixels: Number($("whistleMinPixels").value),
           minLength: Number($("whistleMinLength").value),
           connectType: Number($("connectType").value),
           keepShapeStubs: $("keepShapeStubs").value === "true",
           fragmentationMethod: Number($("fragmentationMethod").value),
           maxCrossLength: Number($("maxCrossLength").value),
-          rejectFirstQuarterSecond: $("rejectFirstQuarterSecond").value === "true"
+          rejectFirstQuarterSecond: $("rejectFirstQuarterSecond").value === "true",
+          noise: {
+            medianFilter: $("whistleNoiseMedian").value === "true",
+            medianFilterLength: Number($("whistleNoiseMedianLength").value),
+            averageSubtraction: $("whistleNoiseAverage").value === "true",
+            updateConstant: Number($("whistleNoiseUpdateConstant").value),
+            kernelSmoothing: $("whistleNoiseKernel").value === "true",
+            threshold: $("whistleNoiseThreshold").value === "true",
+            thresholdDb: Number($("whistleNoiseThresholdDb").value),
+            finalOutput: Number($("whistleNoiseFinalOutput").value)
+          }
         }
       };
     }
@@ -1916,6 +2753,10 @@
       columnRateHz: 0,
       displayedCols: 0,
       delaySeconds: 1.0,
+      firstFrameStartSample: null,
+      lastFrameStartSample: null,
+      hopSamples: 0,
+      lastClickPaint: 0,
       lastRafTime: 0,
       rafId: null
     };
@@ -1936,6 +2777,10 @@
       live.totalSlices = 0;
       live.displayedCols = 0;
       live.columnRateHz = 0;
+      live.firstFrameStartSample = null;
+      live.lastFrameStartSample = null;
+      live.hopSamples = 0;
+      live.lastClickPaint = 0;
     }
 
     function appendLiveFrames(frames) {
@@ -1946,6 +2791,22 @@
       }
       const bins = slices[0].magnitudeSquared.length;
       ensureLiveCanvas(bins);
+      if (live.firstFrameStartSample === null) {
+        live.firstFrameStartSample = slices[0].startSample;
+      }
+      if (slices.length >= 2) {
+        const hop = slices[1].startSample - slices[0].startSample;
+        if (hop > 0) {
+          live.hopSamples = hop;
+        }
+      }
+      else if (live.lastFrameStartSample !== null) {
+        const hop = slices[0].startSample - live.lastFrameStartSample;
+        if (hop > 0) {
+          live.hopSamples = hop;
+        }
+      }
+      live.lastFrameStartSample = slices[slices.length - 1].startSample;
 
       // Auto-gain: track the loudest bin with a slow decay so a single
       // burst does not permanently compress the display.
@@ -1981,11 +2842,8 @@
 
       // Measure the column rate from the data itself (startSample spacing),
       // so the glide speed is exact whatever the session's FFT hop is.
-      if (slices.length >= 2 && live.sampleRateHz > 0) {
-        const hop = slices[1].startSample - slices[0].startSample;
-        if (hop > 0) {
-          live.columnRateHz = live.sampleRateHz / hop;
-        }
+      if (live.hopSamples > 0 && live.sampleRateHz > 0) {
+        live.columnRateHz = live.sampleRateHz / live.hopSamples;
       }
       if (live.displayedCols === 0 && live.columnRateHz > 0) {
         // Start the cursor a full delay behind the live edge.
@@ -2050,6 +2908,13 @@
         }
       }
       drawLiveView();
+      // Keep the sparse click plots on the same delayed, continuously
+      // advancing cursor as the spectrogram. Twenty paints per second is
+      // smooth without redrawing three canvases at display refresh rate.
+      if (now - live.lastClickPaint >= 50) {
+        live.lastClickPaint = now;
+        drawClickScatters();
+      }
       live.rafId = requestAnimationFrame(liveRafLoop);
     }
 
@@ -2100,7 +2965,10 @@
       const now = performance.now();
       if (now - lastMetricsPaint > 500) {
         lastMetricsPaint = now;
-        updateMetrics(result);
+        // This result was already ingested above. Re-ingesting a multi-click
+        // batch here used to look like a backwards sample jump and clear the
+        // entire client-side click history.
+        updateMetrics(result, false);
       }
     }
 
@@ -2238,6 +3106,7 @@
           body: JSON.stringify(startBody)
         });
         meta.textContent = `Capturing '${useUrl ? url : device}' into session '${sessionId}' (pid ${result.pid})`;
+        resetClickDisplay();
         startLiveStream(sessionId);
         log(result);
       } catch (error) {
@@ -2309,6 +3178,7 @@
         nextStartSample = 0;
         nextArchiveCursor = null;
         $("eventNextButton").disabled = true;
+        resetClickDisplay();
         log(result);
       } catch (error) {
         log(String(error));
@@ -2359,6 +3229,8 @@
         nextStartSample = 0;
         nextArchiveCursor = null;
         $("eventNextButton").disabled = true;
+        stopLiveView();
+        resetClickDisplay();
         log(result);
       } catch (error) {
         log(String(error));
@@ -2409,19 +3281,182 @@
       button.addEventListener("click", () => $(button.dataset.close).close());
     });
 
+    const clickPaneFields = {
+      detection: [
+        "clickEnabled", "clickThresholdDb", "shortFilter", "longFilter",
+        "longFilter2", "preSample", "postSample", "minSep", "maxLength"
+      ],
+      filters: [
+        "preFilterType", "preFilterBand", "preFilterOrder",
+        "preFilterHighPassFreq", "preFilterLowPassFreq", "preFilterRipple",
+        "preFilterStopRipple", "preFilterChebyGamma", "preFilterArbitrary",
+        "triggerFilterType", "triggerFilterBand", "triggerFilterOrder",
+        "triggerFilterHighPassFreq", "triggerFilterLowPassFreq",
+        "triggerFilterRipple", "triggerFilterStopRipple",
+        "triggerFilterChebyGamma", "triggerFilterArbitrary"
+      ],
+      channels: [
+        "minTriggerChannels", "clickChannelBitmap", "clickTriggerBitmap",
+        "clickGroupingType", "clickChannelGroups"
+      ],
+      classification: [
+        "classifierAlgorithm", "classifierPreset", "classifyOnline",
+        "discardUnclassifiedClicks", "sweepPreset", "sweepCheckAll",
+        "classifierTypesJson", "sweepTypesJson"
+      ],
+      echo: [
+        "echoRunOnline", "echoDiscard", "echoMaxIntervalSeconds",
+        "angleVetoesJson"
+      ],
+      delay: [
+        "clickLocalisationEnabled", "delayFilterBearings", "delayFilterBand",
+        "delayHighPassFreq", "delayLowPassFreq", "delayEnvelopeBearings",
+        "delayUseLeadingEdge", "delayUpSample", "delayUseRestrictedBins",
+        "delayRestrictedBins", "delayTypeSettingsJson"
+      ],
+      noise: [
+        "sampleClickNoise", "clickNoiseIntervalSeconds",
+        "storeClickBackground", "clickBackgroundIntervalSeconds",
+        "publishTriggerFunction", "featuresEnabled"
+      ],
+      trains: [
+        "trainEnabled", "trainAlgorithm", "maxIciSeconds", "trainMinClicks",
+        "trainClassifierEnabled", "trainMhtJson", "trainClassifierJson"
+      ]
+    };
+    const clickPaneDescriptions = {
+      detection: "Trigger threshold, smoothing constants, waveform capture, separation, and maximum click length.",
+      filters: "PAMGuard pre-filter and trigger-filter methods. Unsupported methods are rejected by the service rather than silently substituted.",
+      channels: "Detection and trigger bitmaps, minimum coincident triggers, and PAMGuard channel grouping.",
+      classification: "Basic or Sweep classification, online/discard policy, presets, and full custom type JSON.",
+      echo: "Online echo rejection and the ordered list of inclusive absolute-angle veto ranges.",
+      delay: "Correlation preprocessing, envelope/leading-edge modes, upsampling, restricted samples, and per-type overrides.",
+      noise: "Click-noise waveforms, trigger-background sampling, trigger-function output, and feature extraction.",
+      trains: "ICI or MHT formation, minimum train rules, and the complete MHT/classifier JSON settings surface."
+    };
+
+    function activateClickPane(name) {
+      const dialog = $("dlgClick");
+      if (!dialog || !clickPaneFields[name]) {
+        return;
+      }
+      dialog.querySelectorAll(".grid > div").forEach((field) => {
+        field.hidden = true;
+      });
+      dialog.querySelectorAll(".grid > h4").forEach((heading) => {
+        heading.hidden = true;
+      });
+      clickPaneFields[name].forEach((id) => {
+        const input = $(id);
+        const field = input && input.closest(".grid > div");
+        if (field) {
+          field.hidden = false;
+        }
+      });
+      dialog.querySelectorAll("[data-click-pane-target]").forEach((button) => {
+        const selected = button.dataset.clickPaneTarget === name;
+        button.classList.toggle("active", selected);
+        button.setAttribute("aria-selected", selected ? "true" : "false");
+      });
+      $("clickPaneMeta").textContent = clickPaneDescriptions[name];
+    }
+
+    document.querySelectorAll("[data-click-pane-target]").forEach((button) => {
+      button.addEventListener("click", () => activateClickPane(button.dataset.clickPaneTarget));
+    });
+    activateClickPane("detection");
+
+    const monitoringPaneFields = {
+      fftNoise: [
+        "fftNoiseEnabled", "fftNoiseChannelBitmap", "fftNoiseInterval",
+        "fftNoiseMeasures", "fftNoiseUseAll", "fftNoiseBandsJson"
+      ],
+      noiseBand: [
+        "noiseBandEnabled", "noiseBandType", "noiseBandMinFrequency",
+        "noiseBandMaxFrequency", "noiseBandReferenceFrequency",
+        "noiseBandIirOrder", "noiseBandOutputInterval"
+      ],
+      ltsa: ["ltsaEnabled", "ltsaInterval"],
+      ishmael: ["ishmaelEnabled", "ishmaelJson"],
+      sgramCorr: ["sgramCorrEnabled", "sgramCorrJson"],
+      matchFilt: ["matchFiltEnabled", "matchFiltJson"],
+      matchedTemplate: ["matchedTemplateEnabled", "matchedTemplateJson"],
+      advanced: ["monitoringJson"]
+    };
+    const monitoringPaneDescriptions = {
+      fftNoise: "PAMGuard noiseMonitor FFT-band interval statistics, channel selection, cadence, and user frequency bands.",
+      noiseBand: "PAMGuard noiseBandMonitor fractional-octave IIR filter bank and output cadence.",
+      ltsa: "Long-term spectral averages formed from the configured FFT stream.",
+      ishmael: "Ishmael energy-sum detector. The complete ported settings object is accepted as JSON.",
+      sgramCorr: "Ishmael spectrogram-correlation segments, spread, threshold, and timing settings.",
+      matchFilt: "Ishmael time-domain matched-filter kernel, channel selection, threshold, and timing settings.",
+      matchedTemplate: "PAMGuard matched-template click classifier settings and match/reject waveform pairs.",
+      advanced: "Top-level expert overrides and acquisition calibration. Structured panes take precedence for their module keys."
+    };
+
+    function activateMonitoringPane(name) {
+      const dialog = $("dlgMonitoring");
+      if (!dialog || !monitoringPaneFields[name]) {
+        return;
+      }
+      dialog.querySelectorAll(".grid > div").forEach((field) => {
+        field.hidden = true;
+      });
+      monitoringPaneFields[name].forEach((id) => {
+        const input = $(id);
+        const field = input && input.closest(".grid > div");
+        if (field) {
+          field.hidden = false;
+        }
+      });
+      dialog.querySelectorAll("[data-monitoring-pane-target]").forEach((button) => {
+        const selected = button.dataset.monitoringPaneTarget === name;
+        button.classList.toggle("active", selected);
+        button.setAttribute("aria-selected", selected ? "true" : "false");
+      });
+      $("monitoringPaneMeta").textContent = monitoringPaneDescriptions[name];
+    }
+
+    document.querySelectorAll("[data-monitoring-pane-target]").forEach((button) => {
+      button.addEventListener("click", () =>
+        activateMonitoringPane(button.dataset.monitoringPaneTarget));
+    });
+    activateMonitoringPane("fftNoise");
+
     // ================= click detector display ==============================
     // PAMGuard's click display family: bearing-time, amplitude-time, ICI,
     // and a waveform + Wigner-Ville panel for a selected click. Clicks are
     // accumulated client-side from live results (deduplicated by start
-    // sample, reset when a session restarts from zero).
+    // sample and reset only by an explicit new session/capture action).
 
     const clickStore = [];
-    let lastClickStartSample = -1;
+    const seenClickStarts = new Set();
+    let totalClicksSeen = 0;
     let selectedClick = null;
     const scatterHitMaps = {};
 
     function clickSampleRate() {
       return live.sampleRateHz || Number($("sampleRate").value) || 48000;
+    }
+
+    function resetClickDisplay() {
+      clickStore.length = 0;
+      seenClickStarts.clear();
+      totalClicksSeen = 0;
+      selectedClick = null;
+      drawSelectedClick();
+      drawClickScatters();
+      $("mClicks").textContent = "0";
+    }
+
+    function clickDisplayCursorSeconds() {
+      const sr = clickSampleRate();
+      if (liveViewActive && live.canvas && live.firstFrameStartSample !== null &&
+          live.hopSamples > 0 && sr > 0) {
+        const displayedIndex = Math.max(0, live.displayedCols - 1);
+        return (live.firstFrameStartSample + displayedIndex * live.hopSamples) / sr;
+      }
+      return clickStore.length ? clickStore[clickStore.length - 1].t : 0;
     }
 
     function ingestClicks(result) {
@@ -2450,24 +3485,18 @@
         if (typeof click.startSample !== "number") {
           return;
         }
-        if (click.startSample < lastClickStartSample) {
-          // Session restarted from an earlier sample: begin a fresh store.
-          clickStore.length = 0;
-          lastClickStartSample = -1;
-          selectedClick = null;
+        if (seenClickStarts.has(click.startSample)) {
+          return; // duplicate delivery via stream/poll/manual result paths
         }
-        if (click.startSample <= lastClickStartSample) {
-          return; // duplicate delivery via feed + metrics paths
-        }
-        lastClickStartSample = click.startSample;
-        const prev = clickStore.length ? clickStore[clickStore.length - 1] : null;
+        seenClickStarts.add(click.startSample);
+        totalClicksSeen++;
         const entry = {
           startSample: click.startSample,
           t: click.startSample / sr,
           durationSamples: click.durationSamples,
           amplitudeDb: click.signalExcessDb,
           bearingDeg: bearingByIndex.has(index) ? bearingByIndex.get(index) : null,
-          iciSeconds: prev ? (click.startSample - prev.startSample) / sr : null,
+          iciSeconds: null,
           waveform: Array.isArray(click.waveform) && click.waveform.length ? click.waveform[0] : null,
           echo: click.echo === true
         };
@@ -2478,15 +3507,24 @@
         }
         added = true;
       });
+      if (added) {
+        clickStore.sort((left, right) => left.startSample - right.startSample);
+        for (let index = 0; index < clickStore.length; index++) {
+          clickStore[index].iciSeconds = index > 0
+            ? (clickStore[index].startSample - clickStore[index - 1].startSample) / sr
+            : null;
+        }
+      }
       while (clickStore.length > 2000) {
-        clickStore.shift();
+        const removed = clickStore.shift();
+        seenClickStarts.delete(removed.startSample);
       }
       if (added) {
         drawClickScatters();
       }
     }
 
-    function drawScatter(canvasId, points, yOf, yMin, yMax, options = {}) {
+    function drawScatter(canvasId, points, cursorTime, yOf, yMin, yMax, options = {}) {
       const canvas = $(canvasId);
       const ctx = canvas.getContext("2d");
       resizeCanvas(canvas);
@@ -2511,7 +3549,6 @@
         ctx.fillText(options.format ? options.format(value) : value.toFixed(0), 6, Math.max(12, y - 4));
       }
       const windowSeconds = Number($("clickWindowSeconds").value);
-      const newest = points.length ? points[points.length - 1].t : 0;
       const hits = [];
       for (const entry of points) {
         const raw = yOf(entry);
@@ -2522,8 +3559,8 @@
         if (value < yMin || value > yMax) {
           continue;
         }
-        const x = w * (1 - (newest - entry.t) / windowSeconds);
-        if (x < 0) {
+        const x = w * (1 - (cursorTime - entry.t) / windowSeconds);
+        if (x < 0 || x > w) {
           continue;
         }
         const y = h - ((value - yMin) / (yMax - yMin)) * h;
@@ -2543,23 +3580,27 @@
 
     function drawClickScatters() {
       const windowSeconds = Number($("clickWindowSeconds").value);
-      const newest = clickStore.length ? clickStore[clickStore.length - 1].t : 0;
-      const visible = clickStore.filter((entry) => newest - entry.t <= windowSeconds);
+      const cursorTime = clickDisplayCursorSeconds();
+      const visible = clickStore.filter((entry) =>
+        entry.t <= cursorTime && cursorTime - entry.t <= windowSeconds);
 
-      drawScatter("btCanvas", visible, (e) => e.bearingDeg, 0, 180,
+      drawScatter("btCanvas", visible, cursorTime, (e) => e.bearingDeg, 0, 180,
         { format: (v) => `${v.toFixed(0)}°` });
-      drawScatter("ampCanvas", visible, (e) => e.amplitudeDb, 0,
+      drawScatter("ampCanvas", visible, cursorTime, (e) => e.amplitudeDb, 0,
         Math.max(24, ...visible.map((e) => e.amplitudeDb + 3)),
         { format: (v) => `${v.toFixed(0)} dB` });
-      drawScatter("iciCanvas", visible, (e) => e.iciSeconds, -3, Math.log10(3),
+      drawScatter("iciCanvas", visible, cursorTime, (e) => e.iciSeconds, -3, Math.log10(3),
         { logY: true, format: (v) => v >= 1 ? `${v.toFixed(1)} s` : `${(v * 1000).toFixed(0)} ms` });
 
       const withBearing = visible.filter((e) => e.bearingDeg !== null).length;
       $("btMeta").textContent = withBearing
         ? `${withBearing} clicks with bearings`
         : "needs ≥2 channels with localisation";
-      $("ampMeta").textContent = visible.length ? `${visible.length} clicks` : "no clicks yet";
-      $("clickStoreMeta").textContent = `${clickStore.length} clicks stored`;
+      $("ampMeta").textContent = visible.length
+        ? `${visible.length} clicks in the ${windowSeconds} s window`
+        : "no clicks in the current window";
+      $("clickStoreMeta").textContent =
+        `${totalClicksSeen} detected · ${clickStore.length} retained`;
     }
 
     ["btCanvas", "ampCanvas", "iciCanvas"].forEach((canvasId) => {
@@ -2695,6 +3736,15 @@
 
     function drawSelectedClick() {
       if (!selectedClick) {
+        $("clickSelMeta").textContent = "click a point to select";
+        $("wignerMeta").textContent = "";
+        for (const canvasId of ["clickWaveCanvas", "wignerCanvas"]) {
+          const canvas = $(canvasId);
+          const ctx = canvas.getContext("2d");
+          resizeCanvas(canvas);
+          ctx.fillStyle = "#0a1310";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
         return;
       }
       const sr = clickSampleRate();
@@ -2805,6 +3855,12 @@
       document.querySelectorAll(".tab-page").forEach((page) => {
         page.classList.toggle("active", page.id === "tab-" + name);
       });
+      if (name === "clicks") {
+        requestAnimationFrame(() => {
+          drawClickScatters();
+          drawSelectedClick();
+        });
+      }
     }
     document.querySelectorAll(".tabbar button").forEach((b) => {
       b.addEventListener("click", () => activateTab(b.dataset.tab));

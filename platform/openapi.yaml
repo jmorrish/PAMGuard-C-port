@@ -1158,6 +1158,171 @@ components:
                   type: array
                   items:
                     type: integer
+        fftNoise:
+          type: object
+          description: PAMGuard noiseMonitor FFT-band interval statistics.
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            channelBitmap:
+              type: integer
+              minimum: 1
+              default: 1
+            measurementIntervalSeconds:
+              type: integer
+              minimum: 1
+              default: 60
+            nMeasures:
+              type: integer
+              minimum: 1
+              default: 100
+            useAll:
+              type: boolean
+              default: true
+            bands:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/FftNoiseBand"
+        acquisition:
+          type: object
+          description: Acquisition calibration used by calibrated noise outputs.
+          properties:
+            voltsPeak2Peak:
+              type: number
+              exclusiveMinimum: 0
+            preampGainDb:
+              type: number
+        noiseBand:
+          type: object
+          description: PAMGuard noiseBandMonitor fractional-octave IIR filter bank.
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            bandType:
+              type: string
+              enum: [octave, thirdOctave, decidecade, decade, tenthOctave, twelfthOctave]
+              default: thirdOctave
+            minFrequencyHz:
+              type: number
+              exclusiveMinimum: 0
+            maxFrequencyHz:
+              type: number
+              minimum: 0
+              description: Zero keeps the module default upper frequency.
+            referenceFrequencyHz:
+              type: number
+              exclusiveMinimum: 0
+              default: 1000
+            iirOrder:
+              type: integer
+              minimum: 1
+              default: 6
+            outputIntervalSeconds:
+              type: number
+              exclusiveMinimum: 0
+              default: 5
+        ltsa:
+          type: object
+          description: PAMGuard long-term spectral average over the configured FFT stream.
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            intervalSeconds:
+              type: integer
+              minimum: 1
+              default: 10
+        ishmael:
+          $ref: "#/components/schemas/IshmaelDetectorConfig"
+        sgramCorr:
+          type: object
+          description: PAMGuard Ishmael spectrogram-correlation detector.
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            segments:
+              type: array
+              minItems: 1
+              items:
+                type: array
+                minItems: 4
+                maxItems: 4
+                items:
+                  type: number
+              description: Each segment is [startSeconds, startHz, endSeconds, endHz].
+            spread:
+              type: number
+              exclusiveMinimum: 0
+            useLog:
+              type: boolean
+            thresh:
+              type: number
+            minTimeSeconds:
+              type: number
+              minimum: 0
+            maxTimeSeconds:
+              type: number
+              minimum: 0
+            refractoryTimeSeconds:
+              type: number
+              minimum: 0
+        matchFilt:
+          type: object
+          description: PAMGuard Ishmael time-domain matched-filter detector.
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            kernel:
+              type: array
+              minItems: 1
+              items:
+                type: number
+            channels:
+              type: array
+              items:
+                type: integer
+                minimum: 0
+            thresh:
+              type: number
+            minTimeSeconds:
+              type: number
+              minimum: 0
+            maxTimeSeconds:
+              type: number
+              minimum: 0
+            refractoryTimeSeconds:
+              type: number
+              minimum: 0
+        matchedTemplate:
+          type: object
+          description: PAMGuard matched-template click classifier.
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            normalisationType:
+              type: integer
+            peakSearch:
+              type: boolean
+            peakSmoothing:
+              type: integer
+            lengthDb:
+              type: number
+            restrictedBins:
+              type: integer
+              minimum: 1
+            channelClassification:
+              type: integer
+            classifiers:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/MatchedTemplatePair"
         click:
           type: object
           properties:
@@ -1165,6 +1330,15 @@ components:
               type: boolean
             localisation:
               type: boolean
+            angleVetoes:
+              type: array
+              description: >
+                PAMGuard Detector Vetoes. A click is rejected when the absolute
+                legacy first-pair bearing is inclusively inside any range. The
+                channels bitmap is preserved but PAMGuard currently ignores it.
+                The default is an empty array.
+              items:
+                $ref: "#/components/schemas/ClickAngleVeto"
             thresholdDb:
               type: number
             channelBitmap:
@@ -1211,8 +1385,82 @@ components:
                   type: array
                   items:
                     type: number
+            classifier:
+              type: object
+              description: PAMGuard click classifier selection and settings.
+              properties:
+                type:
+                  type: string
+                  enum: [basic, sweep, none]
+                  default: sweep
+                runOnline:
+                  type: boolean
+                  default: false
+                discardUnclassifiedClicks:
+                  type: boolean
+                  default: false
+                basic:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    standardTypes:
+                      type: array
+                      items:
+                        oneOf:
+                          - type: string
+                            enum: [beakedWhale, porpoise]
+                          - type: object
+                            properties:
+                              standard:
+                                type: string
+                                enum: [beakedWhale, porpoise]
+                              speciesCode:
+                                type: integer
+                              discard:
+                                type: boolean
+                              whichSelections:
+                                type: integer
+                    types:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                sweep:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    checkAllClassifiers:
+                      type: boolean
+                      default: false
+                    standardTypes:
+                      type: array
+                      items:
+                        oneOf:
+                          - type: string
+                            enum: [beakedWhale, porpoise]
+                          - type: object
+                            properties:
+                              standard:
+                                type: string
+                                enum: [beakedWhale, porpoise]
+                              speciesCode:
+                                type: integer
+                              name:
+                                type: string
+                              discard:
+                                type: boolean
+                              enabled:
+                                type: boolean
+                    types:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/SweepClickType"
             basicClassifier:
               type: object
+              deprecated: true
+              description: Deprecated documentation alias; use click.classifier.basic.
               properties:
                 enabled:
                   type: boolean
@@ -1288,6 +1536,36 @@ components:
                         minStdIdi:
                           type: number
                         maxStdIdi:
+                          type: number
+                        speciesFlag:
+                          type: integer
+                    bearing:
+                      type: object
+                      description: Bearing-domain train classifier using the same mean, median, and standard-deviation derivative gates as PAMGuard.
+                      properties:
+                        enabled:
+                          type: boolean
+                        bearingLimMinDegrees:
+                          type: number
+                        bearingLimMaxDegrees:
+                          type: number
+                        useMean:
+                          type: boolean
+                        minMeanBearingDerivativeDegrees:
+                          type: number
+                        maxMeanBearingDerivativeDegrees:
+                          type: number
+                        useMedian:
+                          type: boolean
+                        minMedianBearingDerivativeDegrees:
+                          type: number
+                        maxMedianBearingDerivativeDegrees:
+                          type: number
+                        useStd:
+                          type: boolean
+                        minStdBearingDerivativeDegrees:
+                          type: number
+                        maxStdBearingDerivativeDegrees:
                           type: number
                         speciesFlag:
                           type: integer
@@ -1377,8 +1655,26 @@ components:
           properties:
             enabled:
               type: boolean
+              description: Enables the legacy whistleDetector BetterPeakDetector output; Whistles & Moans contours do not depend on it.
             regionEnabled:
               type: boolean
+              description: Enables the whistlesAndMoans connected-region detector.
+            channelBitmap:
+              type: integer
+              minimum: 1
+              description: Selected FFT source channels for Whistles & Moans.
+            groupingType:
+              type: string
+              enum: [all, singles, user]
+              default: all
+              description: PAMGuard GroupedSourceParameters grouping mode.
+            channelGroups:
+              type: array
+              description: Group number by audio channel; required for user grouping.
+              items:
+                type: integer
+                minimum: 0
+                maximum: 31
             detectionThresholdDb:
               type: number
             peakTimeConstant0:
@@ -1397,6 +1693,17 @@ components:
               type: integer
             warmupSlices:
               type: integer
+            minFrequencyHz:
+              type: number
+              description: WhistlesAndMoans lower search frequency, converted to a bin with Java's truncation and clamp rules.
+            maxFrequencyHz:
+              type: number
+              description: WhistlesAndMoans upper search frequency; values <= 0 or >= Nyquist select Nyquist, matching Java's getter.
+            backgroundIntervalSeconds:
+              type: number
+              exclusiveMinimum: 0
+              default: 10
+              description: Interval between Whistles & Moans raw-FFT background spectrum snapshots.
             keepShapeStubs:
               type: boolean
             minPixels:
@@ -1411,12 +1718,37 @@ components:
               type: integer
             rejectFirstQuarterSecond:
               type: boolean
+            noise:
+              type: object
+              description: SpectrogramNoiseProcess methods, executed in PAMGuard's fixed order before contour connection.
+              properties:
+                medianFilter:
+                  type: boolean
+                medianFilterLength:
+                  type: integer
+                  minimum: 1
+                averageSubtraction:
+                  type: boolean
+                updateConstant:
+                  type: number
+                  exclusiveMinimum: 0
+                  exclusiveMaximum: 1
+                kernelSmoothing:
+                  type: boolean
+                threshold:
+                  type: boolean
+                thresholdDb:
+                  type: number
+                finalOutput:
+                  type: integer
+                  enum: [0, 1, 2]
     EngineProcessResult:
       type: object
       properties:
         schemaVersion:
           type: integer
-          description: Current engine result schema version. Version 4 adds geometry constraint metadata for click localisation delay outputs. Version 5 adds PAMGuard pair bearing outputs (pairBearingRadians/pairBearingDegrees/pairBearingErrorRadians) on geometry-constrained click localisation delays and array error/wobble configuration fields. Version 6 adds an lsqBearing object on click localisations for sessions with four or more hydrophones and positive spacingErrorM. Version 7 adds pair bearing aggregation (pairBearingCount/meanPairBearingRadians/meanPairBearingDegrees) to click train localisation pair delays. Version 8 makes pair bearing angles follow PAMGuard array-axis reference directions. Version 9 adds whistleDelays entries carrying per-region cross-channel contour delays with geometry and pair bearing metadata. Version 10 adds mhtClickTrains output when click.train.algorithm is "mht" (the ported PAMGuard MHT stack as an alternative click train former). Version 11 adds a region-level bearing object on whistleDelays entries, mirroring PAMGuard WhistleBearingInfo. Version 12 measures every channel pair for whistle regions (as PAMGuard WhistleDelays does) and adds an lsqBearing object for groups with four or more fully-geometry hydrophones. Version 13 adds a classification object on mhtClickTrains when click.train.classifier is enabled. Version 14 adds a clickTrainClassifications array for the ICI tracker's trains. Version 15 adds a whistleGroups array associating contours across channels. Version 16 adds arrayShape and bearingLocaliser to click localisations and whistle delays, and selects the bearing localiser by array shape rather than channel count, so a line sub-array of four or more hydrophones no longer produces lsqBearing. Version 17 adds a gridBearing object carrying the ported PAMGuard MLGridBearingLocaliser2 result for sub-arrays whose shape selects it, with per-hydrophone coordinate error configuration; lsqBearing is unchanged. Version 18 adds worldVectors to gridBearing, giving the same direction as unit vectors in the hydrophone array's own xyz frame. Version 19 extends that to pair bearings (pairBearingWorldVectors, two cone vectors) and lsqBearing (worldVectors, one vector, not array-axis rotated because LSQ already solves in the hydrophone frame). Version 20 adds earlierRegionCount to whistleGroups and makes firstStartSample the group's true first sample rather than the current chunk's earliest member. Version 21 adds earthWorldVectors (and pairBearingEarthWorldVectors) when array.orientation is declared: the same direction vectors rotated into the earth frame by the array's heading/pitch/roll. Version 22 adds an echo boolean to clicks when click.echo.runOnline is set (ported PAMGuard SimpleEchoDetector); with discardEchoes, echoes are removed from all outputs. The whistle.noise config object (ported PAMGuard spectrogram noise reduction: medianFilter, averageSubtraction, kernelSmoothing, threshold) feeds the whistle detection path; no result fields change. The click.preFilter and click.triggerFilter objects (ported PAMGuard Butterworth/Chebyshev IIR filters, FastIIRFilter runtime) reproduce ClickParameters' pre/trigger filtering: {type: none|butterworth|chebyshev, band: highpass|lowpass|bandpass|bandstop, order, highPassFreq, lowPassFreq, passBandRipple}; for band filters highPassFreq is the LOWER edge, PAMGuard-style. Engine default is no filtering; PAMGuard's own defaults are HP4@500Hz (pre) and HP2@2kHz (trigger). Version 23 adds a noiseBands result array (ported PAMGuard noiseBandMonitor: octave-family ANSI band rms/peak levels per channel per interval) configured via the noiseBand object, with acquisition {voltsPeak2Peak, preampGainDb} and hydrophone sensitivityDb/preampGainDb supplying rawAmplitude2dB calibration to dB re 1 uPa. Version 24 adds an ltsa result array (ported PAMGuard LTSA: per channel per wall-clock-aligned averaging period, RMS spectral magnitude per FFT bin, uncalibrated exactly as the reference stores it) configured via the ltsa object {enabled, intervalSeconds}. Version 25 adds an ishmaelDetections result array (ported PAMGuard IshmaelDetector energy sum + peak picker: band energy threshold crossings with duration/refractory gating, peak value and time) configured via the ishmael object. Version 26 adds a matchedTemplateClassifications result array (ported PAMGuard matched-template click classifier: per click, best match/reject correlation per template pair and an aggregated classified flag) configured via the matchedTemplate object with inline template waveforms; template rates above the session rate are rejected at session creation. Version 27 adds a sgramCorrDetections result array (ported PAMGuard Ishmael spectrogram correlation: time-frequency segment kernel dot products through the shared Ishmael peak picker) configured via the sgramCorr object. Version 28 adds a matchFiltDetections result array (ported PAMGuard Ishmael matched filter: overlap-save normalised cross-correlation of raw audio against an inline kernel waveform through the shared Ishmael peak picker) configured via the matchFilt object. Separately from the result schema, the service exposes opt-in live sound-card capture endpoints (GET /capture/devices, POST /capture/start, POST /capture/stop, GET /capture/status; PAMGUARD_CAPTURE_ENABLED=1, Windows/DirectShow) that spawn the ingest bridge server-side; GET /health reports captureEnabled. GET /sessions/{id}/results/stream pushes each result body as NDJSON the moment it is produced (blank-line heartbeats), for live viewers. Version 8 makes pair bearing angles follow PAMGuard's array-axis reference direction (values flip for axis-aligned pairs; field shapes unchanged).
+          description: >-
+            Current engine result schema version is 32. Version 32 adds whistleBackgrounds, the Whistles & Moans SpecBackgroundDataUnit-equivalent raw-FFT background spectrum snapshots. See docs/74-result-schema-version.md for the complete version history.
         sessionId:
           type: string
         inputFrames:
@@ -1443,10 +1775,174 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SpectrogramFrame"
+        fftNoise:
+          type: array
+          items:
+            $ref: "#/components/schemas/FftNoiseResult"
+        noiseBands:
+          type: array
+          items:
+            type: object
+            properties:
+              channel:
+                type: integer
+              endSample:
+                type: integer
+                format: int64
+              timeMs:
+                type: integer
+                format: int64
+              rmsDb:
+                type: array
+                items:
+                  type: number
+              peakDb:
+                type: array
+                items:
+                  type: number
+        ltsa:
+          type: array
+          items:
+            type: object
+            properties:
+              channel:
+                type: integer
+              startTimeMs:
+                type: integer
+                format: int64
+              endTimeMs:
+                type: integer
+                format: int64
+              nFft:
+                type: integer
+              startSample:
+                type: integer
+                format: int64
+              durationSamples:
+                type: integer
+                format: int64
+              magnitude:
+                type: array
+                items:
+                  type: number
+        ishmaelDetections:
+          type: array
+          items:
+            $ref: "#/components/schemas/IshmaelDetection"
+        sgramCorrDetections:
+          type: array
+          items:
+            $ref: "#/components/schemas/IshmaelDetection"
+        matchFiltDetections:
+          type: array
+          items:
+            $ref: "#/components/schemas/IshmaelDetection"
+        matchedTemplateClassifications:
+          type: array
+          items:
+            type: object
+            properties:
+              clickIndex:
+                type: integer
+              clickStartSample:
+                type: integer
+                format: int64
+              classified:
+                type: boolean
+              results:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    threshold:
+                      type: number
+                    matchCorr:
+                      type: number
+                    rejectCorr:
+                      type: number
+                      description: Omitted when the configured reject template yields a non-finite correlation.
         clicks:
           type: array
           items:
             $ref: "#/components/schemas/ClickDetection"
+        clickNoiseSamples:
+          type: array
+          description: Periodic click-detector waveform noise samples when click.noise.sampleWaveforms is enabled.
+          items:
+            type: object
+            properties:
+              channelBitmap:
+                type: integer
+              startSample:
+                type: integer
+                format: int64
+              durationSamples:
+                type: integer
+              timeMs:
+                type: integer
+                format: int64
+              channels:
+                type: array
+                items:
+                  type: integer
+              waveformChannels:
+                type: integer
+              waveformSamples:
+                type: integer
+              waveform:
+                type: array
+                description: Present when click waveforms were requested for this process call.
+                items:
+                  type: array
+                  items:
+                    type: number
+        clickTriggerBackground:
+          type: array
+          description: Periodic long-trigger-filter background snapshots.
+          items:
+            type: object
+            properties:
+              channelBitmap:
+                type: integer
+              timeMs:
+                type: integer
+                format: int64
+              channels:
+                type: array
+                items:
+                  type: integer
+              values:
+                type: array
+                items:
+                  type: number
+        clickTriggerFunction:
+          type: array
+          description: Per-sample trigger signal excess, emitted only when click.publishTriggerFunction is enabled.
+          items:
+            type: object
+            properties:
+              channelBitmap:
+                type: integer
+              startSample:
+                type: integer
+                format: int64
+              timeMs:
+                type: integer
+                format: int64
+              channels:
+                type: array
+                items:
+                  type: integer
+              signalExcessDb:
+                type: array
+                items:
+                  type: array
+                  items:
+                    type: number
+              longFilterValues:
+                type: array
+                items:
+                  type: number
         clickFeatures:
           type: array
           items:
@@ -1459,6 +1955,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ClickTrain"
+        clickTrainClassifications:
+          type: array
+          description: Classifier-chain outcomes for max-ICI click trains.
+          items:
+            type: object
+            properties:
+              trainId:
+                type: integer
+              junkTrain:
+                type: boolean
+              speciesId:
+                type: integer
+              classifierSpeciesIds:
+                type: array
+                items:
+                  type: integer
+              templateCorrelation:
+                type: number
+                description: Omitted when no non-zero spectrum-template correlation was produced.
         clickLocalisations:
           type: array
           items:
@@ -2101,6 +2616,10 @@ components:
                       type: number
                     maxHz:
                       type: number
+        whistleBackgrounds:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhistleBackgroundResult"
     EngineSessionStatus:
       allOf:
         - $ref: "#/components/schemas/EngineSessionCreate"
@@ -2144,6 +2663,46 @@ components:
                 lastTimeMs:
                   type: integer
                   format: int64
+                spectrogramFrames:
+                  type: integer
+                  format: int64
+                clicks:
+                  type: integer
+                  format: int64
+                clickFeatures:
+                  type: integer
+                  format: int64
+                clickClassifications:
+                  type: integer
+                  format: int64
+                clickTrains:
+                  type: integer
+                  format: int64
+                clickTrainLocalisations:
+                  type: integer
+                  format: int64
+                clickTrainBearings:
+                  type: integer
+                  format: int64
+                clickLocalisations:
+                  type: integer
+                  format: int64
+                clickBearings:
+                  type: integer
+                  format: int64
+                whistlePeaks:
+                  type: integer
+                  format: int64
+                whistleRegions:
+                  type: integer
+                  format: int64
+                processCalls:
+                  type: integer
+                  format: int64
+                totalProcessMs:
+                  type: number
+                lastProcessMs:
+                  type: number
             status:
               type: object
               description: Compact operational status for dashboards and orchestration.
@@ -2219,6 +2778,190 @@ components:
                 type: number
               imag:
                 type: number
+    IshmaelDetectorConfig:
+      type: object
+      description: PAMGuard Ishmael energy-sum detector.
+      properties:
+        enabled:
+          type: boolean
+          default: false
+        f0:
+          type: number
+        f1:
+          type: number
+          description: Must be greater than f0.
+        ratioF0:
+          type: number
+        ratioF1:
+          type: number
+        useRatio:
+          type: boolean
+        useLog:
+          type: boolean
+        adaptiveThreshold:
+          type: boolean
+        longFilter:
+          type: number
+        spikeDecay:
+          type: number
+        outputSmoothing:
+          type: boolean
+        shortFilter:
+          type: number
+        thresh:
+          type: number
+        minTimeSeconds:
+          type: number
+          minimum: 0
+        maxTimeSeconds:
+          type: number
+          minimum: 0
+        refractoryTimeSeconds:
+          type: number
+          minimum: 0
+    MatchTemplateWaveform:
+      type: object
+      required: [sampleRateHz, waveform]
+      properties:
+        name:
+          type: string
+        sampleRateHz:
+          type: number
+          exclusiveMinimum: 0
+        waveform:
+          type: array
+          minItems: 1
+          items:
+            type: number
+    MatchedTemplatePair:
+      type: object
+      required: [match]
+      properties:
+        thresholdToAccept:
+          type: number
+        match:
+          $ref: "#/components/schemas/MatchTemplateWaveform"
+        reject:
+          $ref: "#/components/schemas/MatchTemplateWaveform"
+    IshmaelDetection:
+      type: object
+      properties:
+        channel:
+          type: integer
+        startSample:
+          type: integer
+          format: int64
+        durationSamples:
+          type: integer
+          format: int64
+        peakTimeSample:
+          type: integer
+          format: int64
+        peakHeight:
+          type: number
+        startTimeMs:
+          type: integer
+          format: int64
+        lowFreqHz:
+          type: number
+        highFreqHz:
+          type: number
+    FftNoiseBand:
+      type: object
+      required: [lowFrequencyHz, highFrequencyHz]
+      properties:
+        name:
+          type: string
+        lowFrequencyHz:
+          type: number
+          minimum: 0
+        highFrequencyHz:
+          type: number
+          exclusiveMinimum: 0
+
+    FftNoiseBandResult:
+      allOf:
+        - $ref: "#/components/schemas/FftNoiseBand"
+        - type: object
+          properties:
+            meanDb:
+              type: number
+            medianDb:
+              type: number
+            low95Db:
+              type: number
+            high95Db:
+              type: number
+            minDb:
+              type: number
+            maxDb:
+              type: number
+
+    FftNoiseResult:
+      type: object
+      properties:
+        channel:
+          type: integer
+        endSample:
+          type: integer
+          format: int64
+        timeMs:
+          type: integer
+          format: int64
+        nMeasurements:
+          type: integer
+        bands:
+          type: array
+          items:
+            $ref: "#/components/schemas/FftNoiseBandResult"
+
+    WhistleBackgroundResult:
+      type: object
+      description: >-
+        WhistleToneConnectProcess background data from the raw FFT stream
+        before spectrogram noise reduction. Spectrum values are
+        sqrt(backgroundMagnitudeSquared * 2 / fftLength), matching
+        SpecBackgroundDataUnit storage.
+      properties:
+        channel:
+          type: integer
+        channelBitmap:
+          type: integer
+        timeMs:
+          type: integer
+          format: int64
+        startSample:
+          type: integer
+          format: int64
+        durationMs:
+          type: number
+        loBin:
+          type: integer
+        hiBin:
+          type: integer
+        spectrum:
+          type: array
+          items:
+            type: number
+
+    ClickAngleVeto:
+      type: object
+      properties:
+        channels:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Serialised PAMGuard channel bitmap; currently unused by the Java runtime.
+        startAngleDegrees:
+          type: number
+          default: 0
+        endAngleDegrees:
+          type: number
+          default: 0
+      required:
+        - startAngleDegrees
+        - endAngleDegrees
+
     ClickDetection:
       type: object
       properties:
@@ -2284,6 +3027,82 @@ components:
           type: integer
         discard:
           type: boolean
+        classifiersPassed:
+          type: array
+          description: Present for Sweep checkAllClassifiers; every matching species code in set order.
+          items:
+            type: integer
+    SweepClickType:
+      type: object
+      description: Field-for-field runtime settings for PAMGuard SweepClassifierSet. Ranges are inclusive two-element arrays.
+      properties:
+        name: {type: string}
+        speciesCode: {type: integer}
+        discard: {type: boolean}
+        enabled: {type: boolean, default: true}
+        channelChoice:
+          oneOf:
+            - type: string
+              enum: [requireAll, requireOne, useMeans]
+            - type: integer
+              minimum: 0
+              maximum: 2
+        restrictLength: {type: boolean, default: true}
+        restrictedBins: {type: integer, default: 128}
+        restrictedBinType:
+          oneOf:
+            - type: string
+              enum: [clickCenter, clickStart]
+            - type: integer
+              minimum: 0
+              maximum: 1
+        enableLength: {type: boolean, default: true}
+        lengthSmoothing: {type: integer, default: 5}
+        lengthDb: {type: number, default: 6}
+        lengthMs: {$ref: "#/components/schemas/NumberRange"}
+        enableEnergyBands: {type: boolean, default: false}
+        testEnergyBandHz: {$ref: "#/components/schemas/NumberRange"}
+        controlEnergyBand0Hz: {$ref: "#/components/schemas/NumberRange"}
+        controlEnergyBand1Hz: {$ref: "#/components/schemas/NumberRange"}
+        energyThreshold0Db: {type: number}
+        energyThreshold1Db: {type: number}
+        testAmplitude: {type: boolean, default: false}
+        amplitudeRangeDb: {$ref: "#/components/schemas/NumberRange"}
+        enableFftFilter: {type: boolean, default: false}
+        fftFilter:
+          type: object
+          properties:
+            band:
+              type: string
+              enum: [highPass, lowPass, bandPass, bandStop]
+            lowPassFreqHz: {type: number}
+            highPassFreqHz: {type: number}
+        enablePeak: {type: boolean, default: false}
+        enableWidth: {type: boolean, default: false}
+        enableMean: {type: boolean, default: false}
+        peakSearchRangeHz: {$ref: "#/components/schemas/NumberRange"}
+        peakRangeHz: {$ref: "#/components/schemas/NumberRange"}
+        peakWidthRangeHz: {$ref: "#/components/schemas/NumberRange"}
+        meanRangeHz: {$ref: "#/components/schemas/NumberRange"}
+        peakSmoothing: {type: integer, default: 5}
+        peakWidthThresholdDb: {type: number, default: 6}
+        enableZeroCrossings: {type: boolean, default: false}
+        zeroCrossingCount: {$ref: "#/components/schemas/NumberRange"}
+        enableSweep: {type: boolean, default: false}
+        zeroCrossingSweepKhzPerMs: {$ref: "#/components/schemas/NumberRange"}
+        enableMinCrossCorrelation: {type: boolean, default: false}
+        enablePeakCrossCorrelation: {type: boolean, default: false}
+        minCorrelation: {type: number, default: 0}
+        correlationFactor: {type: number, default: 1}
+        enableBearingLimits: {type: boolean, default: false}
+        excludeBearingLimits: {type: boolean, default: false}
+        bearingLimitsRadians: {$ref: "#/components/schemas/NumberRange"}
+    NumberRange:
+      type: array
+      minItems: 2
+      maxItems: 2
+      items:
+        type: number
     ClickTrain:
       type: object
       properties:

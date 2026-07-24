@@ -21,12 +21,17 @@
   },
   "channelCount": 2,
   "click": {
-    "basicClassifier": {
-      "enabled": true,
-      "standardTypes": [
-        "beakedWhale",
-        "porpoise"
-      ]
+    "classifier": {
+      "type": "basic",
+      "runOnline": true,
+      "discardUnclassifiedClicks": false,
+      "basic": {
+        "enabled": true,
+        "standardTypes": [
+          "beakedWhale",
+          "porpoise"
+        ]
+      }
     },
     "channelBitmap": 3,
     "enabled": true,
@@ -56,6 +61,7 @@
     "featuresEnabled": true,
     "localisation": true,
     "longFilter": 1e-05,
+    "longFilter2": 1e-06,
     "maxLength": 1024,
     "minSep": 100,
     "minTriggerChannels": 1,
@@ -63,6 +69,22 @@
     "preSample": 40,
     "shortFilter": 0.1,
     "thresholdDb": 10.0,
+    "preFilter": {
+      "type": "butterworth",
+      "band": "highpass",
+      "order": 4,
+      "highPassFreq": 500.0,
+      "lowPassFreq": 20000.0,
+      "passBandRipple": 2.0
+    },
+    "triggerFilter": {
+      "type": "butterworth",
+      "band": "highpass",
+      "order": 2,
+      "highPassFreq": 2000.0,
+      "lowPassFreq": 20000.0,
+      "passBandRipple": 2.0
+    },
     "train": {
       "enabled": true,
       "maxIciSeconds": 0.5,
@@ -85,23 +107,33 @@
   "sourceId": "wav-click-test",
   "tenantId": "test-project",
   "whistle": {
+    "channelBitmap": 3,
+    "channelGroups": [
+      0,
+      0
+    ],
     "connectType": 8,
-    "detectionThresholdDb": 6.0,
-    "enabled": true,
+    "enabled": false,
     "fragmentationMethod": 3,
     "keepShapeStubs": false,
+    "maxFrequencyHz": 0.0,
+    "backgroundIntervalSeconds": 10.0,
     "maxCrossLength": 5,
-    "maxPeakWidth": 20,
-    "maxPercentOverThreshold": 50.0,
     "minLength": 10,
-    "minPeakWidth": 3,
+    "minFrequencyHz": 0.0,
     "minPixels": 20,
-    "peakTimeConstant0": 10.0,
-    "peakTimeConstant1": 100.0,
+    "noise": {
+      "averageSubtraction": true,
+      "finalOutput": 2,
+      "kernelSmoothing": true,
+      "medianFilter": true,
+      "medianFilterLength": 61,
+      "threshold": true,
+      "thresholdDb": 8.0,
+      "updateConstant": 0.02
+    },
     "regionEnabled": true,
-    "rejectFirstQuarterSecond": true,
-    "searchBin0": 1,
-    "searchBin1": 0,
-    "warmupSlices": 100
+    "groupingType": "all",
+    "rejectFirstQuarterSecond": true
   }
 }

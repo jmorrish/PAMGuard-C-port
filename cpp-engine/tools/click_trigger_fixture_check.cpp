@@ -1,6 +1,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -45,6 +46,9 @@ double synthetic_sample(const std::string& scenario, std::size_t channel, std::s
     }
     if (scenario == "single-channel-transient") {
         return background + transient_sample(sample, 80, 86, channel == 0 ? 1.0 : 0.0);
+    }
+    if (scenario == "boundary-transient") {
+        return background + transient_sample(sample, 124, 132, channel == 0 ? 1.0 : 0.82);
     }
     throw std::invalid_argument("unknown scenario: " + scenario);
 }
@@ -106,11 +110,12 @@ std::vector<ClickRow> to_rows(const std::vector<pamguard::detectors::ClickDetect
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2 && argc != 15 && argc != 16) {
+    if (argc != 2 && argc != 15 && argc != 16 && argc != 17) {
         std::cerr << "Usage: click_trigger_fixture_check <fixture.csv>"
                   << " [<channelBitmap> <triggerBitmap> <thresholdDb> <shortFilter> <longFilter>"
                   << " <preSample> <postSample> <minSep> <maxLength> <minTriggerChannels>"
-                  << " <sampleRate> <chunkLength> <scenario> [expectedDetections]]\n";
+                  << " <sampleRate> <totalLength> <scenario> [expectedDetections]"
+                  << " [processChunkLength]]\n";
         return 2;
     }
 
@@ -128,9 +133,15 @@ int main(int argc, char** argv) {
         config.min_sep = 8;
         config.max_length = 128;
         config.min_trigger_channels = 1;
+        // These trigger fixtures deliberately enter at ClickDetector's
+        // trigger-data stage; make that fixture boundary explicit now that
+        // production defaults include PAMGuard's two IIR filters.
+        config.pre_filter.type = pamguard::dsp::IirFilterType::None;
+        config.trigger_filter.type = pamguard::dsp::IirFilterType::None;
 
         std::uint32_t sample_rate = 48000;
         std::size_t chunk_length = 256;
+        std::size_t process_chunk_length = chunk_length;
         std::string scenario = "single-transient";
         std::int64_t expected_detections = -1;
         if (argc >= 15) {
@@ -147,10 +158,20 @@ int main(int argc, char** argv) {
             config.min_trigger_channels = static_cast<std::size_t>(std::stoull(argv[arg++]));
             sample_rate = static_cast<std::uint32_t>(std::stoul(argv[arg++]));
             chunk_length = static_cast<std::size_t>(std::stoull(argv[arg++]));
+            process_chunk_length = chunk_length;
             scenario = argv[arg++];
-            if (argc == 16) {
-                expected_detections = std::stoll(argv[arg]);
+            if (argc >= 16) {
+                expected_detections = std::stoll(argv[arg++]);
             }
+            if (argc == 17) {
+                process_chunk_length =
+                    static_cast<std::size_t>(std::stoull(argv[arg]));
+            }
+        }
+        if (process_chunk_length == 0 ||
+            process_chunk_length > chunk_length) {
+            throw std::invalid_argument(
+                "processChunkLength must be in 1..totalLength");
         }
 
         if (expected_detections >= 0 && fixture.size() != static_cast<std::size_t>(expected_detections)) {
@@ -261,7 +282,39 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        const auto detections = engine.process(chunk);
+        const auto process_stream =
+            [&](pamguard::detectors::ClickDetectorEngine& stream_engine) {
+                std::vector<pamguard::detectors::ClickDetectionResult> all;
+                for (std::size_t offset = 0; offset < chunk_length;
+                     offset += process_chunk_length) {
+                    const auto frames =
+                        std::min(process_chunk_length, chunk_length - offset);
+                    pamguard::core::AudioChunk part;
+                    part.start_sample = offset;
+                    part.time_unix_ms = static_cast<std::int64_t>(
+                        static_cast<double>(offset) * 1000.0 /
+                        static_cast<double>(sample_rate));
+                    part.sample_rate_hz = sample_rate;
+                    part.channel_count = chunk.channel_count;
+                    part.interleaved_pcm.resize(frames * part.channel_count);
+                    for (std::size_t sample = 0; sample < frames; ++sample) {
+                        for (std::size_t channel = 0;
+                             channel < part.channel_count; ++channel) {
+                            part.interleaved_pcm[
+                                sample * part.channel_count + channel] =
+                                synthetic_sample(scenario, channel,
+                                                 offset + sample);
+                        }
+                    }
+                    auto batch = stream_engine.process(part);
+                    all.insert(all.end(),
+                               std::make_move_iterator(batch.begin()),
+                               std::make_move_iterator(batch.end()));
+                }
+                return all;
+            };
+
+        const auto detections = process_stream(engine);
         if (!detections.empty()) {
             const auto& first = detections.front();
             if (first.channels.size() != 2 || first.waveform.size() != 2 ||
@@ -274,7 +327,7 @@ int main(int argc, char** argv) {
 
         const auto actual = to_rows(detections);
         engine.reset();
-        const auto after_reset = to_rows(engine.process(chunk));
+        const auto after_reset = to_rows(process_stream(engine));
         if (after_reset.size() != actual.size()) {
             std::cerr << "Click detector reset changed detection count\n";
             return 1;

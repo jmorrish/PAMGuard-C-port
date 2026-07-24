@@ -40,4 +40,4 @@ The band *tables* have real-class fixture parity; the *runtime chain* is validat
 
 The interval is sample-counted; PAMGuard's is wall-clock (`timeMillis`), so a PAMGuard run over gappy audio bins measurements slightly differently than a replayed engine run. Deterministic replay was judged worth that divergence, and this is where it is recorded.
 
-`noiseMonitor` (the FFT-based noise statistics module with mean/median/percentile aggregation) is a separate PAMGuard module and is not part of this port.
+`noiseMonitor` (the FFT-based noise statistics module with mean/median/percentile aggregation) is a separate PAMGuard module, now ported in `docs/230`.

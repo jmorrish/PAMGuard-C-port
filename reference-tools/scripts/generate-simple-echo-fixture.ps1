@@ -1,18 +1,20 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PortRoot = Resolve-Path (Join-Path $ScriptDir "..\..")
-$RepoRoot = Resolve-Path (Join-Path $PortRoot "..")
-$Maven = Join-Path $PortRoot "reference-tools\scripts\mvn-local.ps1"
 $Output = Join-Path $PortRoot "cpp-engine\tests\fixtures\click\simple-echo.csv"
-$JavaHome = if ($env:JAVA_HOME) { $env:JAVA_HOME } else { "C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot" }
-$Java = Join-Path $JavaHome "bin\java.exe"
-$Javac = Join-Path $JavaHome "bin\javac.exe"
 $JavaSrc = Join-Path $PortRoot "reference-tools\java\src\org\pamguard\port\reference\SimpleEchoFixtureExporter.java"
 $BuildDir = Join-Path $PortRoot "reference-tools\java\build"
-$TargetClasses = Join-Path $RepoRoot "target\classes"
-$ClasspathFile = Join-Path $PortRoot "reference-tools\java\pamguard-classpath.txt"
-$DependencyClasspath = if (Test-Path $ClasspathFile) { (Get-Content $ClasspathFile -Raw).Trim() } else { "" }
+$OracleEnvironment = & (Join-Path $ScriptDir "resolve-pamguard-oracle.ps1") -PortRoot $PortRoot -RequireClasses -RequireClasspath
+$RepoRoot = $OracleEnvironment.JavaRepo
+$JavaHome = $OracleEnvironment.JavaHome
+$Java = $OracleEnvironment.Java
+$Javac = $OracleEnvironment.Javac
+$Maven = Join-Path $ScriptDir "mvn-local.ps1"
+$Mvn = $OracleEnvironment.Maven
+$TargetClasses = $OracleEnvironment.TargetClasses
+$ClasspathFile = $OracleEnvironment.ClasspathFile
+$DependencyClasspath = $OracleEnvironment.DependencyClasspath
 if (-not (Test-Path $Java)) {
     throw "java.exe was not found at $Java"
 }

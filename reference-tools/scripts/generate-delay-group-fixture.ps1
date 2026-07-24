@@ -2,18 +2,20 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PortRoot = Resolve-Path (Join-Path $ScriptDir "..\..")
-$RepoRoot = Resolve-Path (Join-Path $PortRoot "..")
-$Maven = Join-Path $PortRoot "reference-tools\scripts\mvn-local.ps1"
-$Output = Join-Path $PortRoot "cpp-engine\tests\fixtures\localisation\delay-group-3ch-basic.csv"
-$JavaHome = if ($env:JAVA_HOME) { $env:JAVA_HOME } else { "C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot" }
-$Java = Join-Path $JavaHome "bin\java.exe"
-$Javac = Join-Path $JavaHome "bin\javac.exe"
+$OutputDir = Join-Path $PortRoot "cpp-engine\tests\fixtures\localisation"
 $JavaSrc = Join-Path $PortRoot "reference-tools\java\src\org\pamguard\port\reference\DelayGroupFixtureExporter.java"
 $BuildDir = Join-Path $PortRoot "reference-tools\java\build"
-$TargetClasses = Join-Path $RepoRoot "target\classes"
-$ClasspathFile = Join-Path $PortRoot "reference-tools\java\pamguard-classpath.txt"
-$Mvn = Join-Path $RepoRoot "tools\apache-maven-3.9.16\bin\mvn.cmd"
 
+$OracleEnvironment = & (Join-Path $ScriptDir "resolve-pamguard-oracle.ps1") -PortRoot $PortRoot -RequireClasses -RequireClasspath
+$RepoRoot = $OracleEnvironment.JavaRepo
+$JavaHome = $OracleEnvironment.JavaHome
+$Java = $OracleEnvironment.Java
+$Javac = $OracleEnvironment.Javac
+$Maven = Join-Path $ScriptDir "mvn-local.ps1"
+$Mvn = $OracleEnvironment.Maven
+$TargetClasses = $OracleEnvironment.TargetClasses
+$ClasspathFile = $OracleEnvironment.ClasspathFile
+$DependencyClasspath = $OracleEnvironment.DependencyClasspath
 if (-not (Test-Path $Java)) {
     throw "java.exe was not found at $Java"
 }
@@ -36,7 +38,7 @@ if (-not (Test-Path $TargetClasses)) {
 }
 
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
-New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Output) | Out-Null
+New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 Push-Location $RepoRoot
 try {
@@ -57,11 +59,16 @@ if ($LASTEXITCODE -ne 0) {
     throw "javac failed with exit code $LASTEXITCODE"
 }
 
-& $Java -cp "$BuildDir;$FullClasspath" org.pamguard.port.reference.DelayGroupFixtureExporter `
-    48000 `
-    64 `
-    16 `
-    $Output
-if ($LASTEXITCODE -ne 0) {
-    throw "java fixture exporter failed with exit code $LASTEXITCODE"
+foreach ($Mode in @("raw", "restricted", "upsample", "filter", "envelope", "leading", "combined")) {
+    $Suffix = if ($Mode -eq "raw") { "basic" } else { $Mode }
+    $Output = Join-Path $OutputDir "delay-group-3ch-$Suffix.csv"
+    & $Java -cp "$BuildDir;$FullClasspath" org.pamguard.port.reference.DelayGroupFixtureExporter `
+        48000 `
+        64 `
+        16 `
+        $Output `
+        $Mode
+    if ($LASTEXITCODE -ne 0) {
+        throw "java fixture exporter failed for $Mode with exit code $LASTEXITCODE"
+    }
 }

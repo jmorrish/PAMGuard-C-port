@@ -5,7 +5,7 @@ The C++ backend service wraps `SessionManager` directly.
 Build target:
 
 ```powershell
-cd C:\python\PAMGuard\pamguard-enterprise-port\cpp-engine
+cd C:\python\PAMGuard_Port\cpp-engine
 .\scripts\build-msvc.ps1
 .\build\pamguard_engine_service.exe 8080
 ```

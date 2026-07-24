@@ -9,6 +9,35 @@
 
 namespace pamguard::detectors {
 
+std::pair<std::size_t, std::size_t> whistle_frequency_bin_range(
+    double min_frequency_hz,
+    double max_frequency_hz,
+    double sample_rate_hz,
+    std::size_t fft_length,
+    std::size_t slice_height) {
+    if (slice_height == 0 || !(sample_rate_hz > 0.0) || fft_length == 0) {
+        return {0, 0};
+    }
+    const auto last_bin = slice_height - 1;
+    const double bins_per_hz = static_cast<double>(fft_length) / sample_rate_hz;
+    const double nyquist = sample_rate_hz / 2.0;
+    // WhistleToneParameters.getMaxFrequency mutates any non-positive or
+    // above-Nyquist value to Nyquist before value2bin is called.
+    const double java_max =
+        max_frequency_hz <= 0.0 || max_frequency_hz >= nyquist ? nyquist : max_frequency_hz;
+    const auto clamp_bin = [last_bin, bins_per_hz](double frequency_hz) {
+        const double bin = frequency_hz * bins_per_hz;
+        if (bin <= 0.0) {
+            return std::size_t{0};
+        }
+        if (bin >= static_cast<double>(last_bin)) {
+            return last_bin;
+        }
+        return static_cast<std::size_t>(bin);
+    };
+    return {clamp_bin(min_frequency_hz), clamp_bin(java_max)};
+}
+
 ConnectedRegionTracker::ConnectedRegionTracker(ConnectedRegionConfig config)
     : config_(std::move(config)) {
     if (config_.slice_height == 0) {

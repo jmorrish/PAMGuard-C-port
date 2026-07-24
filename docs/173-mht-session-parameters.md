@@ -14,7 +14,7 @@ Closes two ledger items: the served MHT stack had hardcoded PAMGuard defaults, a
 - Chi2 parameters: `coastPenalty`, `newTrackPenalty`, `newTrackN`, `maxIci`, `lowIciExponent`, `longTrackExponent`.
 - Kernel parameters: `nHold`, `nPruneback`, `nPrunebackStart`, `maxCoast`.
 
-Validation rejects disabling every chi2 variable, non-positive `maxIci`, negative penalties, and non-positive `nHold`/`nPruneback`/`maxCoast`. The session config echo reports the resolved values under `click.trainMht`.
+Validation rejects disabling every chi2 variable, non-positive `maxIci`, negative penalties, and non-positive `nHold`/`nPruneback`/`maxCoast`. The session config echo reports the resolved values under `click.train.mht`. The older diagnostic alias `click.trainMht` is retained.
 
 ## Variable wiring
 

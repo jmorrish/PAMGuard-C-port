@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <stdexcept>
+
+#include "pamguard/dsp/JtFft.h"
 
 namespace pamguard::dsp {
 
@@ -295,10 +298,204 @@ double compute_gain_constant(const Design& design, const IirFilterParams& params
     return gain;
 }
 
+std::vector<double> cheby_window(std::size_t points, double gamma) {
+    const double alpha =
+        std::cosh(std::acosh(std::pow(10.0, gamma)) / static_cast<double>(points));
+    std::vector<double> complex(points * 2, 0.0);
+    for (std::size_t m = 0; m < points; ++m) {
+        const double a = std::abs(
+            alpha * std::cos(kPi * static_cast<double>(m) /
+                             static_cast<double>(points)));
+        const double sign = (m % 2 == 0) ? 1.0 : -1.0;
+        complex[2 * m] =
+            sign * (a > 1.0
+                        ? std::cosh(static_cast<double>(points) * std::acosh(a))
+                        : std::cos(static_cast<double>(points) * std::acos(a)));
+    }
+    JtFft::complex_inverse(complex, points, true);
+    std::vector<double> window(points, 0.0);
+    const double first_half = complex[0] / 2.0;
+    for (std::size_t i = 0; i + 1 < points; ++i) {
+        window[i] = complex[2 * (i + 1)];
+    }
+    window.back() = first_half;
+    double maximum = 0.0;
+    for (std::size_t i = 0; i + 1 < points; ++i) {
+        maximum = std::max(maximum, window[i]);
+    }
+    for (std::size_t i = 0; i + 1 < points; ++i) {
+        window[i] /= maximum;
+    }
+    return window;
+}
+
+void invert_fir_band(std::vector<double>& taps) {
+    const auto middle = (taps.size() - 1) / 2;
+    for (std::size_t i = 0; i < taps.size(); ++i) {
+        taps[i] = i == middle ? 1.0 - taps[i] : -taps[i];
+    }
+}
+
+std::vector<double> window_fir_taps(std::size_t taps_count, double frequency,
+                                    double sample_rate_hz,
+                                    const std::vector<double>& window,
+                                    bool high_pass) {
+    std::vector<double> taps(taps_count, 0.0);
+    const double k = frequency / (sample_rate_hz / 2.0) * taps_count;
+    for (std::size_t i = 0; i < taps_count; ++i) {
+        const auto small_k =
+            static_cast<long long>(i) - static_cast<long long>(taps_count / 2);
+        if (small_k == 0) {
+            taps[i] = k / taps_count * window[i];
+        }
+        else {
+            taps[i] =
+                std::sin(kPi * small_k * k / taps_count) /
+                (taps_count * std::sin(kPi * small_k / taps_count)) *
+                window[i];
+        }
+    }
+    if (high_pass) {
+        invert_fir_band(taps);
+    }
+    return taps;
+}
+
+std::vector<double> design_window_fir(double sample_rate_hz,
+                                      const IirFilterParams& params) {
+    const std::size_t points = std::size_t{1} << params.order;
+    const std::size_t taps_count = points - 1;
+    const auto window = cheby_window(points, params.cheby_gamma);
+    const double lower =
+        std::min<double>(params.low_pass_freq_hz, params.high_pass_freq_hz);
+    const double upper =
+        std::max<double>(params.low_pass_freq_hz, params.high_pass_freq_hz);
+    switch (params.band) {
+    case IirFilterBand::LowPass:
+        return window_fir_taps(taps_count, params.low_pass_freq_hz,
+                               sample_rate_hz, window, false);
+    case IirFilterBand::HighPass:
+        return window_fir_taps(taps_count, params.high_pass_freq_hz,
+                               sample_rate_hz, window, true);
+    case IirFilterBand::BandPass:
+    case IirFilterBand::BandStop: {
+        auto taps =
+            window_fir_taps(taps_count, lower, sample_rate_hz, window, false);
+        const auto high =
+            window_fir_taps(taps_count, upper, sample_rate_hz, window, true);
+        for (std::size_t i = 0; i < taps.size(); ++i) {
+            taps[i] += high[i];
+        }
+        if (params.band == IirFilterBand::BandPass) {
+            invert_fir_band(taps);
+        }
+        return taps;
+    }
+    }
+    return {};
+}
+
+std::vector<double> design_arbitrary_fir(double sample_rate_hz,
+                                         const IirFilterParams& params) {
+    if (params.arbitrary_frequencies_hz.size() < 2 ||
+        params.arbitrary_frequencies_hz.size() !=
+            params.arbitrary_gains_db.size()) {
+        return {};
+    }
+    const int filter_order = 1 << params.order;
+    const int filter_length = filter_order - 1;
+    const auto window =
+        cheby_window(static_cast<std::size_t>(filter_order), params.cheby_gamma);
+    const int lap = static_cast<int>(std::lround(filter_order / 25.0));
+    std::vector<double> frequency(params.arbitrary_frequencies_hz.size());
+    std::vector<double> gain(params.arbitrary_gains_db.size());
+    for (std::size_t i = 0; i < frequency.size(); ++i) {
+        frequency[i] =
+            params.arbitrary_frequencies_hz[i] / (sample_rate_hz / 2.0);
+        gain[i] = std::pow(10.0, params.arbitrary_gains_db[i] / 20.0);
+    }
+    std::vector<double> response(static_cast<std::size_t>(filter_order) + 1, 0.0);
+    int begin = 0;
+    int end = 0;
+    for (std::size_t interval = 0; interval + 1 < frequency.size(); ++interval) {
+        const double df = frequency[interval + 1] - frequency[interval];
+        if (df == 0.0) {
+            begin -= lap / 2;
+            end = begin + lap;
+        }
+        else {
+            end = static_cast<int>(
+                      std::lround(frequency[interval + 1] * filter_length)) -
+                  1;
+        }
+        if (begin < 0 || end > filter_order) {
+            return {};
+        }
+        if (begin == end) {
+            response[static_cast<std::size_t>(end)] = gain[interval];
+        }
+        else {
+            for (int j = begin; j <= end; ++j) {
+                const double inc =
+                    static_cast<double>(j - begin) / (end - begin);
+                response[static_cast<std::size_t>(j)] =
+                    inc * gain[interval + 1] + (1.0 - inc) * gain[interval];
+            }
+        }
+        begin = end + 1;
+    }
+    const double dt = 0.5 * (filter_length - 1);
+    const std::size_t inverse_length =
+        static_cast<std::size_t>(filter_order) * 2;
+    std::vector<double> complex_response(inverse_length * 2, 0.0);
+    for (int i = 0; i <= filter_order; ++i) {
+        const double angle = -dt * kPi * i / filter_order;
+        complex_response[2 * static_cast<std::size_t>(i)] =
+            std::cos(angle) * response[static_cast<std::size_t>(i)];
+        complex_response[2 * static_cast<std::size_t>(i) + 1] =
+            std::sin(angle) * response[static_cast<std::size_t>(i)];
+    }
+    for (int i = 0, j = filter_order * 2 - 1; i < filter_order - 1;
+         ++i, --j) {
+        complex_response[2 * static_cast<std::size_t>(j)] =
+            complex_response[2 * static_cast<std::size_t>(i + 1)];
+        complex_response[2 * static_cast<std::size_t>(j) + 1] =
+            -complex_response[2 * static_cast<std::size_t>(i + 1) + 1];
+    }
+    JtFft::complex_inverse(complex_response, inverse_length, false);
+    std::vector<double> taps(static_cast<std::size_t>(filter_length), 0.0);
+    for (int i = 0; i < filter_length; ++i) {
+        taps[static_cast<std::size_t>(i)] =
+            complex_response[2 * static_cast<std::size_t>(i)] *
+            window[static_cast<std::size_t>(i)] / inverse_length;
+    }
+    return taps;
+}
+
 } // namespace
 
 FastIirFilter::FastIirFilter(double sample_rate_hz, const IirFilterParams& params) {
     if (params.type == IirFilterType::None || sample_rate_hz <= 0.0 || params.order <= 0) {
+        return;
+    }
+    params_ = params;
+    sample_rate_hz_ = sample_rate_hz;
+    if (params.type == IirFilterType::FirWindow ||
+        params.type == IirFilterType::FirArbitrary) {
+        if (params.order >= 31) {
+            return;
+        }
+        fir_taps_ = params.type == IirFilterType::FirWindow
+                        ? design_window_fir(sample_rate_hz, params)
+                        : design_arbitrary_fir(sample_rate_hz, params);
+        fir_history_.assign(fir_taps_.size() + 1, 0.0);
+        active_ = !fir_taps_.empty();
+        runtime_type_ = active_ ? RuntimeType::Fir : RuntimeType::None;
+        return;
+    }
+    if (params.type == IirFilterType::Fft) {
+        active_ = true;
+        runtime_type_ = RuntimeType::Fft;
         return;
     }
     Design design;
@@ -362,9 +559,22 @@ FastIirFilter::FastIirFilter(double sample_rate_hz, const IirFilterParams& param
     gain_ = compute_gain_constant(design, params, sample_rate_hz);
     state_.assign(coefficients_.size(), 0.0);
     active_ = !coefficients_.empty() && gain_ != 0.0;
+    runtime_type_ = active_ ? RuntimeType::Iir : RuntimeType::None;
 }
 
 double FastIirFilter::run_sample(double sample) {
+    if (runtime_type_ == RuntimeType::Fir) {
+        fir_history_[fir_taps_.size()] = sample;
+        double value = 0.0;
+        for (std::size_t i = 0; i < fir_taps_.size(); ++i) {
+            fir_history_[i] = fir_history_[i + 1];
+            value += fir_history_[i] * fir_taps_[i];
+        }
+        return value;
+    }
+    if (runtime_type_ == RuntimeType::Fft) {
+        throw std::logic_error("FFT filter requires block run()");
+    }
     // FastIIRFilter.runFilter(double): coefficient layout a1,a2,b1,b2 per
     // stage, two state slots per stage, gain divided once at the end.
     double x = sample;
@@ -380,6 +590,53 @@ double FastIirFilter::run_sample(double sample) {
 }
 
 void FastIirFilter::run(const std::vector<double>& input, std::vector<double>& output) {
+    if (runtime_type_ == RuntimeType::Fft) {
+        if (input.empty()) {
+            output.clear();
+            return;
+        }
+        auto packed = JtFft::real_forward(input, input.size());
+        const auto fft_bin = [&](double frequency) {
+            return static_cast<std::size_t>(std::clamp<long long>(
+                std::llround(frequency * input.size() / sample_rate_hz_), 0,
+                static_cast<long long>(input.size() / 2 - 1)));
+        };
+        const auto zero_bin = [&](std::size_t bin) {
+            packed[2 * bin] = 0.0;
+            packed[2 * bin + 1] = 0.0;
+        };
+        const auto high = fft_bin(params_.high_pass_freq_hz);
+        const auto low = fft_bin(params_.low_pass_freq_hz);
+        const auto lower = std::min(high, low);
+        const auto upper = std::max(high, low);
+        switch (params_.band) {
+        case IirFilterBand::HighPass:
+            for (std::size_t bin = 0; bin < high; ++bin) {
+                zero_bin(bin);
+            }
+            break;
+        case IirFilterBand::LowPass:
+            for (std::size_t bin = low; bin < input.size() / 2; ++bin) {
+                zero_bin(bin);
+            }
+            break;
+        case IirFilterBand::BandPass:
+            for (std::size_t bin = 0; bin < lower; ++bin) {
+                zero_bin(bin);
+            }
+            for (std::size_t bin = upper; bin < input.size() / 2; ++bin) {
+                zero_bin(bin);
+            }
+            break;
+        case IirFilterBand::BandStop:
+            for (std::size_t bin = lower; bin < upper; ++bin) {
+                zero_bin(bin);
+            }
+            break;
+        }
+        output = JtFft::real_inverse(packed);
+        return;
+    }
     output.resize(input.size());
     for (std::size_t i = 0; i < input.size(); ++i) {
         output[i] = run_sample(input[i]);
@@ -388,6 +645,7 @@ void FastIirFilter::run(const std::vector<double>& input, std::vector<double>& o
 
 void FastIirFilter::reset() {
     std::fill(state_.begin(), state_.end(), 0.0);
+    std::fill(fir_history_.begin(), fir_history_.end(), 0.0);
 }
 
 } // namespace pamguard::dsp

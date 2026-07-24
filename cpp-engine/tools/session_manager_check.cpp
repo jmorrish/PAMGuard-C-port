@@ -40,6 +40,13 @@ int main() {
         config.detector.click.min_sep = 8;
         config.detector.click.max_length = 128;
         config.detector.click.min_trigger_channels = 1;
+        config.detector.click.pre_filter.type = pamguard::dsp::IirFilterType::None;
+        config.detector.click.trigger_filter.type = pamguard::dsp::IirFilterType::None;
+        config.array.speed_of_sound_mps = 1500.0;
+        config.array.hydrophones = {
+            {0, 0.0, 0.0, 0.0, 0.0},
+            {1, 1.0, 0.0, 0.0, 0.0},
+        };
 
         pamguard::core::AudioChunk chunk;
         chunk.start_sample = 0;
@@ -72,6 +79,30 @@ int main() {
         if (result.click_localisations.size() != 1 || result.click_localisations[0].delays.size() != 1) {
             std::cerr << "Expected one click localisation with one channel-pair delay\n";
             return 1;
+        }
+        {
+            auto veto_config = config;
+            veto_config.session_id = "angle-veto-session";
+            // The channels carry the same transient at the same time, so the
+            // legacy first-pair bearing is 90 degrees. Disable published
+            // localisation to prove veto evaluation still performs Java's
+            // mandatory delay measurement internally.
+            veto_config.detector.click_localisation_enabled = false;
+            veto_config.detector.click_angle_vetoes = {
+                {0, 80.0, 100.0},
+            };
+            veto_config.detector.click_features_enabled = true;
+            veto_config.detector.click_train_tracker_enabled = true;
+            veto_config.detector.click_train.min_clicks = 1;
+            pamguard::core::AnalysisSession veto_session(veto_config);
+            const auto veto_result = veto_session.process(chunk);
+            if (!veto_result.clicks.empty() ||
+                !veto_result.click_localisations.empty() ||
+                !veto_result.click_features.empty() ||
+                !veto_result.click_trains.empty()) {
+                std::cerr << "Angle-vetoed click leaked to a downstream result\n";
+                return 1;
+            }
         }
         const auto flushed = manager.flush_session("session-a");
         if (!flushed.spectrogram_frames.empty() || !flushed.clicks.empty()) {

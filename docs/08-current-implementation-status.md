@@ -16,7 +16,7 @@ Installed and validated:
 Validated:
 
 ```powershell
-.\pamguard-enterprise-port\reference-tools\scripts\mvn-local.ps1 -DskipTests compile
+.\reference-tools\scripts\mvn-local.ps1 -DskipTests compile
 ```
 
 Result:
@@ -43,11 +43,11 @@ Implemented:
 Validated:
 
 ```powershell
-.\pamguard-enterprise-port\cpp-engine\scripts\build-msvc.ps1
-.\pamguard-enterprise-port\cpp-engine\scripts\test-msvc.ps1
+.\cpp-engine\scripts\build-msvc.ps1
+.\cpp-engine\scripts\test-msvc.ps1
 ```
 
-Current CTest result:
+Initial CTest result at this checkpoint:
 
 - 10/10 tests passing
 - 7 PAMGuard Java window parity fixture tests
@@ -57,7 +57,7 @@ Current CTest result:
 Smoke-tested:
 
 ```powershell
-build\spectrogram_file_cli.exe C:\python\PAMGuard\src\sounds\down_chirp.wav 512 256
+build\spectrogram_file_cli.exe C:\path\to\down_chirp.wav 512 256
 ```
 
 Observed output:

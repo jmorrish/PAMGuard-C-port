@@ -1,13 +1,13 @@
 # Current enterprise port status
 
-Date: 2026-07-03
+Date: 2026-07-24
 
 ## Implemented engine foundations
 
 - C++ session-per-source processing model with optional owner/tenant metadata for web-tier orchestration.
 - PAMGuard-compatible FFT/window/spectrogram scaffold with parity fixtures.
 - Click detector foundation with trigger filters, waveform capture, feature extraction, basic classifier, train timing summaries, delay localisation with derived physical delay units and geometry constraint metadata, click localisation readiness status, per-click far-field bearing foundation, derived train-localisation summaries, and derived train-bearing summaries.
-- Whistle/moan peak detector and connected-region tracker, including fragment discard, branch, rejoin, stub handling, contour output, timing/frequency contour summaries, and flush.
+- Whistles & Moans connected-region tracker fed directly from positive bins in the noise-reduced FFT output, including Java frequency/default settings, audio-channel grouping, fragment handling, cross-PCM-chunk continuity, contour summaries, localisation, flush, and schema-v32 raw-FFT background spectra. The older peak detector remains an independent optional output (`docs/231`, `docs/233`, `docs/234`).
 - Per-session configuration for FFT, click detector/features/classifier/trains, whistle peaks/regions, array geometry, and output selectors.
 - FFmpeg bridge for WAV/MP3/Icecast/BUTT-style sources, restart/backoff, realtime pacing, API key/env-key auth, session bootstrap with source/owner/tenant overlays, continuity logging, resume controls, session shape checks, repeated FFmpeg input-option passthrough, and optional FFmpeg audio filters for channel mapping.
 - HTTP service with API-key/env-file protection, optional session owner/tenant enforcement, optional JSONL audit logging, static web UI serving, Prometheus metrics including optional ingest supervisor gauges, health readiness fields, optional ingest supervisor status projection, per-session operational status, owner/tenant/source session and archive filters, persistence, result archiving, detector-event archive projection and summaries, indexed event sidecar persistence, cursor paging, interval-overlap detection filters, live and archived click-to-train links, archive query caps/range filters, PCM body caps, HTTP thread pool, and transactional session creation.
@@ -21,10 +21,19 @@ Date: 2026-07-03
 ## Current validation signal
 
 - Full C++ build is green.
-- `ctest` passes `82/82` tests on this Windows build, including registered service smoke tests, API-key-file smoke coverage, FFmpeg ingest help coverage, ingest supervisor status/command smoke coverage, archive event index rebuild smoke coverage, and grouped archive retention smoke coverage.
+- `ctest` passes `95/95` tests on this Windows build, including the pinned Java-oracle fixtures, registered service smokes, API-key-file coverage, FFmpeg ingest coverage, supervisor checks, archive index rebuilding, and retention checks.
 - HTTP service smoke coverage is available through `cpp-engine/scripts/service-smoke.ps1` and passed against the current build, including optional ingest status projection and metrics, optional audit logging, session metadata enforcement, session listing, owner/tenant metadata propagation, per-session operational status, multi-channel click localisation/bearing outputs, physical delay units, geometry constraint metadata, schema-v5 PAMGuard pair bearing outputs on geometry-constrained delay pairs, schema-v6 PAMGuard LSQ bearing outputs for four-plus hydrophone sessions, and schema-v7 train-level pair bearing aggregation, archive sample-range, interval-overlap, and metadata filtering, detector-event summaries, indexed detector-event queries, cursor paging, metadata-aware CSV export, click-track/localisation/bearing events, and live/archived click-to-train event links.
 - Multi-session service load smoke is available through `cpp-engine/scripts/service-load-smoke.ps1` and passed locally with `50` sessions and `2` chunks per session in both unauthenticated and API-key modes.
 - The noise band monitor is ported with exact band-table parity across all six ANSI band types and served as `noiseBands` at schema v23, calibrated to dB re 1 uPa via ported `rawAmplitude2dB` — hydrophone `sensitivityDb` is now actually used (`docs/214-noise-band-monitor.md`).
+- The separate FFT statistics noise monitor is ported against the real `noiseMonitor.NoiseProcess` with zero fixture error and served as `fftNoise` at schema v31; settings/API/browser/`.psfx` wiring is complete (`docs/230-fft-noise-monitor.md`).
+- The Whistles & Moans raw-FFT background smoother matches all 32 values from
+  the real `Spectrogram.SpectrumBackground` fixture with zero observed error;
+  its snapshots are served as `whistleBackgrounds` at schema v32 and the
+  interval setting is wired through HTTP/OpenAPI/browser/`.psfx` (`docs/233`).
+- Whistles & Moans audio-channel grouping matches all eight group bitmaps from
+  the real Java `GroupedSourceParameters` path; contour creation,
+  backgrounds, and delay/bearing pairs now honor each group's first channel
+  and membership (`docs/234`).
 - The LTSA is ported with exact fixture parity against the real `LtsaProcess.ChannelProcess` (maxError 0 across 16 averaging periods, gap and alignment quirks pinned) and served as `ltsa` at schema v24 (`docs/215-ltsa.md`).
 - The Ishmael energy-sum detector is ported with bit-exact fixture parity against the real `EnergySumProcess` + `IshPeakProcess` chain (640 values, 11 detections, maxRelError 0) and served as `ishmaelDetections` at schema v25 (`docs/216-ishmael-energy-sum.md`).
 - The matched-template click classifier is ported with 5.1e-15 fixture parity against the real `MTClassifier`/`ClickLength` chain and served as `matchedTemplateClassifications` at schema v26; template decimation is a recorded non-port (`docs/217-matched-template-classifier.md`).
@@ -44,6 +53,8 @@ Date: 2026-07-03
 - Correlation delay focused coverage now includes invalid config rejection, silent input behavior, zero search-window clamping, identical-signal zero-delay behavior, and PAMGuard fixture parity.
 - Click train focused coverage now includes sub-minimum rejection, large-gap reset, channel-bitmap isolation, active summaries, completion, flush behavior, duration, ICI spread, ICI coefficient of variation, and interval click-rate metrics, plus bitwise Java fixture parity for IDI mean/median/std statistics against `clickTrainDetector.IDIInfo` (`docs/156-click-train-idi-statistics-fixture.md`) ported MHT IDI, length, and amplitude chi2 variables with fixture parity against the real Java classes including junk-track penalties, track-exclusion semantics, and the delta-path zero-ramp property (`docs/166-mht-idi-chi2-foundation.md`, `docs/167-mht-length-amplitude-chi2.md`), a ported MHT kernel with step-exact fixture parity against the real `MHTKernel` covering branch growth, pruning, coast confirmation, and the all-coasts backstop (`docs/168-mht-kernel-port.md`), the full StandardMHTChi2 stack with end-to-end fixture parity including perfect interleaved-train separation (`docs/169-standard-mht-chi2-stack.md`), and the MHT stack selectable as the served click train former at schema v10 via `click.train.algorithm`, with garbage reclamation for long streams, per-session kernel/chi2 parameters covering all five ported chi2 variables, and PAMGuard's click train classifier chain served over MHT trains at schema v13 (`docs/170`-`docs/187`).
 - Basic click classifier focused coverage now includes bad config rejection, no-type defaults, non-match defaults, ordered type matching, and PAMGuard preset constants, plus an eleven-case Java decision fixture covering every criterion, discard propagation, zero-max-length skip, and no-selection semantics (`docs/155-click-classifier-case-fixture-sweep.md`).
+- Sweep click classification now runs online with every pinned `SweepClassifierSet` criterion and channel mode, validated by nineteen cases through the real Java `SweepClassifierWorker`; settings round-trip through `.psfx`, HTTP/OpenAPI, and the browser (`docs/228-sweep-click-classifier.md`).
+- Click detector angle vetoes preserve Java's list and inclusive absolute-angle semantics, run before every downstream consumer, and round-trip through `.psfx`, HTTP/OpenAPI, and the browser (`docs/229-click-angle-veto.md`).
 - Click feature focused coverage now includes bad config rejection, empty waveform rejection, minimum FFT behavior, and channel metadata fallback.
 - Click trigger focused coverage now includes bad config rejection, invalid chunk rejection, missing-channel rejection, trigger gating, waveform capture, and reset reproducibility, plus a Java fixture sweep covering min-separation split/merge, max-length truncation, min-trigger-channel gating/suppression, and alternate threshold/filter constants (`docs/154-click-trigger-edge-fixture-sweep.md`).
 - Whistle peak focused coverage now includes bad config rejection, search-bin defaulting, bad slice rejection, reset reproducibility, broad-over-threshold suppression, and peak-width rejection, plus a ported whistle contour delay core with five-case Java fixture parity including narrowband delay ambiguity (`docs/164-whistle-delay-foundation.md`) schema-v9 cross-channel whistle region delays with geometry and pair bearing metadata served over HTTP (`docs/165-whistle-delay-service-output.md`), schema-v11 region-level whistle bearings with PAMGuard ambiguity semantics (`docs/175-whistle-region-bearing.md`), and schema-v12 full channel-pair whistle delays with LSQ bearings for four-plus hydrophone groups (`docs/180-whistle-lsq-bearing.md`).
@@ -55,7 +66,10 @@ Date: 2026-07-03
 - `docs/136-multichannel-localisation-operation.md` describes the current multi-channel localisation path and its claim boundary.
 - Click train tracking is still a foundation and not a full PAMGuard click train/localisation module clone.
 - Bearing/localisation output is a far-field foundation and needs more PAMGuard array model parity before being treated as final scientific output.
-- The web UI exposes the major module controls implemented here, not every PAMGuard desktop parameter.
+- The web UI exposes the major module controls implemented here, including
+  eight focused Click Detector control sections (`docs/232`) and eight
+  noise/monitoring module sections (`docs/236`), but not every PAMGuard
+  desktop parameter.
 - Result storage is append-only NDJSON plus indexed detector-event sidecars, not yet a query-indexed database with migrations and richer ad-hoc query planning.
 - Service validation is strong for this engine, but not a substitute for full PAMGuard project/config import parity.
 

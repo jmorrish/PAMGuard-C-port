@@ -2,19 +2,20 @@
 
 This workspace contains source and build definitions. The local machine initially did not have C++ or Java tooling on `PATH`.
 
-Installed during setup via `winget`:
+Installed system-wide or through `winget`:
 
 - Visual Studio Build Tools 2022 with C++ workload
 - CMake
 - Ninja
-- Eclipse Temurin JDK 21
-- FFmpeg 8.1.2
 
-Installed locally under `tools/`:
+Installed as checksum-verified portable tools under `C:\python\tools\`:
 
+- Eclipse Temurin JDK 21.0.11+10
 - Apache Maven 3.9.16
 
-Depending on the parent shell, new tools may not appear on `PATH` until a new terminal is opened. The helper scripts use known install locations where practical.
+The Maven helper discovers those portable paths and verifies the exact Java
+oracle commit before building. FFmpeg remains optional unless live ingest is
+being exercised.
 
 Recommended Windows setup:
 
@@ -26,39 +27,25 @@ Recommended Windows setup:
 Recommended command once tooling is installed:
 
 ```powershell
-cd C:\python\PAMGuard\pamguard-enterprise-port\cpp-engine
-cmake -S . -B build -G Ninja
-cmake --build build
+cd C:\python\PAMGuard_Port
+.\reference-tools\scripts\mvn-local.ps1 -DskipTests compile
+.\reference-tools\scripts\regenerate-java-fixtures.ps1
+.\cpp-engine\scripts\build-msvc.ps1
+.\cpp-engine\scripts\test-msvc.ps1
 ```
 
-The first validated build target is `pamguard_engine_cli`.
-
-Current validated command path:
+Validated length-8 Hann parity round trip:
 
 ```powershell
-.\pamguard-enterprise-port\cpp-engine\scripts\build-msvc.ps1
-```
-
-Window parity fixture generation:
-
-```powershell
-.\pamguard-enterprise-port\reference-tools\scripts\generate-all-window-fixtures.ps1
-```
-
-FFT parity fixture generation:
-
-```powershell
-.\pamguard-enterprise-port\reference-tools\scripts\generate-all-fft-fixtures.ps1
+.\reference-tools\scripts\generate-window-fixture.ps1 `
+  -WindowType 2 -Length 8 `
+  -PamguardClasses .\PAMGuard_Java\target\classes `
+  -OutputPath .\cpp-engine\tests\fixtures\window\hann-8.csv `
+  -JavaHome C:\python\tools\jdk-21.0.11+10
 ```
 
 Repo-local Maven helper:
 
 ```powershell
-.\pamguard-enterprise-port\reference-tools\scripts\mvn-local.ps1 -version
-```
-
-FFmpeg path found during setup:
-
-```text
-C:\Users\j.morrish\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe
+.\reference-tools\scripts\mvn-local.ps1 --version
 ```

@@ -16,20 +16,33 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$toolRoot = Split-Path -Parent $PSScriptRoot
-$javaSrc = Join-Path $toolRoot "java\src\org\pamguard\port\reference\WindowFixtureExporter.java"
-$buildDir = Join-Path $toolRoot "java\build"
+if ($JavaHome) {
+    $env:JAVA_HOME = $JavaHome
+}
 
-if ($JavaHome -ne "") {
-    $javac = Join-Path $JavaHome "bin\javac.exe"
-    $java = Join-Path $JavaHome "bin\java.exe"
+$portRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$toolRoot = Split-Path -Parent $PSScriptRoot
+$environment = & (Join-Path $PSScriptRoot "resolve-pamguard-oracle.ps1") `
+    -PortRoot $portRoot -RequireClasses
+$expectedClasses = (Resolve-Path $environment.TargetClasses).Path
+$actualClasses = (Resolve-Path $PamguardClasses).Path
+if ($actualClasses -ne $expectedClasses) {
+    throw "Window fixture classes must come from the pinned oracle: $expectedClasses"
 }
-else {
-    $javac = "javac"
-    $java = "java"
-}
+
+$javaSrc = Join-Path $toolRoot "java\src\org\pamguard\port\reference\WindowFixtureExporter.java"
+$buildDir = $environment.BuildDir
 
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OutputPath) | Out-Null
 
-& $javac -cp $PamguardClasses -d $buildDir $javaSrc
-& $java -cp "$buildDir;$PamguardClasses" org.pamguard.port.reference.WindowFixtureExporter $WindowType $Length | Set-Content -Path $OutputPath -Encoding UTF8
+& $environment.Javac -cp $expectedClasses -d $buildDir $javaSrc
+if ($LASTEXITCODE -ne 0) {
+    throw "javac failed with exit code $LASTEXITCODE"
+}
+& $environment.Java -cp "$buildDir;$expectedClasses" `
+    org.pamguard.port.reference.WindowFixtureExporter $WindowType $Length |
+    Set-Content -Path $OutputPath -Encoding UTF8
+if ($LASTEXITCODE -ne 0) {
+    throw "java fixture exporter failed with exit code $LASTEXITCODE"
+}
