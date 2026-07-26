@@ -1,6 +1,6 @@
 # PAMGuard parity ledger
 
-Date: 2026-07-24
+Date: 2026-07-25
 
 ## Purpose
 
@@ -13,6 +13,8 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 - `Fixture parity`: covered by exported PAMGuard Java fixture(s) and C++ parity tests.
 - `Foundation`: implemented in C++ with focused tests, but not yet proven as full PAMGuard equivalence.
 - `Operational`: web/service/deployment feature that supports enterprise use but is not itself PAMGuard detector maths.
+- `Experimental`: a visible or catalogued controlled-unit slice with explicit
+  missing Java behaviour; it must not be presented as parity-complete.
 - `Gap`: required before claiming full module equivalence.
 
 ## Current ledger
@@ -22,12 +24,20 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 | Window functions | Fixture parity | CTest parity fixtures | Used by FFT/spectrogram path. |
 | Real FFT | Fixture parity | CTest parity fixtures | Core spectral primitive. |
 | Spectrogram chunking | Fixture parity | CTest parity fixtures | Browser preview and downstream whistle/click features use this foundation. |
+| Controlled-unit project authority | Operational | Phase 0-2 evidence (`docs/249-phase-0-execution-evidence.md` through `docs/251-phase-2-pamguard-project-shell-evidence.md`), project authority/service/browser CTests | One ETag-guarded working project owns controlled units, typed bindings, deterministic hidden runtime expansion, display hierarchy, graph layout, persistence, and lifecycle. Low-level graph/Workspace writes cannot mutate it. |
+| PAMGuard-style operator shell | Operational | Real-Chromium project-shell and empty-shell contracts | The normal root starts with Data Model only, builds menus/tabs from instantiated units/providers, and makes no `/sessions`, `/workspaces`, or low-level `/module-graph` request. |
+| Sound Acquisition and project-native ingest | Operational, partial PAMGuard module | Project Acquisition HTTP/capture lifecycle smokes, physical Razer Kiyo X smoke, supervised-ingest tests | Portable acquisition intent is separated from exact host device/URL binding. Multiple stable Acquisition unit IDs are supported. PAMGuard offline-file/viewer acquisition modes and live GPS-device integration are not claimed. |
+| Sound Output | Operational, partial PAMGuard module | Settings/project round-trip, selected-block audio stream, real-Chromium AudioWorklet lifecycle | Project settings own the playable source, channel selection, rate/resampling, gain, high-pass and mute. Browser device choice is host-local. Automated tests prove non-zero frame delivery and teardown; a human audible-device check remains required. |
+| User Display / Spectrogram and Click display | Operational, partial PAMGuard displays | Provider catalogue/project ownership tests and multi-Spectrogram/continuous-Click real-Chromium workflow | Provider availability and compatible sources come from controlled-unit/data-block descriptors. Multiple independent Spectrograms, source-loss unbinding, static Click-display owner cascade, save/restart, and bounded continuous history are covered. Swing colours/layout and Java-only aesthetics are excluded. |
+| Sound Recorder | Experimental | Java-default/settings fixtures, controlled-unit/editor tests, runtime/WAV and stable HTTP transport smoke | Portable Java settings, host-isolated deployment binding, collision-safe WAV creation, relative events, Off/Continuous transport, stop finalisation, and no path/runtime-ID leak are implemented. Cycle/scheduled/triggered transport and the remaining Java recorder integrations are explicitly unavailable. |
+| Clip Generator | Experimental | Java settings fixture, controlled-unit/editor tests, multi-source runtime parity checker | Zero-policy safe idle, exact trigger routing/truncation, channel modes, Java-style budgets, complete-only clips and provenance are implemented. Core graph publication corresponds to binary storage; deployment-owned WAV/both storage remains explicitly unavailable. |
+| Alarm / Scroll Effort / Aural Listening / User Input | Experimental, unavailable | Authoritative catalogue/order/status and project-rejection CTests | Java-relative Utilities descriptors and strict data contracts exist, but the partial legacy Alarm counter/generic operator logger cannot masquerade as these PAMGuard units. They stay unavailable and hidden from the operator palette. |
 | IIR filters (Filters package) | Fixture parity | Ten cases driven end to end by the real ButterworthMethod/ChebyshevMethod/FastIIRFilter — zero transcription — max error 2.4e-15 (`docs/213-click-iir-filters.md`) | Butterworth + Chebyshev, all four bands, even/odd orders, the pole-zero sort order, and the FastIIRFilter recursion. Wired as the click detector's preFilter/triggerFilter with PAMGuard's exact signal flow; engine defaults None (opt-in), importer carries PAMGuard's values. FIR/FFT filter methods and the superseded IirfFilter runtime unported. |
 | Noise band monitor | Fixture parity (band tables) | 138 band definitions across all six ANSI band types match the real `BandData` exactly; runtime chain validated over the 2.4e-15-parity filters with a physical tone test through odd-length chunks (`docs/214-noise-band-monitor.md`) | Served as `noiseBands` at schema v23 with `rawAmplitude2dB` calibration (dB re 1 uPa when configured). Sample-counted intervals vs PAMGuard's wall-clock — a recorded divergence for replay determinism. FIR decimators remain unported. |
 | FFT statistics noise monitor | Real-process fixture parity | Real `noiseMonitor.NoiseProcess` validates fractional-bin integration, two-channel interval ordering, and all six statistics over two completed periods (`docs/230-fft-noise-monitor.md`) | Served as `fftNoise` at schema v31 with acquisition and FFT-window calibration; settings/API/browser/`.psfx` path complete. Random sparse sampling follows the same policy but is nondeterministic by design. |
 | LTSA | Fixture parity | 16 averaging periods over 77 FFT slices from the REAL `LtsaProcess.ChannelProcess` (reflection-allocated, output block capture-subclassed) match exactly — maxError 0 — including the epoch-aligned partial first period, the boundary slice landing in the next period, and closePeriod's single-interval advance after a time gap (`docs/215-ltsa.md`) | Served as `ltsa` at schema v24, uncalibrated RMS spectral magnitudes exactly as the reference stores them. The `longerFactor` longer-average block is commented out in the reference and not ported. |
 | Ishmael energy sum | Fixture parity | 640 detection-function values and 11 detections from the REAL `EnergySumProcess` + `IshPeakProcess` driven end to end (reflection-allocated with restored field-initialiser sentinels, capture-subclassed output blocks) match bit-exactly — maxRelError 0 (`docs/216-ishmael-energy-sum.md`) | Served as `ishmaelDetections` at schema v25. Unit quirks preserved verbatim: slice-unit times vs raw-sample comparisons, write-once smoothing state, shared-across-channels noise floor, no flush at stream end. The other two selected Ishmael detectors are covered separately below (`docs/218`, `docs/219`). |
-| Matched-template click classifier | Fixture parity | 17 correlation results and 13 click classifications from the REAL `MTClassifier.calcCorrelationMatch` + `ClickLength` + restricted-length windowing chain match to 5.1e-15 across 6 cases (`docs/217-matched-template-classifier.md`), including the frozen-template cache quirk, JTransforms packed-bin-0 multiplication, odd/even non-power-of-two FFTs, template upsampling, and the NaN reject path | Served as `matchedTemplateClassifications` at schema v26. Channel aggregation transcribed from `MTProcess.newClickData` (15 lines, annotation/display plumbing out of scope). Template DECIMATION (jpamutils WavInterpolator) is not ported — such sessions are refused at creation with the reason. |
+| Matched-template click classifier | Fixture parity, partial module | The real `MTClassifier.calcCorrelationMatch` + `ClickLength` fixture covers the correlation and click-classification chain to 5.1e-15, including cache, packed-bin, arbitrary-length FFT, interpolation, and NaN quirks; default settings/templates and jpamutils `WavInterpolator` decimation are pinned separately (`docs/217-matched-template-classifier.md`) | The graph-native click path retains result annotations and Java click-type override/reset behaviour. Portable click types `128..255` stay unsigned and displayed `256` maps to `0`, deliberately avoiding Java's signed-byte reopen/downstream defects. `CTDataUnit` average-waveform input, `MATCHEDCLICK` train flags, the click code/name provider, and MAT import remain unimplemented, so full module parity is not claimed. |
 | Ishmael spectrogram correlation | Fixture parity | 1717 kernel values, 303 detection-function values, and 7 detections from the REAL `SgramCorrProcess` + `IshPeakProcess` driven end to end match to 2.2e-16 across 3 cases (`docs/218-sgram-corr-detector.md`), including the gramHeight/2 top clamp, log-power flooring, the circular-buffer alignment, and two interleaved channels | Served as `sgramCorrDetections` at schema v27 through the already-ported peak picker. |
 | Ishmael matched filter | Fixture parity | 23168 normalised correlation values in 48 blocks and 6 detections from the REAL `MatchFiltProcess2` + `IshPeakProcess` match to 7.5e-14 across 2 cases, with the kernel round-tripped through a real WAV file via the reference's own AudioSystem path (`docs/219-match-filt-detector.md`) | Served as `matchFiltDetections` at schema v28; kernel travels inline in session config, importer reads the configured WAV and embeds it. All three Ishmael detectors are now ported. The deprecated `MatchFiltProcess` v1 is not (the reference itself says use v2). |
 | Click trigger foundation | Fixture parity | Eight Java fixtures: basic, min-sep split/merge, max-length truncation, min-trigger-channel gating/suppression, alternate threshold/filter constants, and a transient spanning two PCM chunks (`docs/154`, `docs/237`) | Cross-chunk first-block memory, active-click/filter state, waveform history, separation countdown, and reset reproducibility are pinned. PAMGuard 2.02.18e persists `longFilter2` but its live detector constructs `TriggerFilter(longFilter, 1)`, so no second alpha is selected. The pre/trigger IIR path is covered in `docs/213`. |
@@ -39,9 +49,10 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 | Correlation delay estimator | Fixture parity | Java fixture parity plus edge coverage | Silent/no-peak behavior now guarded to avoid false max-delay outputs. |
 | Delay group estimator | Fixture parity | 3-channel Java fixture plus edge coverage | Pairwise delay order and max-delay validation covered. |
 | Far-field click bearing | Foundation | Geometry/config edge coverage and HTTP smoke | Needs deeper PAMGuard bearing localiser parity and array model semantics. |
-| Pair bearing localiser | Fixture parity | Seven-case Java fixture for angle/error including endfire clamp, negative spacing, and three-delay reduction (`docs/157-pair-bearing-localiser-port.md`); exposed per geometry-constrained delay pair at result schema v5 (`docs/159-pair-bearing-service-output.md`) | `prepare()`-side array derivation is config-supplied; train-level aggregation is a follow-up. |
+| Pair bearing localiser | Fixture parity | Seven-case Java fixture for angle/error including endfire clamp, negative spacing, and three-delay reduction (`docs/157-pair-bearing-localiser-port.md`); exposed per geometry-constrained delay pair at result schema v5 (`docs/159-pair-bearing-service-output.md`) | `prepare()`-side array derivation is config-supplied. Engine-derived train pair-bearing aggregation is implemented (`docs/161-click-train-bearing-summary.md`), while full PAMGuard reference train-localiser behaviour remains unpinned. |
 | LSQ bearing localiser | Fixture parity | Four-case fixture generated by real Jama QR/PamVector; rank-deficiency semantics pinned (`docs/158-lsq-bearing-localiser-port.md`); exposed per click at result schema v6 for four-plus hydrophone sessions (`docs/160-lsq-bearing-service-output.md`) | Needs at least four non-coplanar hydrophones by construction. Localiser selection follows PAMGuard's `BearingLocaliserSelector` switch on sub-array shape (`docs/194`): the ported ML grid path now owns plane/volume results (`docs/195`, `docs/196`), while LSQ remains a separately reported fitted bearing where its geometry requirements are met. |
 | Localisation world vectors | Fixture parity | Twelve-case Java fixture over plane, volume, line, and axis-less fallback geometries matching exactly against the real `PamVector`/`Jama.Matrix` (`docs/197-world-vectors.md`); served as `gridBearing.worldVectors` at schema v18 | Carried on grid, pair, and LSQ bearings at schema v19 (`docs/198-pair-and-lsq-world-vectors.md`); LSQ deliberately skips the array-axis rotation because it fits raw inter-hydrophone vectors, and a test demonstrates the two treatments coincide on volume sub-arrays where LSQ actually runs. `getRealWorldVectors` is ported too: declaring a static `array.orientation` adds earth-frame counterparts at schema v21, with exact fixture parity against the real `PamQuaternion` under a distinct per-case orientation (`docs/202-earth-frame-vectors.md`), and attitude can vary at chunk cadence via optional PCM-post parameters, holding until replaced (`docs/204-per-chunk-attitude.md`). |
+| Tracked-click target-motion Least Squares | Fixture parity, project service foundation | Thirteen pinned-Java numerical cases plus `tracked_click_events_java_semantics`, `click_localiser_platform_pose`, and the real `project_tracked_click_localisation_http_smoke` (`docs/tracked-click-target-motion-least-squares-foundation.md`) | Manual events retain trigger-onset pose, local origin/navigation reference, and ordered earth-bearing ambiguities. Five posed PCM observations recover a known target and expose navigation-beam/range/height filter evidence. Inputs are an explicit local Cartesian frame at chunk cadence; live GPS ingestion/interpolation and simplex/MCMC alternatives are not claimed. |
 | ML grid bearing localiser | Fixture parity | Eleven-case Java fixture over plane, volume, and line sub-arrays with speed-of-sound and asymmetric position errors, matching to 7e-17 against the real `PamVector`/`Jama.Matrix.inverse()`/`PeakSearch` (`docs/195-ml-grid-bearing-localiser.md`) | Ports Jama's LU inverse and PeakSearch's 2D interpolated peak alongside. Served as `gridBearing` on click localisations and whistle delays at schema v17, with per-hydrophone coordinate errors in session config (`docs/196-grid-bearing-service-output.md`); angles are the reference's theta/phi in the array's principal axis frame, not compass azimuth/elevation. Streamer-level separation errors and the reference's dead crawl/simplex/bisection search paths are unported. `MLLineBearingLocaliser2`'s theta convention is ported as a config flag with its own four-case fixture (`docs/199-ml-line-bearing-variant.md`) but is **not selected** — that branch depends on an SMRU licence flag the engine has no notion of, so the selector matches the open-source default build. |
 | Array shape/directions | Fixture parity | Twelve-case Java fixture driving real PamVector maths, including streamer-scoped uniqueness (`docs/163-array-shape-semantics-port.md`, `docs/181-multi-streamer-arrays.md`); pair spacing sign flip wired into pair bearings at schema v8 | Streamers are declarable in session config with positions folded into hydrophone coordinates as `getAbsHydrophoneVector` does (`docs/190-streamer-geometry.md`), and streamer heading/pitch/roll now rotate those coordinates before the offset as `HydrophoneLocator.getPhoneLatLong` does, with eight-case fixture parity against the real `PamQuaternion`/`PamVector.rotateVector` pinning the clockwise-heading and pitch-roll-heading Euler conventions (`docs/193-streamer-orientation.md`); time-varying locators remain unported. |
 | Click train localisation summaries | Foundation | Summary tests | Aggregation behavior implemented; needs reference behaviour pinned down for production science. |
@@ -49,53 +60,69 @@ The target is not approximate similarity. The target is PAMGuard-compatible math
 | Spectrogram noise reduction | Fixture parity | Eight-case, 24-slice fixture generated by the real PAMGuard classes end to end — zero transcription — matching bit-exactly (`docs/206-spectrogram-noise-reduction.md`) | All four SpecNoiseMethods (median filter, average subtraction, kernel smoothing, threshold) with chain semantics and all three threshold output modes; wired into the whistle path including the retained FFT history WhistleDelays correlates on; configured via `whistle.noise` and mapped by the project importer. |
 | Whistle peak detector | Fixture parity | Better peak fixture and edge coverage | This is the legacy `whistleDetector` output and is now correctly independent of Whistles & Moans contours (`docs/231`). Needs a broader legacy-settings fixture sweep. |
 | Connected-region whistle/moan tracker | Fixture parity | Basic, flush, stub, discard, branch, rejoin, split/cross fixtures plus session-level PCM chunk-boundary continuity (`docs/231`); the raw-FFT `SpectrumBackground` smoother matches all 32 real-Java fixture values with zero observed error (`docs/233`); eight real-Java grouped-source bitmaps match exactly (`docs/234`) | Region pixels come directly from positive bins in the noise-reduced FFT, matching `WhistleToneConnectProcess`; frequency/default settings, `.psfx`, schema-v32 backgrounds, and audio-channel `GroupedSourceParameters` first-channel/delay grouping are wired. Beamformer sequence maps are not an engine source type and are not claimed. |
-| Whistle/moan localisation | Foundation | Contour delay core ported with five-case Java fixture parity (`docs/164-whistle-delay-foundation.md`); cross-channel region delays with geometry/pair-bearing metadata served at schema v9 (`docs/165-whistle-delay-service-output.md`), region-level bearings with PAMGuard ambiguity semantics at schema v11 (`docs/175`), and the full channel-pair set plus LSQ bearings for four-plus hydrophone groups at schema v12 (`docs/180-whistle-lsq-bearing.md`) | The detection grouper is ported with branch coverage including its non-intersection frequency-overlap quirk and served as `whistleGroups` at schema v15 (`docs/189-whistle-detection-grouper.md`, `docs/191-whistle-group-service-output.md`), with cross-chunk carry-over made self-describing at schema v20 — `earlierRegionCount` accounts for members outside the current chunk and `firstStartSample` is the group's true origin (`docs/201-cross-chunk-whistle-groups.md`); array-axis reference fields remain unported, localiser selection is channel-count based, and group *localisation* is a documented non-port (`docs/192-group-localiser-non-port.md`). |
+| Whistle/moan localisation | Foundation | Contour delay core ported with five-case Java fixture parity (`docs/164-whistle-delay-foundation.md`); cross-channel region delays with geometry/pair-bearing metadata served at schema v9 (`docs/165-whistle-delay-service-output.md`), region-level bearings with PAMGuard ambiguity semantics at schema v11 (`docs/175`), and the full channel-pair set plus LSQ bearings for four-plus hydrophone groups at schema v12 (`docs/180-whistle-lsq-bearing.md`) | The detection grouper is ported with branch coverage including its non-intersection frequency-overlap quirk and served as `whistleGroups` at schema v15 (`docs/189-whistle-detection-grouper.md`, `docs/191-whistle-group-service-output.md`), with cross-chunk carry-over made self-describing at schema v20 — `earlierRegionCount` accounts for members outside the current chunk and `firstStartSample` is the group's true origin (`docs/201-cross-chunk-whistle-groups.md`). Localiser selection follows PAMGuard's sub-array-shape selector (`docs/194-bearing-localiser-selection.md`); array-axis reference fields remain unported, and whistle-group target *localisation* is a documented non-port (`docs/192-group-localiser-non-port.md`). |
 | PAMGuard project/config import | Foundation | JVM-side converter reads a real `.psfx` via the real `PSFXReadWriter` and emits engine session JSON. The sample was regenerated by the authoritative `2.02.18e` oracle and accepted by the live-engine HTTP smoke (`docs/203-project-import-converter.md`, `docs/225-java-oracle-pinning.md`) | Pinned to the exact commit in `reference-tools/pamguard-oracle.json`. Maps acquisition, array, FFT, click, Basic/Sweep click classifiers, click-train, whistle, noise/LTSA, Ishmael, and matched-template settings; everything else is reported and skipped, never silently dropped. Other PAMGuard versions need an explicit compatibility fixture. |
-| Archive detector events | Operational | HTTP smoke and indexed sidecar tests | Supports web/API workflows; not detector maths. |
-| Multi-session service operation | Operational | 50-session functional smoke plus a measured throughput benchmark: 50 detector-loaded sessions at 26.7x realtime, p95 48 ms, linear 25→50 scaling (`docs/207-throughput-benchmark.md`) | Single machine/mix/config; multi-hour soak, archive-enabled throughput, and concurrent posting clients remain unmeasured. |
-| Icecast/BUTT/stream ingest | Operational | FFmpeg ingest bridge and supervisor dry-run checks | Needs long-running soak tests against real sources. |
+| Session archive detector events | Operational compatibility | HTTP smoke and indexed sidecar tests | Retained for scientific regression/import/oracle work. It is not a graph-native project storage module and therefore creates no Archive surface in the normal operator shell. |
+| Offline `/jobs` | Operational compatibility | Job queue/replay smokes | Still constructs fixed `AnalysisSession` runtimes and archives under session-like job IDs. It remains compatibility-only until project-graph offline execution and an owning storage/query unit exist. |
+| Multi-session service operation | Operational compatibility | 50-session functional smoke plus a measured throughput benchmark: 50 detector-loaded sessions at 26.7x realtime, p95 48 ms, linear 25→50 scaling (`docs/207-throughput-benchmark.md`) | Useful engine scaling evidence, but not the normal one-active-project operator model. Session routes are available only in explicit legacy compatibility mode. |
+| Icecast/BUTT/stream ingest | Operational | Project Acquisition supervisor and physical/project HTTP smokes; legacy FFmpeg bridge tests | Supervised production ingest targets stable project/Acquisition IDs. The direct session bridge is compatibility-only. A longer real-source project soak remains useful. |
 
 ## Current claim boundary
 
 It is safe to say:
 
-- The port has a working C++ service and web dashboard for the scoped detector foundations.
-- Several mathematical primitives and detector subcomponents have PAMGuard fixture parity.
-- Multi-channel click delay/bearing outputs pass through the HTTP/archive path.
-- The architecture is moving toward enterprise operation with session isolation, indexed archives, ingest supervision, and Kubernetes starters.
+- The port has one project-authoritative C++ service and PAMGuard-style Data
+  Model operator shell for the controlled units explicitly marked available.
+- The mathematical primitives and detector subcomponents labelled fixture
+  parity are checked against the pinned Java oracle.
+- Multi-channel click delay/bearing outputs and moving-platform tracked-event
+  Least Squares results pass through stable project APIs.
+- Project-native Acquisition, display ownership, Sound Output streaming,
+  capture, supervised ingest, save/restart, and conflict handling have
+  automated integration evidence.
+- Units labelled experimental or unavailable are not PAMGuard-equivalent and
+  are not silently promoted.
 
 It is not safe to say:
 
-- The click detector module is a full PAMGuard clone.
-- The click train/localisation modules are fully equivalent to PAMGuard.
-- Whistle/moan localisation is implemented beyond the contour delay core.
+- Every PAMGuard Click Detector, Click Train, or localisation integration is
+  complete; each recorded partial boundary still applies.
+- Whistle/moan group target localisation is complete.
 - PAMGuard project import/config equivalence is implemented.
+- Graph-native archive/query modules or project-native offline `/jobs` exist.
 - The system has production throughput proof for 50+ real detector-heavy live streams.
 
 ## Deliberate non-ports
 
 These are recorded decisions with evidence, not gaps left by oversight:
 
-- `DetectionGroupLocaliser` — class-level `@Deprecated`, needs a GPS/track model the engine lacks, and solves a different problem than instantaneous multi-array groups (`docs/192-group-localiser-non-port.md`).
+- Legacy `DetectionGroupLocaliser` — class-level `@Deprecated` and a
+  different instantaneous multi-array problem
+  (`docs/192-group-localiser-non-port.md`). This does not describe the now
+  ported `DetectionGroupLocaliser2`/Least Squares numerical path used for
+  manually tracked click events.
 - `SimplexBearingLocaliser`, `CombinedBearingLocaliser`, and `MLGridBearingLocaliser` v1 — zero live instantiation sites anywhere in the PAMGuard tree; every reference is a commented-out line, and the first is also `@Deprecated` (`docs/200-remaining-bearing-localisers-non-port.md`).
 - PAMGuard project/config import as C++ — the payloads are Java-serialised object graphs, so any importer must run on the JVM (`docs/182-project-import-feasibility.md`).
 
 ## Next parity priorities
 
-As of 2026-07-24 the scoped click/whistle correctness slices in the overnight
-plan are complete, including Sweep classification, angle vetoes, FFT noise
-statistics, Whistles & Moans background spectra and audio-channel grouping.
-Every remaining class in the selected click, whistle, click-train, array, and
-bearing-localiser paths is ported, ported-but-deliberately-unselected, or
-recorded above as a non-port with evidence. The remaining scientific gaps need
-an input the engine does not currently have.
+As of 2026-07-25, the immediate priority is to keep controlled-unit promotion
+honest: finish a Java-backed settings/runtime/display contract or leave the
+unit experimental/unavailable. Project-native storage/offline execution,
+sensor feeds, the explicitly bounded Matched Template secondary integrations,
+and human operator/audio acceptance remain separate work; none is implied by
+the completed DSP fixtures.
 
 ### Blocked on a decision or an input from outside the port
 
 - **PAMGuard project import across versions.** The converter is validated against the authoritative `2.02.18e` oracle (`docs/203-project-import-converter.md`, `docs/225-java-oracle-pinning.md`). Supporting any additional PAMGuard build needs a `.psfx` written by that build to test deserialisation compatibility.
-- **A GPS and attitude feed.** What remains after `docs/204` narrowed it:
+- **A GPS and attitude feed.** Explicit local Cartesian origin and pose can now
+  be supplied at project-PCM chunk cadence and drive tracked-click Least
+  Squares. What still requires a real sensor source is:
   - time-varying **geometry** — array deformation through a tow, which rebuilds localiser state (`docs/190`);
-  - **geographic position** — `LatLong` and everything built on it, including anything that would make `DetectionGroupLocaliser` meaningful (`docs/192`);
+  - **geographic position** — `LatLong`, georeferenced plots/results, and
+    navigation-device acquisition; the current target-motion API intentionally
+    consumes one declared local metre frame;
   - **sub-chunk attitude interpolation** — attitude already varies at chunk cadence via PCM-post parameters (`docs/204-per-chunk-attitude.md`); finer needs timestamped sensor data.
 
 ### Standing

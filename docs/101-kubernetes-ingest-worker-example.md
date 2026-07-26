@@ -1,24 +1,32 @@
-# Kubernetes Ingest Worker Example
+# Kubernetes active-project ingest example
 
-Date: 2026-07-01
+Updated: 2026-07-25
 
-This checkpoint adds:
-
-```text
-deploy/kubernetes/ingest-worker.example.yaml
-```
-
-## Purpose
-
-The manifest shows how to run one `ffmpeg_stream_ingest` worker for one source/session against the in-cluster engine service:
+`deploy/kubernetes/ingest-worker.example.yaml` runs the Python supervisor for
+one external source and one existing Sound Acquisition instance. It posts PCM
+through the stable project API:
 
 ```text
-http://pamguard-engine:8080
+POST /v1/projects/active/acquisitions/{acquisitionUnitId}/pcm-f32le
 ```
 
-## Apply
+It does not create an AnalysisSession.
 
-Edit the source URL, source ID, session ID, owner ID, tenant ID, channel count, and optional audio filter first.
+## Before applying
+
+1. Save or open the intended project in the engine.
+2. Set its stable UUID as the ConfigMap `projectId`.
+3. Set the target Sound Acquisition unit's UUID as `acquisitionUnitId`.
+4. Match `sampleRateHz` and `channels` to that unit.
+5. Replace the source URL.
+6. Make the engine API-key Secret available under the example name.
+7. Make sure the active project runtime is started.
+
+The unit IDs can be read from:
+
+```text
+GET /v1/projects/active/acquisitions
+```
 
 Then apply:
 
@@ -28,9 +36,18 @@ kubectl apply -f .\deploy\kubernetes\ingest-worker.example.yaml
 
 ## Production notes
 
-- Use one worker Deployment per live source/session.
-- Put source credentials and API keys in Kubernetes Secrets, not ConfigMaps.
-- The example reads `PAMGUARD_API_KEY` from the engine API-key Secret and passes `--api-key-env PAMGUARD_API_KEY`, so the key value is not placed in process arguments.
-- The example passes `--owner-id` and `--tenant-id` to satisfy engine deployments that enable `PAMGUARD_REQUIRE_SESSION_METADATA`.
-- Keep channel count, audio filter, and session hydrophone geometry aligned for localisation correctness.
-- Use `--resume-from-engine` and `--allow-existing-session` for supervised restarts.
+- Keep `replicas: 1` and the `Recreate` update strategy; two overlapping
+  writers would race the same Acquisition timeline.
+- The PVC persists both the sample cursor and supervisor status document.
+- Keep the API key in a Secret. If a source URL itself contains credentials,
+  mount the complete credential-bearing manifest from a Secret instead of
+  using the example ConfigMap.
+- `PAMGUARD_API_KEY` is read from an environment variable and is not placed in
+  the launch command or status file.
+- The worker verifies project identity, Acquisition identity, audio shape,
+  running state, working revision, and absence of built-in capture before
+  FFmpeg starts.
+- Project revisions fence stale workers. Restart the worker after an intended
+  project edit so it discovers the new revision and resets its timeline cursor.
+- Use a separate manifest/Deployment per independent source or a single
+  supervisor manifest containing multiple non-overlapping Acquisition targets.

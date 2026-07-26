@@ -30,6 +30,7 @@ import java.util.Random;
  * length (the reference caches by sample rate only), the JTransforms packed
  * bin 0 multiplied as an ordinary complex value, odd- and even-length
  * non-power-of-two FFTs, template upsampling via PamInterp.interpWaveform,
+ * template decimation via jpamutils WavInterpolator,
  * the signed-maximum peak normalisation, and the NaN reject path from a
  * zeroed reject template.
  *
@@ -95,7 +96,7 @@ public final class MatchedTemplateFixtureExporter {
 
         try (PrintWriter writer = new PrintWriter(output)) {
             writer.println("# case,<name>,<sampleRate>,<normType>,<peakSearch>,<peakSmoothing>,<lengthdB>,<restrictedBins>,<chanClass>");
-            writer.println("# template,<idx>,<thresholdToAccept>,<matchSr>,<rejectSr>");
+            writer.println("# template,<idx>,<thresholdToAccept>,<matchSr>,<rejectSr>,<classifierNorm>");
             writer.println("# tmatch/treject,<idx>,<values...>");
             writer.println("# click,<nChan>  then wave,<chan>,<values...> rows");
             writer.println("# result,<classifierIdx>,<threshold>,<matchCorr>,<rejectCorr> (best across channels)");
@@ -107,8 +108,9 @@ public final class MatchedTemplateFixtureExporter {
                         mtCase.peakSmoothing, mtCase.lengthdB, mtCase.restrictedBins, mtCase.chanClass);
                 for (int i = 0; i < mtCase.classifiers.length; i++) {
                     MTClassifier c = mtCase.classifiers[i];
-                    writer.printf(Locale.ROOT, "template,%d,%.17g,%.17g,%.17g%n", i,
-                            c.thresholdToAccept, (double) c.waveformMatch.sR, (double) c.waveformReject.sR);
+                    writer.printf(Locale.ROOT, "template,%d,%.17g,%.17g,%.17g,%d%n", i,
+                            c.thresholdToAccept, (double) c.waveformMatch.sR,
+                            (double) c.waveformReject.sR, c.normalisation);
                     writeValues(writer, "tmatch," + i, c.waveformMatch.waveform);
                     writeValues(writer, "treject," + i, c.waveformReject.waveform);
                 }
@@ -232,6 +234,11 @@ public final class MatchedTemplateFixtureExporter {
         double[] match48 = burst(random, 96, 8000, 48000, 0.04, 1.0, 0.0);
         double[] reject48 = burst(random, 96, 3000, 48000, 0.03, 1.0, 0.0);
         double[] match24 = burst(random, 60, 5000, 24000, 0.05, 1.0, 0.0);
+        Random highRateRandom = new Random(20260726L);
+        double[] match192 = burst(
+                highRateRandom, 192, 18000, 192000, 0.02, 1.0, 0.0);
+        double[] reject192 = burst(
+                highRateRandom, 192, 5000, 192000, 0.02, 1.0, 0.0);
 
         // 1: RMS norm, peak search, one classifier; the second click is
         // noise-only, the third carries the reject shape.
@@ -302,6 +309,45 @@ public final class MatchedTemplateFixtureExporter {
                 {clickWave(random, 256, 80, match48, 0.02)},
         };
 
-        return new MtCase[]{rms, raw, upsample, requireOne, requireAll, none};
+        // 7: templates above the session rate use WavInterpolator's exact
+        // four-pole Butterworth plus cubic-spline decimation path.
+        MtCase downsample = new MtCase(
+                "downsample-template", 48000, 1, false, 0);
+        downsample.classifiers = new MTClassifier[]{
+                classifier(0.01, 1,
+                        new MatchTemplate("m18k192", match192, 192000),
+                        new MatchTemplate("r5k192", reject192, 192000))};
+        downsample.clicks = new double[][][]{
+                {clickWave(random, 256, 70,
+                        burst(random, 48, 18000, 48000, 0.08, 1.0, 0.0),
+                        0.01)},
+                {clickWave(random, 256, 70,
+                        burst(random, 48, 5000, 48000, 0.08, 1.0, 0.0),
+                        0.01)},
+        };
+
+        // 8: a fresh MatchedTemplateParams has global RMS click
+        // normalisation while its bare first MTClassifier starts at peak
+        // template normalisation until the dialog is accepted.
+        MtCase splitDefaultNorm = new MtCase(
+                "split-global-classifier-norm", 48000, 1, false, 0);
+        splitDefaultNorm.classifiers = new MTClassifier[]{
+                classifier(0.01, 0,
+                        new MatchTemplate("m8k", match48, 48000),
+                        new MatchTemplate("r3k", reject48, 48000))};
+        splitDefaultNorm.clicks = new double[][][]{
+                {clickWave(random, 256, 80, match48, 0.02)},
+        };
+
+        return new MtCase[]{
+                rms,
+                raw,
+                upsample,
+                requireOne,
+                requireAll,
+                none,
+                downsample,
+                splitDefaultNorm,
+        };
     }
 }

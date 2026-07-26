@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -32,6 +33,10 @@ struct Options {
     std::string source_url;
     std::string engine_url = "http://127.0.0.1:8080";
     std::string session_id;
+    std::string module_id;
+    std::string project_id;
+    std::string acquisition_unit_id;
+    std::optional<std::uint64_t> working_revision;
     std::string source_id;
     std::string ffmpeg = "ffmpeg";
     std::size_t sample_rate_hz = 48000;
@@ -76,12 +81,30 @@ struct ChunkPostResult {
     std::uint64_t next_expected_start_sample = 0;
 };
 
+class ProjectTargetRejected : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+bool is_project_target(const Options& options) {
+    return !options.project_id.empty() &&
+        !options.acquisition_unit_id.empty() &&
+        options.working_revision.has_value();
+}
+
 void usage() {
     std::cerr
-        << "Usage: ffmpeg_stream_ingest --source <url-or-file> --session <id> [options]\n"
+        << "Usage: ffmpeg_stream_ingest --source <url-or-file> "
+           "(--session <id> | --module <id> | "
+           "--project-id <id> --acquisition-unit-id <id> "
+           "--working-revision <n>) [options]\n"
         << "\n"
         << "Options:\n"
         << "  --engine <http://host:port>     Engine service URL (default http://127.0.0.1:8080)\n"
+        << "  --module <id>                   Post to a composable acquisition module\n"
+        << "  --project-id <id>               Expected active project identity\n"
+        << "  --acquisition-unit-id <id>      Stable project Acquisition identity\n"
+        << "  --working-revision <n>          Expected active project working revision\n"
         << "  --source-id <id>                Overlay sourceId when posting --session-config\n"
         << "  --sample-rate <hz>              Output sample rate sent to the session (default 48000)\n"
         << "  --channels <n>                  Output channel count sent to the session (default 1)\n"
@@ -134,6 +157,21 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "--session") {
             options.session_id = require_value(i, argc, argv, arg);
+        }
+        else if (arg == "--module") {
+            options.module_id = require_value(i, argc, argv, arg);
+        }
+        else if (arg == "--project-id") {
+            options.project_id = require_value(i, argc, argv, arg);
+        }
+        else if (arg == "--acquisition-unit-id") {
+            options.acquisition_unit_id =
+                require_value(i, argc, argv, arg);
+        }
+        else if (arg == "--working-revision") {
+            options.working_revision = parse_uint64_value(
+                require_value(i, argc, argv, arg),
+                arg);
         }
         else if (arg == "--source-id") {
             options.source_id = require_value(i, argc, argv, arg);
@@ -214,8 +252,32 @@ Options parse_options(int argc, char** argv) {
     if (options.source_url.empty()) {
         throw std::invalid_argument("--source is required");
     }
-    if (options.session_id.empty()) {
-        throw std::invalid_argument("--session is required");
+    const bool session_target = !options.session_id.empty();
+    const bool module_target = !options.module_id.empty();
+    const bool project_target_requested =
+        !options.project_id.empty() ||
+        !options.acquisition_unit_id.empty() ||
+        options.working_revision.has_value();
+    const bool project_target = is_project_target(options);
+    if (project_target_requested && !project_target) {
+        throw std::invalid_argument(
+            "--project-id, --acquisition-unit-id, and "
+            "--working-revision must be supplied together");
+    }
+    const auto target_count =
+        static_cast<unsigned>(session_target) +
+        static_cast<unsigned>(module_target) +
+        static_cast<unsigned>(project_target);
+    if (target_count != 1) {
+        throw std::invalid_argument(
+            "exactly one session, module, or project Acquisition "
+            "target is required");
+    }
+    if (!session_target &&
+        (!options.session_config_path.empty() ||
+         options.resume_from_engine)) {
+        throw std::invalid_argument(
+            "--session-config and --resume-from-engine only apply to --session");
     }
     if (options.sample_rate_hz == 0 || options.channel_count == 0 || options.chunk_frames == 0) {
         throw std::invalid_argument("--sample-rate, --channels, and --chunk-frames must be positive");
@@ -408,6 +470,99 @@ void verify_session_audio_shape(const json& body, const Options& options) {
     }
 }
 
+json query_active_acquisitions(
+    httplib::Client& client,
+    const Endpoint& endpoint) {
+    auto response = client.Get(
+        endpoint.base_path +
+        "/v1/projects/active/acquisitions");
+    if (!response) {
+        throw std::runtime_error(
+            "active Acquisition query failed: no response");
+    }
+    if (response->status < 200 || response->status >= 300) {
+        throw std::runtime_error(
+            "active Acquisition query failed with status " +
+            std::to_string(response->status) + ": " +
+            response->body);
+    }
+    return json::parse(response->body);
+}
+
+void verify_project_acquisition_target(
+    const json& body,
+    const Options& options) {
+    if (!is_project_target(options)) {
+        throw std::logic_error(
+            "project Acquisition verification requires a complete target");
+    }
+    if (!body.contains("projectId") ||
+        !body.at("projectId").is_string() ||
+        body.at("projectId").get<std::string>() !=
+            options.project_id) {
+        throw ProjectTargetRejected(
+            "configured project ID is not the active project");
+    }
+    if (!body.contains("workingRevision") ||
+        !body.at("workingRevision").is_number_integer() ||
+        body.at("workingRevision").get<std::uint64_t>() !=
+            *options.working_revision) {
+        throw ProjectTargetRejected(
+            "configured working revision is stale");
+    }
+    if (!body.contains("runtimeRunning") ||
+        !body.at("runtimeRunning").is_boolean() ||
+        !body.at("runtimeRunning").get<bool>()) {
+        throw ProjectTargetRejected(
+            "active project runtime is not running");
+    }
+    if (!body.contains("acquisitions") ||
+        !body.at("acquisitions").is_array()) {
+        throw std::runtime_error(
+            "engine omitted the active Acquisition list");
+    }
+    const json* matching = nullptr;
+    for (const auto& acquisition : body.at("acquisitions")) {
+        if (!acquisition.is_object() ||
+            !acquisition.contains("unitId") ||
+            !acquisition.at("unitId").is_string() ||
+            acquisition.at("unitId").get<std::string>() !=
+                options.acquisition_unit_id) {
+            continue;
+        }
+        if (matching != nullptr) {
+            throw std::runtime_error(
+                "engine returned duplicate Acquisition identities");
+        }
+        matching = &acquisition;
+    }
+    if (matching == nullptr ||
+        !matching->contains("typeId") ||
+        !matching->at("typeId").is_string() ||
+        matching->at("typeId").get<std::string>() !=
+            "pamguard.acquisition") {
+        throw ProjectTargetRejected(
+            "configured Acquisition unit is not active");
+    }
+    if (!matching->contains("sampleRateHz") ||
+        !matching->at("sampleRateHz").is_number() ||
+        !std::isfinite(
+            matching->at("sampleRateHz").get<double>()) ||
+        std::llround(
+            matching->at("sampleRateHz").get<double>()) !=
+            static_cast<long long>(options.sample_rate_hz)) {
+        throw ProjectTargetRejected(
+            "configured sample rate does not match the active Acquisition");
+    }
+    if (!matching->contains("channelCount") ||
+        !matching->at("channelCount").is_number_integer() ||
+        matching->at("channelCount").get<std::size_t>() !=
+            options.channel_count) {
+        throw ProjectTargetRejected(
+            "configured channel count does not match the active Acquisition");
+    }
+}
+
 std::optional<std::uint64_t> expected_start_sample_from_status(const json& body) {
     if (!body.contains("runtime") || !body.at("runtime").is_object()) {
         return std::nullopt;
@@ -417,6 +572,48 @@ std::optional<std::uint64_t> expected_start_sample_from_status(const json& body)
         return std::nullopt;
     }
     return runtime.at("expectedStartSample").get<std::uint64_t>();
+}
+
+void verify_project_chunk_post_response(
+    const std::string& body,
+    const Options& options,
+    const std::uint64_t start_sample,
+    const std::size_t frame_count) {
+    try {
+        const auto parsed = json::parse(body);
+        if (!parsed.contains("accepted") ||
+            !parsed.at("accepted").is_boolean() ||
+            !parsed.at("accepted").get<bool>() ||
+            !parsed.contains("projectId") ||
+            !parsed.at("projectId").is_string() ||
+            parsed.at("projectId").get<std::string>() !=
+                options.project_id ||
+            !parsed.contains("acquisitionUnitId") ||
+            !parsed.at("acquisitionUnitId").is_string() ||
+            parsed.at("acquisitionUnitId").get<std::string>() !=
+                options.acquisition_unit_id ||
+            !parsed.contains("workingRevision") ||
+            !parsed.at("workingRevision").is_number_integer() ||
+            parsed.at("workingRevision").get<std::uint64_t>() !=
+                *options.working_revision ||
+            !parsed.contains("inputFrames") ||
+            !parsed.at("inputFrames").is_number_integer() ||
+            parsed.at("inputFrames").get<std::size_t>() !=
+                frame_count ||
+            !parsed.contains("startSample") ||
+            !parsed.at("startSample").is_number_integer() ||
+            parsed.at("startSample").get<std::uint64_t>() !=
+                start_sample) {
+            throw std::runtime_error(
+                "engine response did not identify the exact project "
+                "Acquisition target");
+        }
+    }
+    catch (const json::exception& error) {
+        throw std::runtime_error(
+            "engine returned an invalid project PCM response: " +
+            std::string(error.what()));
+    }
 }
 
 ChunkPostResult parse_chunk_post_result(const std::string& body, std::uint64_t fallback_next_expected_start_sample) {
@@ -437,34 +634,105 @@ ChunkPostResult parse_chunk_post_result(const std::string& body, std::uint64_t f
 ChunkPostResult post_chunk(
     httplib::Client& client,
     const Endpoint& endpoint,
-    const std::string& session_id,
+    const Options& options,
     const char* data,
     std::size_t byte_count,
     std::uint64_t start_sample,
     std::size_t frame_count) {
-    const auto path = endpoint.base_path + "/sessions/" + url_path_escape(session_id) +
-        "/pcm-f32le?startSample=" + std::to_string(start_sample) + endpoint.extra_query;
+    const auto time_ms = std::to_string(
+        std::chrono::duration_cast<
+            std::chrono::milliseconds>(
+            std::chrono::system_clock::now()
+                .time_since_epoch())
+            .count());
+    std::string path;
+    if (is_project_target(options)) {
+        path =
+            endpoint.base_path +
+            "/v1/projects/active/acquisitions/" +
+            url_path_escape(options.acquisition_unit_id) +
+            "/pcm-f32le?expectedProjectId=" +
+            url_path_escape(options.project_id) +
+            "&expectedWorkingRevision=" +
+            std::to_string(*options.working_revision) +
+            "&startSample=" +
+            std::to_string(start_sample) +
+            "&timeMs=" +
+            time_ms;
+    }
+    else if (!options.module_id.empty()) {
+        path =
+            endpoint.base_path +
+            "/module-runtime/acquisitions/" +
+            url_path_escape(options.module_id) +
+            "/pcm-f32le?startSample=" +
+            std::to_string(start_sample) +
+            "&timeMs=" +
+            time_ms;
+    }
+    else {
+        path =
+            endpoint.base_path + "/sessions/" +
+            url_path_escape(options.session_id) +
+            "/pcm-f32le?startSample=" +
+            std::to_string(start_sample) +
+            endpoint.extra_query;
+    }
     const std::string body(data, byte_count);
     auto response = client.Post(path, body, "application/octet-stream");
     if (!response) {
         throw std::runtime_error("engine POST failed: no response");
     }
     if (response->status < 200 || response->status >= 300) {
-        throw std::runtime_error("engine POST failed with status " + std::to_string(response->status) + ": " + response->body);
+        const auto message =
+            "engine POST failed with status " +
+            std::to_string(response->status) + ": " +
+            response->body;
+        if (is_project_target(options) &&
+            response->status >= 400 &&
+            response->status < 500) {
+            throw ProjectTargetRejected(message);
+        }
+        throw std::runtime_error(message);
+    }
+    if (is_project_target(options)) {
+        verify_project_chunk_post_response(
+            response->body,
+            options,
+            start_sample,
+            frame_count);
     }
     return parse_chunk_post_result(response->body, start_sample + frame_count);
 }
 
-void post_flush(httplib::Client& client, const Endpoint& endpoint, const std::string& session_id) {
-    const auto path = endpoint.base_path + "/sessions/" + url_path_escape(session_id) + "/flush";
-    auto response = client.Post(path, "", "application/json");
+void post_flush(
+    httplib::Client& client,
+    const Endpoint& endpoint,
+    const Options& options) {
+    if (is_project_target(options)) {
+        std::cout
+            << "project Acquisition ingest complete for "
+            << options.acquisition_unit_id << "\n";
+        return;
+    }
+    const auto path = !options.module_id.empty()
+        ? endpoint.base_path + "/module-runtime/control"
+        : endpoint.base_path + "/sessions/" +
+            url_path_escape(options.session_id) + "/flush";
+    const auto body = !options.module_id.empty()
+        ? R"({"action":"flush"})"
+        : "";
+    auto response = client.Post(path, body, "application/json");
     if (!response) {
         throw std::runtime_error("engine flush failed: no response");
     }
     if (response->status < 200 || response->status >= 300) {
         throw std::runtime_error("engine flush failed with status " + std::to_string(response->status) + ": " + response->body);
     }
-    std::cout << "flushed session " << session_id << "\n";
+    std::cout << "flushed " << (
+        options.module_id.empty()
+        ? "session " + options.session_id
+        : "module graph for " + options.module_id) << "\n";
 }
 
 bool run_stream_once(
@@ -496,7 +764,7 @@ bool run_stream_once(
             }
 
             while (pending.size() >= chunk_bytes) {
-                const auto post_result = post_chunk(client, endpoint, options.session_id, pending.data(), chunk_bytes, start_sample, options.chunk_frames);
+                const auto post_result = post_chunk(client, endpoint, options, pending.data(), chunk_bytes, start_sample, options.chunk_frames);
                 pending.erase(pending.begin(), pending.begin() + static_cast<std::ptrdiff_t>(chunk_bytes));
                 std::cout << "posted chunk " << chunks_posted + 1
                           << " startSample=" << start_sample
@@ -520,7 +788,7 @@ bool run_stream_once(
         const auto whole_frames = pending.size() / frame_bytes;
         if (whole_frames > 0) {
             const auto whole_bytes = whole_frames * frame_bytes;
-            const auto post_result = post_chunk(client, endpoint, options.session_id, pending.data(), whole_bytes, start_sample, whole_frames);
+            const auto post_result = post_chunk(client, endpoint, options, pending.data(), whole_bytes, start_sample, whole_frames);
             ++chunks_posted;
             std::cout << "posted final chunk " << chunks_posted
                       << " startSample=" << start_sample
@@ -537,7 +805,7 @@ bool run_stream_once(
             throw std::runtime_error("FFmpeg exited with code " + std::to_string(exit_code));
         }
         if (!options.restart) {
-            post_flush(client, endpoint, options.session_id);
+            post_flush(client, endpoint, options);
         }
         return false;
     }
@@ -571,22 +839,36 @@ int main(int argc, char** argv) {
         {
             httplib::Client client(endpoint.host, endpoint.port);
             configure_client(client, options);
-            if (!options.session_config_path.empty()) {
-                post_session_config(client, endpoint, options);
+            if (!options.session_id.empty()) {
+                if (!options.session_config_path.empty()) {
+                    post_session_config(client, endpoint, options);
+                }
+                const auto session_status = query_session_status(
+                    client,
+                    endpoint,
+                    options.session_id);
+                verify_session_audio_shape(session_status, options);
+                if (options.resume_from_engine) {
+                    const auto expected =
+                        expected_start_sample_from_status(
+                            session_status);
+                    if (expected) {
+                        std::cout << "resuming startSample from engine expectedStartSample="
+                                  << *expected << " (local initial=" << start_sample << ")\n";
+                        start_sample = *expected;
+                    }
+                    else {
+                        std::cout << "engine session has no runtime.expectedStartSample; using startSample="
+                                  << start_sample << "\n";
+                    }
+                }
             }
-            const auto session_status = query_session_status(client, endpoint, options.session_id);
-            verify_session_audio_shape(session_status, options);
-            if (options.resume_from_engine) {
-                const auto expected = expected_start_sample_from_status(session_status);
-                if (expected) {
-                    std::cout << "resuming startSample from engine expectedStartSample="
-                              << *expected << " (local initial=" << start_sample << ")\n";
-                    start_sample = *expected;
-                }
-                else {
-                    std::cout << "engine session has no runtime.expectedStartSample; using startSample="
-                              << start_sample << "\n";
-                }
+            else if (is_project_target(options)) {
+                verify_project_acquisition_target(
+                    query_active_acquisitions(
+                        client,
+                        endpoint),
+                    options);
             }
         }
 
@@ -597,6 +879,9 @@ int main(int argc, char** argv) {
                     return 0;
                 }
                 std::cerr << "FFmpeg stream ended; restarting";
+            }
+            catch (const ProjectTargetRejected&) {
+                throw;
             }
             catch (const std::exception& error) {
                 if (!options.restart) {

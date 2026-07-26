@@ -104,6 +104,24 @@ void ClickDetectorEngine::reset() {
     over_threshold_ = 0;
     down_count_ = 0;
     up_count_ = 0;
+    current_orientation_declared_ = false;
+    current_orientation_heading_degrees_ = 0.0;
+    current_orientation_pitch_degrees_ = 0.0;
+    current_orientation_roll_degrees_ = 0.0;
+    current_navigation_origin_declared_ = false;
+    current_navigation_origin_east_metres_ = 0.0;
+    current_navigation_origin_north_metres_ = 0.0;
+    current_navigation_origin_height_metres_ = 0.0;
+    current_navigation_reference_id_.clear();
+    click_orientation_declared_ = false;
+    click_orientation_heading_degrees_ = 0.0;
+    click_orientation_pitch_degrees_ = 0.0;
+    click_orientation_roll_degrees_ = 0.0;
+    click_navigation_origin_declared_ = false;
+    click_navigation_origin_east_metres_ = 0.0;
+    click_navigation_origin_north_metres_ = 0.0;
+    click_navigation_origin_height_metres_ = 0.0;
+    click_navigation_reference_id_.clear();
     next_noise_sample_ = static_cast<std::int64_t>(config_.max_length);
     next_background_time_ms_ = 0;
     waveform_history_.assign(channels_.size(), {});
@@ -120,6 +138,46 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
     }
     if (!std::all_of(channels_.begin(), channels_.end(), [&](std::size_t channel) { return channel < chunk.channel_count; })) {
         throw std::invalid_argument("audio chunk does not contain all click detector channels");
+    }
+    if (chunk.orientation_declared) {
+        if (!std::isfinite(
+                chunk.orientation_heading_degrees) ||
+            !std::isfinite(
+                chunk.orientation_pitch_degrees) ||
+            !std::isfinite(
+                chunk.orientation_roll_degrees)) {
+            throw std::invalid_argument(
+                "declared chunk orientation must be finite");
+        }
+        current_orientation_declared_ = true;
+        current_orientation_heading_degrees_ =
+            chunk.orientation_heading_degrees;
+        current_orientation_pitch_degrees_ =
+            chunk.orientation_pitch_degrees;
+        current_orientation_roll_degrees_ =
+            chunk.orientation_roll_degrees;
+    }
+    if (chunk.navigation_origin_declared) {
+        if (!std::isfinite(
+                chunk.navigation_origin_east_metres) ||
+            !std::isfinite(
+                chunk.navigation_origin_north_metres) ||
+            !std::isfinite(
+                chunk.navigation_origin_height_metres) ||
+            chunk.navigation_reference_id.empty()) {
+            throw std::invalid_argument(
+                "declared chunk navigation origin requires finite "
+                "coordinates and a reference ID");
+        }
+        current_navigation_origin_declared_ = true;
+        current_navigation_origin_east_metres_ =
+            chunk.navigation_origin_east_metres;
+        current_navigation_origin_north_metres_ =
+            chunk.navigation_origin_north_metres;
+        current_navigation_origin_height_metres_ =
+            chunk.navigation_origin_height_metres;
+        current_navigation_reference_id_ =
+            chunk.navigation_reference_id;
     }
     noise_samples_.clear();
     trigger_background_.clear();
@@ -207,6 +265,24 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
             max_signal_excess_db_ = max_signal_excess;
             down_count_ = 0;
             up_count_ = 1;
+            click_orientation_declared_ =
+                current_orientation_declared_;
+            click_orientation_heading_degrees_ =
+                current_orientation_heading_degrees_;
+            click_orientation_pitch_degrees_ =
+                current_orientation_pitch_degrees_;
+            click_orientation_roll_degrees_ =
+                current_orientation_roll_degrees_;
+            click_navigation_origin_declared_ =
+                current_navigation_origin_declared_;
+            click_navigation_origin_east_metres_ =
+                current_navigation_origin_east_metres_;
+            click_navigation_origin_north_metres_ =
+                current_navigation_origin_north_metres_;
+            click_navigation_origin_height_metres_ =
+                current_navigation_origin_height_metres_;
+            click_navigation_reference_id_ =
+                current_navigation_reference_id_;
         }
         else if (click_status_ == ClickStatus::ClickEnding) {
             if (over_threshold_ != 0) {
@@ -229,6 +305,24 @@ std::vector<ClickDetectionResult> ClickDetectorEngine::process(const core::Audio
                     result.signal_excess_db = max_signal_excess_db_;
                     result.channels = channels_;
                     result.waveform = extract_waveform(click_start_sample_, duration);
+                    result.orientation_declared =
+                        click_orientation_declared_;
+                    result.orientation_heading_degrees =
+                        click_orientation_heading_degrees_;
+                    result.orientation_pitch_degrees =
+                        click_orientation_pitch_degrees_;
+                    result.orientation_roll_degrees =
+                        click_orientation_roll_degrees_;
+                    result.navigation_origin_declared =
+                        click_navigation_origin_declared_;
+                    result.navigation_origin_east_metres =
+                        click_navigation_origin_east_metres_;
+                    result.navigation_origin_north_metres =
+                        click_navigation_origin_north_metres_;
+                    result.navigation_origin_height_metres =
+                        click_navigation_origin_height_metres_;
+                    result.navigation_reference_id =
+                        click_navigation_reference_id_;
                     detections.push_back(result);
                 }
             }

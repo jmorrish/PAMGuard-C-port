@@ -18,6 +18,7 @@ $sessionDir = Join-Path $root "sessions"
 $archiveDir = Join-Path $root "archive"
 $ingestStatusPath = Join-Path $root "ingest-status.json"
 $auditLogPath = Join-Path $root "audit.ndjson"
+$moduleGraphPath = Join-Path $root "module-graph.json"
 New-Item -ItemType Directory -Force -Path $sessionDir, $archiveDir | Out-Null
 
 $oldSessionDir = $env:PAMGUARD_SESSION_CONFIG_DIR
@@ -26,6 +27,8 @@ $oldIngestStatusFile = $env:PAMGUARD_INGEST_STATUS_FILE
 $oldMaxSessions = $env:PAMGUARD_MAX_SESSIONS
 $oldRequireSessionMetadata = $env:PAMGUARD_REQUIRE_SESSION_METADATA
 $oldAuditLogFile = $env:PAMGUARD_AUDIT_LOG_FILE
+$oldModuleGraphFile = $env:PAMGUARD_MODULE_GRAPH_FILE
+$oldLegacyModelCompat = $env:PAMGUARD_LEGACY_MODEL_COMPAT
 $oldApiKey = $env:PAMGUARD_API_KEY
 $oldApiKeyFile = $env:PAMGUARD_API_KEY_FILE
 
@@ -36,6 +39,8 @@ try {
     $env:PAMGUARD_MAX_SESSIONS = "4"
     $env:PAMGUARD_REQUIRE_SESSION_METADATA = "1"
     $env:PAMGUARD_AUDIT_LOG_FILE = $auditLogPath
+    $env:PAMGUARD_MODULE_GRAPH_FILE = $moduleGraphPath
+    $env:PAMGUARD_LEGACY_MODEL_COMPAT = "1"
     $ingestStatus = @{
         schemaVersion = 2
         generatedUnixMs = 1782921600000
@@ -126,6 +131,47 @@ try {
     }
     if (-not $lastHealth.auditLogEnabled) {
         throw "Health endpoint did not report enabled audit logging"
+    }
+    if (-not $lastHealth.moduleGraphPersistenceEnabled -or $lastHealth.moduleGraphRevision -ne 0) {
+        throw "Health endpoint did not report the initial persisted module graph state"
+    }
+
+    $moduleTypes = Invoke-RestMethod -Method Get -Uri "$base/module-types" -Headers $headers
+    if ($moduleTypes.count -lt 8 -or
+        -not (@($moduleTypes.moduleTypes) | Where-Object { $_.id -eq "pamguard.fft" })) {
+        throw "Module catalogue did not expose the built-in composable module types"
+    }
+    $moduleGraph = @{
+        expectedRevision = 0
+        schemaVersion = 1
+        revision = 0
+        modules = @(
+            @{ id = "source-1"; typeId = "pamguard.acquisition"; name = "Input"; enabled = $true; settings = @{ sourceId = "smoke"; sampleRateHz = 48000; channelCount = 2; subtractDC = $false; dcTimeConstantSeconds = 1 } },
+            @{ id = "fft-1"; typeId = "pamguard.fft"; name = "FFT"; enabled = $true; settings = @{ fftLength = 1024; fftHop = 512; channels = @(0, 1) } },
+            @{ id = "display-1"; typeId = "pamguard.spectrogram-display"; name = "Spectrogram"; enabled = $true; settings = @{} }
+        )
+        connections = @(
+            @{ id = "graph-c1"; source = @{ moduleId = "source-1"; portId = "audio" }; target = @{ moduleId = "fft-1"; portId = "input" } },
+            @{ id = "graph-c2"; source = @{ moduleId = "fft-1"; portId = "fft" }; target = @{ moduleId = "display-1"; portId = "fft" } }
+        )
+    } | ConvertTo-Json -Depth 12 -Compress
+    $graphApplied = Invoke-RestMethod -Method Put -Uri "$base/module-graph" -Headers $headers -ContentType "application/json" -Body $moduleGraph
+    if (-not $graphApplied.applied -or $graphApplied.revision -ne 1 -or -not $graphApplied.persisted -or -not (Test-Path $moduleGraphPath)) {
+        throw "Validated graph update was not applied and persisted"
+    }
+    $compatibleSources = Invoke-RestMethod -Method Get -Uri "$base/module-graph/compatible-sources?moduleId=fft-1&portId=input" -Headers $headers
+    if ($compatibleSources.count -ne 1 -or $compatibleSources.sources[0].moduleId -ne "source-1") {
+        throw "Compatible source discovery did not expose the acquisition output"
+    }
+    try {
+        Invoke-WebRequest -Method Put -Uri "$base/module-graph" -Headers $headers -ContentType "application/json" -Body $moduleGraph -UseBasicParsing | Out-Null
+        throw "Graph endpoint accepted a stale expectedRevision"
+    }
+    catch [System.Net.WebException] {
+        if ($_.Exception.Response.StatusCode -ne [System.Net.HttpStatusCode]::Conflict) {
+            throw
+        }
+        $_.Exception.Response.Dispose()
     }
 
     $ready = Invoke-RestMethod -Method Get -Uri "$base/ready"
@@ -229,6 +275,7 @@ try {
             }
             train = @{
                 enabled = $true
+                minIciSeconds = 0.001
                 maxIciSeconds = 0.5
                 minClicks = 3
             }
@@ -629,10 +676,13 @@ try {
             @($importStatus.matchFilt.kernel).Count -lt 100 -or
             $importStatus.matchFilt.thresh -ne 0.5 -or
             -not $importStatus.matchedTemplate.enabled -or
+            $importStatus.matchedTemplate.clickType -ne 101 -or
             $importStatus.matchedTemplate.restrictedBins -ne 256 -or
             @($importStatus.matchedTemplate.classifiers).Count -ne 1 -or
             $importStatus.matchedTemplate.classifiers[0].thresholdToAccept -ne 0.1 -or
-            @($importStatus.matchedTemplate.classifiers[0].match.waveform).Count -lt 2) {
+            $importStatus.matchedTemplate.classifiers[0].normalisation -ne 1 -or
+            @($importStatus.matchedTemplate.classifiers[0].matchTemplate.waveform).Count -lt 2 -or
+            @($importStatus.matchedTemplate.classifiers[0].rejectTemplate.waveform).Count -lt 2) {
             throw "Imported session did not round-trip the .psfx monitoring module settings"
         }
         if ($importStatus.whistle.enabled -or
@@ -672,6 +722,30 @@ try {
         $importRemoved = Invoke-RestMethod -Method Delete -Uri "$base/sessions/$($imported.sessionId)" -Headers $headers
         if (-not $importRemoved.removed) {
             throw "Imported session delete did not report removed=true"
+        }
+
+        # The legacy session endpoint deliberately has no second,
+        # compatibility-only Matched Template dialect. Old match/reject keys
+        # must be rejected instead of silently losing the Java classifier
+        # normalisation and click type.
+        $imported.sessionId = "legacy-matched-template-alias"
+        $legacyClassifier = $imported.matchedTemplate.classifiers[0]
+        $legacyMatch = $legacyClassifier.matchTemplate
+        $legacyReject = $legacyClassifier.rejectTemplate
+        $legacyClassifier | Add-Member -NotePropertyName match -NotePropertyValue $legacyMatch
+        $legacyClassifier | Add-Member -NotePropertyName reject -NotePropertyValue $legacyReject
+        $legacyClassifier.PSObject.Properties.Remove("matchTemplate")
+        $legacyClassifier.PSObject.Properties.Remove("rejectTemplate")
+        $legacyBody = $imported | ConvertTo-Json -Depth 10
+        try {
+            Invoke-WebRequest -Method Post -Uri "$base/sessions" -Headers $headers -ContentType "application/json" -Body $legacyBody -UseBasicParsing | Out-Null
+            throw "Legacy matched-template match/reject aliases were accepted"
+        }
+        catch [System.Net.WebException] {
+            if ($_.Exception.Response.StatusCode -ne [System.Net.HttpStatusCode]::BadRequest) {
+                throw
+            }
+            $_.Exception.Response.Dispose()
         }
 
         # Separate noiseMonitor runtime: a low-rate session completes multiple
@@ -760,6 +834,20 @@ finally {
     }
     else {
         Remove-Item Env:\PAMGUARD_AUDIT_LOG_FILE -ErrorAction SilentlyContinue
+    }
+    if ($oldModuleGraphFile) {
+        $env:PAMGUARD_MODULE_GRAPH_FILE = $oldModuleGraphFile
+    }
+    else {
+        Remove-Item Env:\PAMGUARD_MODULE_GRAPH_FILE -ErrorAction SilentlyContinue
+    }
+    if ($oldLegacyModelCompat) {
+        $env:PAMGUARD_LEGACY_MODEL_COMPAT =
+            $oldLegacyModelCompat
+    }
+    else {
+        Remove-Item Env:\PAMGUARD_LEGACY_MODEL_COMPAT `
+            -ErrorAction SilentlyContinue
     }
     $env:PAMGUARD_MAX_SESSIONS = $oldMaxSessions
     if ($oldApiKey) {

@@ -1,0 +1,82 @@
+{
+  "authority": {
+    "version": "2.02.18e",
+    "commit": "dca55c81ef6f1498a8a3b926c69e7182afb915ee",
+    "exporter": "org.pamguard.port.reference.IshmaelSettingsFixtureExporter"
+  },
+  "portableSettingsDefaults": {
+    "energySum": {
+      "channelBitmap": 0,
+      "groupingType": "all",
+      "channelGroups": [],
+      "threshold": 1.0,
+      "minTimeSeconds": 0.0,
+      "maxTimeSeconds": 99999.0,
+      "refractoryTimeSeconds": 0.0,
+      "f0Hz": 0.0,
+      "f1Hz": 1000.0,
+      "ratioF0Hz": 1000.0,
+      "ratioF1Hz": 2000.0,
+      "useRatio": false,
+      "adaptiveThreshold": false,
+      "longFilter": 1.0E-4,
+      "useLog": false,
+      "spikeDecay": 100.0,
+      "outputSmoothing": false,
+      "shortFilter": 0.1
+    },
+    "spectrogramCorrelation": {
+      "channelBitmap": 0,
+      "groupingType": "all",
+      "channelGroups": [],
+      "threshold": 1.0,
+      "minTimeSeconds": 0.0,
+      "maxTimeSeconds": 99999.0,
+      "refractoryTimeSeconds": 0.0,
+      "segments": [],
+      "spreadHz": 100.0,
+      "useLog": false
+    },
+    "matchedFilter": {
+      "channelBitmap": 0,
+      "groupingType": "all",
+      "channelGroups": [],
+      "threshold": 1.0,
+      "minTimeSeconds": 0.0,
+      "maxTimeSeconds": 99999.0,
+      "refractoryTimeSeconds": 0.0,
+      "kernelFilenameList": [],
+      "kernelSamples": []
+    }
+  },
+  "javaConstructorBackingEvidence": {
+    "common": {
+      "serialVersionUID": 0,
+      "dataSource": null,
+      "channelBitmap": 0,
+      "channelGroups": null,
+      "groupingType": 1
+    },
+    "EnergySumParams": {
+      "dontUpgrade": true
+    },
+    "SgramCorrParams": {
+      "segmentRows": 0
+    },
+    "MatchFiltParams": {
+      "maximumFilenameListSize": 10,
+      "activeKernelFilename": ""
+    }
+  },
+  "excludedJavaDefaults": {
+    "deprecatedAndDisplay": {
+      "vscale": 50.0,
+      "smoothing": 0.0
+    },
+    "sourceNames": {
+      "energySum": null,
+      "spectrogramCorrelation": null,
+      "matchedFilter": null
+    }
+  }
+}

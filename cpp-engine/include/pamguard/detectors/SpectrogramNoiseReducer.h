@@ -16,8 +16,8 @@ namespace pamguard::detectors {
  * Threshold output modes match SpectrogramThreshold: OUTPUT_BINARY writes
  * (1, 0) into surviving bins; OUTPUT_INPUT leaves the chain's values;
  * OUTPUT_RAW (the default) then copies the **un-noise-reduced input** back
- * into surviving bins via pickEarlierData, so downstream sees raw data where
- * something was detected and zeros elsewhere.
+ * into positive-real surviving bins via pickEarlierData. Java performs this
+ * final restoration even when the threshold method itself is disabled.
  */
 struct SpectrogramNoiseConfig {
     bool run_median_filter = false;

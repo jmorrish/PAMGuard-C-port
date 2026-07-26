@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <deque>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "pamguard/core/AudioFrame.h"
@@ -70,8 +71,58 @@ struct ClickDetectionResult {
     double signal_excess_db = 0.0;
     std::vector<std::size_t> channels;
     std::vector<std::vector<double>> waveform;
-    /** Absent at normal online classification time, matching Java's pass-on-no-localisation rule. */
+    /**
+     * ClickDetector.completeClick annotations. Classification is attached
+     * before delay measurement, then the selected delays and legacy bearing
+     * are attached before the accepted click is published.
+     */
+    int click_type = 0;
+    std::vector<int> classifiers_passed;
+    std::vector<double> delays_in_samples;
+    /**
+     * Absent before completeClick's localisation stage. Afterwards this is
+     * present even when no localisation is available: Java getAngle()
+     * returns zero in that case.
+     */
     std::optional<double> bearing_radians;
+    /** Array pose captured at the trigger onset, not click completion. */
+    bool orientation_declared = false;
+    double orientation_heading_degrees = 0.0;
+    double orientation_pitch_degrees = 0.0;
+    double orientation_roll_degrees = 0.0;
+    bool navigation_origin_declared = false;
+    double navigation_origin_east_metres = 0.0;
+    double navigation_origin_north_metres = 0.0;
+    double navigation_origin_height_metres = 0.0;
+    std::string navigation_reference_id;
+    /**
+     * Absolute earth-frame bearings, clockwise from north, in the localiser's
+     * deterministic ambiguity-side order.
+     */
+    std::vector<double> earth_bearing_ambiguities_radians;
+    struct MatchedTemplateResult {
+        double threshold = 0.0;
+        double match_correlation = 0.0;
+        double reject_correlation = 0.0;
+
+        bool operator==(const MatchedTemplateResult&) const = default;
+    };
+    struct MatchedTemplateAnnotation {
+        /** Runtime instance owning this annotation; joins to the project unit. */
+        std::string classifier_instance_id;
+        int click_type = 0;
+        bool classified = false;
+        std::vector<MatchedTemplateResult> best_results;
+
+        bool operator==(const MatchedTemplateAnnotation&) const = default;
+    };
+    /**
+     * Java MatchedClickAnnotation equivalents. A vector is required because
+     * PAMGuard permits several Matched Template controlled units to annotate
+     * the same click.
+     */
+    std::vector<MatchedTemplateAnnotation>
+        matched_template_annotations;
     /**
      * Set by the session's echo gate (PAMGuard ClickDetection.setEcho) when
      * online echo detection runs without discarding. Discarded echoes are
@@ -161,6 +212,24 @@ private:
     std::uint32_t over_threshold_ = 0;
     std::size_t down_count_ = 0;
     std::size_t up_count_ = 0;
+    bool current_orientation_declared_ = false;
+    double current_orientation_heading_degrees_ = 0.0;
+    double current_orientation_pitch_degrees_ = 0.0;
+    double current_orientation_roll_degrees_ = 0.0;
+    bool current_navigation_origin_declared_ = false;
+    double current_navigation_origin_east_metres_ = 0.0;
+    double current_navigation_origin_north_metres_ = 0.0;
+    double current_navigation_origin_height_metres_ = 0.0;
+    std::string current_navigation_reference_id_;
+    bool click_orientation_declared_ = false;
+    double click_orientation_heading_degrees_ = 0.0;
+    double click_orientation_pitch_degrees_ = 0.0;
+    double click_orientation_roll_degrees_ = 0.0;
+    bool click_navigation_origin_declared_ = false;
+    double click_navigation_origin_east_metres_ = 0.0;
+    double click_navigation_origin_north_metres_ = 0.0;
+    double click_navigation_origin_height_metres_ = 0.0;
+    std::string click_navigation_reference_id_;
     std::int64_t next_noise_sample_ = 0;
     std::int64_t next_background_time_ms_ = 0;
     std::vector<std::deque<double>> waveform_history_;

@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "pamguard/dsp/ClickRemoval.h"
 #include "pamguard/dsp/WindowFunction.h"
 
 namespace pamguard::dsp {
@@ -18,6 +19,11 @@ SpectrogramEngine::SpectrogramEngine(core::FftConfig config)
     }
     if (config_.fft_hop > config_.fft_length) {
         throw std::invalid_argument("fft_hop greater than fft_length is not yet supported in the parity scaffold");
+    }
+    if (config_.click_removal &&
+        (config_.click_power < 2 || config_.click_power % 2 != 0)) {
+        throw std::invalid_argument(
+            "click removal power must be a positive even integer");
     }
 }
 
@@ -53,9 +59,19 @@ std::vector<SpectrogramFrame> SpectrogramEngine::process(const core::AudioChunk&
         }
 
         while (state.samples.size() >= config_.fft_length) {
+            std::vector<double> source(config_.fft_length);
+            for (std::size_t i = 0; i < config_.fft_length; ++i) {
+                source[i] = state.samples[i];
+            }
+            const auto click_removed = config_.click_removal
+                ? remove_clicks(
+                    source,
+                    config_.click_threshold,
+                    static_cast<double>(config_.click_power))
+                : std::move(source);
             std::vector<double> block(config_.fft_length);
             for (std::size_t i = 0; i < config_.fft_length; ++i) {
-                block[i] = state.samples[i] * window_[i];
+                block[i] = click_removed[i] * window_[i];
             }
 
             SpectrogramFrame frame;

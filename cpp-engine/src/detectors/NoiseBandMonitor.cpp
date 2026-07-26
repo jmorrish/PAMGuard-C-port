@@ -74,7 +74,16 @@ std::vector<NoiseBand> calculate_noise_bands(NoiseBandType type, double min_freq
 
 NoiseBandMonitor::NoiseBandMonitor(double sample_rate_hz, const NoiseBandConfig& config)
     : config_(config), sample_rate_hz_(sample_rate_hz) {
-    if (sample_rate_hz <= 0.0 || config.iir_order <= 0 || config.output_interval_seconds <= 0.0) {
+    const bool butterworth =
+        config.filter_type == dsp::IirFilterType::Butterworth;
+    const bool fir_window =
+        config.filter_type == dsp::IirFilterType::FirWindow;
+    if (sample_rate_hz <= 0.0 ||
+        (!butterworth && !fir_window) ||
+        (butterworth && config.iir_order <= 0) ||
+        (fir_window &&
+         (config.fir_order <= 0 || !(config.fir_gamma > 0.0))) ||
+        config.output_interval_seconds <= 0.0) {
         return;
     }
     const double max_frequency = config.max_frequency_hz > 0.0
@@ -102,7 +111,13 @@ NoiseBandMonitor::NoiseBandMonitor(double sample_rate_hz, const NoiseBandConfig&
     while (current_rate / 2.0 / decimate_step > min_nyquist) {
         DecimatorPlan plan;
         plan.input_rate = current_rate;
-        plan.low_pass_freq = static_cast<float>(current_rate / 2.0 / decimate_step);
+        // NoiseBandControl.makeDecimatorFilters uses the current-stage
+        // cutoff for Butterworth. Its FIR branch deliberately retains the
+        // top sampleRate / 4 value at every decimation stage.
+        plan.low_pass_freq = butterworth
+            ? static_cast<float>(
+                  current_rate / 2.0 / decimate_step)
+            : static_cast<float>(sample_rate_hz) / 4.0F;
         current_rate /= decimate_step;
         plan.output_rate = current_rate;
         plans.push_back(plan);
@@ -114,9 +129,12 @@ NoiseBandMonitor::NoiseBandMonitor(double sample_rate_hz, const NoiseBandConfig&
     groups_.resize(plans.size() + 1);
     for (std::size_t d = 0; d < plans.size(); ++d) {
         dsp::IirFilterParams params;
-        params.type = dsp::IirFilterType::Butterworth;
+        params.type = config.filter_type;
         params.band = dsp::IirFilterBand::LowPass;
-        params.order = config.iir_order + 2;
+        params.order = butterworth
+            ? config.iir_order + 2
+            : config.fir_order;
+        params.cheby_gamma = config.fir_gamma;
         params.low_pass_freq_hz = plans[d].low_pass_freq;
         groups_[d + 1].decimation_filter.emplace(plans[d].input_rate, params);
         groups_[d + 1].decimate_factor = decimate_step;
@@ -142,11 +160,18 @@ NoiseBandMonitor::NoiseBandMonitor(double sample_rate_hz, const NoiseBandConfig&
                                      ? sample_rate_hz
                                      : plans[static_cast<std::size_t>(decimator_index)].output_rate;
         dsp::IirFilterParams params;
-        params.type = dsp::IirFilterType::Butterworth;
+        params.type = config.filter_type;
         params.band = dsp::IirFilterBand::BandPass;
-        params.order = config.iir_order;
-        params.low_pass_freq_hz = static_cast<float>(bands_[i].hi_edge_hz);
-        params.high_pass_freq_hz = static_cast<float>(bands_[i].lo_edge_hz);
+        params.order = butterworth
+            ? config.iir_order
+            : config.fir_order;
+        params.cheby_gamma = config.fir_gamma;
+        params.low_pass_freq_hz = static_cast<float>(
+            bands_[i].hi_edge_hz *
+            (fir_window ? 1.01 : 1.0));
+        params.high_pass_freq_hz = static_cast<float>(
+            bands_[i].lo_edge_hz *
+            (fir_window ? 0.98 : 1.0));
         auto& group = groups_[static_cast<std::size_t>(decimator_index + 1)];
         group.band_filters.emplace_back(band_rate, params);
         group.band_indices.push_back(i);

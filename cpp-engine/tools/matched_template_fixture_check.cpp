@@ -115,6 +115,13 @@ int main(int argc, char** argv) {
                 config.classifiers[idx].threshold_to_accept = std::stod(cells[2]);
                 config.classifiers[idx].match_template.sample_rate_hz = std::stod(cells[3]);
                 config.classifiers[idx].reject_template.sample_rate_hz = std::stod(cells[4]);
+                if (cells.size() != 6) {
+                    throw std::runtime_error(
+                        case_name +
+                        ": template row omits Java classifier normalisation");
+                }
+                config.classifiers[idx].normalisation_type =
+                    std::stoi(cells[5]);
             }
             else if (cells[0] == "tmatch") {
                 const auto idx = static_cast<std::size_t>(std::stoul(cells[1]));

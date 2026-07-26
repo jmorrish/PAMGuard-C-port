@@ -38,6 +38,7 @@ BasicClickTypeConfig standard_basic_click_type(int species_code, BasicClickStand
 
     switch (standard_type) {
     case BasicClickStandardType::BeakedWhale:
+        type.name = "Beaked Whale";
         type.band2_freq_hz = FrequencyRange{10000.0, 23125.0};
         type.band1_freq_hz = FrequencyRange{25000.0, 40000.0};
         type.peak_frequency_search_hz = FrequencyRange{10000.0, 96000.0};
@@ -46,6 +47,7 @@ BasicClickTypeConfig standard_basic_click_type(int species_code, BasicClickStand
         type.mean_selection_range_hz = FrequencyRange{25000.0, 45000.0};
         break;
     case BasicClickStandardType::Porpoise:
+        type.name = "Porpoise";
         type.band2_freq_hz = FrequencyRange{40000.0, 90000.0};
         type.band1_freq_hz = FrequencyRange{100000.0, 150000.0};
         type.peak_frequency_search_hz = FrequencyRange{20000.0, 250000.0};

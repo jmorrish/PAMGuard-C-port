@@ -1,0 +1,56 @@
+.pamguard-app .level-meter-settings-editor {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+  min-width: min(30rem, 72vw);
+  padding: 1rem;
+}
+
+.pamguard-app .level-meter-settings-type {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.pamguard-app .level-meter-settings-type label {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.45rem;
+}
+
+.pamguard-app .level-meter-settings-field {
+  align-items: center;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: minmax(8rem, 0.55fr) minmax(10rem, 1fr);
+}
+
+.pamguard-app .level-meter-settings-label {
+  color: var(--muted);
+}
+
+.pamguard-app .level-meter-settings-help {
+  color: var(--muted);
+  grid-column: 2;
+}
+
+.pamguard-app .level-meter-settings-range {
+  align-items: center;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr auto;
+}
+
+.pamguard-app .level-meter-settings-unit {
+  color: var(--muted);
+}
+
+@media (max-width: 700px) {
+  .pamguard-app .level-meter-settings-field {
+    grid-template-columns: 1fr;
+  }
+
+  .pamguard-app .level-meter-settings-help {
+    grid-column: 1;
+  }
+}

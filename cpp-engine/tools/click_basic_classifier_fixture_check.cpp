@@ -169,7 +169,9 @@ std::vector<ClassifierCase> case_catalogue() {
 bool standard_presets_match_pamguard_source() {
     const auto beaked = pamguard::detectors::standard_basic_click_type(17, pamguard::detectors::BasicClickStandardType::BeakedWhale);
     const auto porpoise = pamguard::detectors::standard_basic_click_type(23, pamguard::detectors::BasicClickStandardType::Porpoise);
-    return beaked.species_code == 17 &&
+    return beaked.name == "Beaked Whale" &&
+        beaked.enabled &&
+        beaked.species_code == 17 &&
         beaked.which_selections == (pamguard::detectors::EnableEnergyBand | pamguard::detectors::EnableMeanFrequency | pamguard::detectors::EnablePeakFreqPos) &&
         beaked.band2_freq_hz.low_hz == 10000.0 &&
         beaked.band2_freq_hz.high_hz == 23125.0 &&
@@ -178,6 +180,8 @@ bool standard_presets_match_pamguard_source() {
         beaked.peak_frequency_search_hz.high_hz == 96000.0 &&
         beaked.peak_frequency_range_hz.low_hz == 25000.0 &&
         beaked.mean_selection_range_hz.high_hz == 45000.0 &&
+        porpoise.name == "Porpoise" &&
+        porpoise.enabled &&
         porpoise.species_code == 23 &&
         porpoise.band2_freq_hz.low_hz == 40000.0 &&
         porpoise.band2_freq_hz.high_hz == 90000.0 &&
@@ -230,6 +234,23 @@ int main(int argc, char** argv) {
         const auto empty_result = empty_classifier.identify(click);
         if (empty_result.click_type != 0 || empty_result.discard || empty_result.click_start_sample != click.start_sample) {
             std::cerr << "Empty basic click classifier should return default no-type result\n";
+            return 1;
+        }
+
+        auto disabled_type = passing_type();
+        disabled_type.name = "Stored disabled Java Basic type";
+        disabled_type.enabled = false;
+        pamguard::detectors::BasicClickClassifierConfig disabled_config;
+        disabled_config.sample_rate_hz = sample_rate_hz;
+        disabled_config.click_types = {disabled_type};
+        const pamguard::detectors::BasicClickClassifier disabled_classifier(
+            disabled_config);
+        const auto disabled_result = disabled_classifier.identify(click);
+        if (disabled_result.click_type != disabled_type.species_code ||
+            disabled_result.discard != disabled_type.discard) {
+            std::cerr
+                << "Basic enabled flag must remain stored but ignored, "
+                   "matching BasicClickIdentifier.identify\n";
             return 1;
         }
 

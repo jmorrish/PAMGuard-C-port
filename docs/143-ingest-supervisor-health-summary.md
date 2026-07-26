@@ -1,18 +1,17 @@
 # Ingest supervisor health summary
 
-Date: 2026-07-01
+Updated: 2026-07-25
 
-## Implemented
+The status-file schema is version 3. It retains the aggregate fields:
 
-- Added status-file `schemaVersion` `2`.
-- Added top-level supervisor health fields:
-  - `health`
-  - `workerCount`
-  - `statusCounts`
-  - `healthCounts`
-- Added per-worker fields:
-  - `health`
-  - `lastObservedUnixMs`
+- `health`;
+- `workerCount`;
+- `statusCounts`; and
+- `healthCounts`.
+
+Per-worker health and process fields are unchanged, while target identity is
+now `targetMode`, `projectId`, `acquisitionUnitId`, and the nullable
+`compatibilitySessionId`.
 
 ## Health semantics
 
@@ -21,16 +20,10 @@ Date: 2026-07-01
 - `not_started` workers are `pending`.
 - `stopped` workers are `stopped`.
 
-The top-level `health` is:
+Top-level `health` is `healthy` when all workers are healthy, `degraded` when
+any worker is degraded, `pending` when all are pending, `stopped` when all are
+stopped, `mixed` for other non-degraded combinations, and `empty` when no
+workers are configured.
 
-- `healthy` when all workers are healthy.
-- `degraded` when any worker is degraded.
-- `pending` when all workers are pending.
-- `stopped` when all workers are stopped.
-- `mixed` for other non-degraded mixed states.
-- `empty` when no workers are configured.
-
-## Validation
-
-- Added `ops/ingest_supervisor_status_smoke.py`.
-- Registered `ingest_supervisor_status_smoke` in CTest when Python is available.
+`ops/ingest_supervisor_status_smoke.py` covers the aggregate calculation and
+both the active-project and named legacy target metadata.

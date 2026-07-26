@@ -1,0 +1,573 @@
+.click-settings-editor {
+  --click-settings-bg: var(--shell-dialog-surface, #0b1a2a);
+  --click-settings-panel: rgba(8, 21, 36, 0.72);
+  --click-settings-panel-soft: rgba(255, 255, 255, 0.025);
+  --click-settings-line: var(--shell-dialog-line, #29435a);
+  --click-settings-line-strong: #3b5871;
+  --click-settings-text: var(--shell-dialog-text, #d9e7f2);
+  --click-settings-muted: var(--shell-dialog-muted, #91a8ba);
+  --click-settings-teal: var(--shell-teal, #0fa7a2);
+  --click-settings-blue: #2389d7;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  color: var(--click-settings-text);
+  font: 12px/1.45
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.click-settings-editor *,
+.click-settings-editor *::before,
+.click-settings-editor *::after {
+  box-sizing: border-box;
+}
+
+.click-settings-intro,
+.click-settings-section-help {
+  margin: 0;
+  color: var(--click-settings-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.click-settings-intro {
+  padding: 9px 11px;
+  border-left: 3px solid var(--click-settings-teal);
+  border-radius: 0 5px 5px 0;
+  background: rgba(15, 167, 162, 0.075);
+}
+
+.click-settings-tab-list,
+.click-settings-action-list {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px;
+  overflow-x: auto;
+  border: 1px solid var(--click-settings-line);
+  border-radius: 7px;
+  background: #081524;
+}
+
+.click-settings-action-list {
+  background: rgba(8, 21, 36, 0.66);
+}
+
+.click-settings-tab,
+.click-settings-action {
+  flex: 0 0 auto;
+  min-height: 31px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--click-settings-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 680;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.click-settings-tab:hover,
+.click-settings-tab:focus-visible,
+.click-settings-tab[aria-selected="true"],
+.click-settings-action:hover,
+.click-settings-action:focus-visible,
+.click-settings-action[aria-selected="true"] {
+  border-color: rgba(76, 126, 165, 0.62);
+  outline: 0;
+  color: var(--click-settings-text);
+  background: rgba(35, 137, 215, 0.18);
+}
+
+.click-settings-action[aria-selected="true"] {
+  border-color: rgba(15, 167, 162, 0.55);
+  background: rgba(15, 167, 162, 0.13);
+}
+
+.click-settings-tab-panel,
+.click-settings-action-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.click-settings-tab-panel[hidden],
+.click-settings-action-panel[hidden],
+.click-settings-editor [hidden] {
+  display: none !important;
+}
+
+.click-settings-actions-header {
+  display: grid;
+  gap: 3px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--click-settings-line);
+}
+
+.click-settings-actions-header h3 {
+  margin: 0;
+  color: var(--click-settings-text);
+  font-size: 12px;
+}
+
+.click-settings-section {
+  min-width: 0;
+  margin: 0;
+  padding: 8px 11px 11px;
+  border: 1px solid var(--click-settings-line);
+  border-radius: 7px;
+  background: var(--click-settings-panel-soft);
+}
+
+.click-settings-section > legend {
+  padding: 0 7px;
+  color: #8ed2d5;
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.click-settings-section > .click-settings-section-help {
+  margin: 0 0 8px;
+}
+
+.click-settings-field {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.85fr) minmax(190px, 1.15fr);
+  gap: 8px 14px;
+  align-items: center;
+  min-width: 0;
+  min-height: 38px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(151, 181, 207, 0.11);
+}
+
+.click-settings-field:last-child {
+  border-bottom: 0;
+}
+
+.click-settings-label {
+  min-width: 0;
+  color: var(--click-settings-muted);
+  font-size: 11.5px;
+  font-weight: 620;
+}
+
+.click-settings-field input,
+.click-settings-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 31px;
+  padding: 5px 7px;
+  border: 1px solid var(--click-settings-line-strong);
+  border-radius: 5px;
+  outline: 0;
+  color: var(--click-settings-text);
+  background: #081524;
+  font: inherit;
+}
+
+.click-settings-field input:focus,
+.click-settings-field select:focus {
+  border-color: #4a91bd;
+  box-shadow: 0 0 0 2px rgba(35, 137, 215, 0.17);
+}
+
+.click-settings-field input:invalid,
+.click-settings-field select:invalid {
+  border-color: #da6666;
+  box-shadow: 0 0 0 2px rgba(218, 102, 102, 0.15);
+}
+
+.click-settings-field input:disabled,
+.click-settings-field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.click-settings-field-checkbox {
+  grid-template-columns: 18px minmax(0, 1fr);
+  justify-items: start;
+}
+
+.click-settings-field-checkbox > input {
+  grid-column: 1;
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+  accent-color: var(--click-settings-teal);
+}
+
+.click-settings-field-checkbox > .click-settings-label {
+  grid-column: 2;
+}
+
+.click-settings-field-checkbox > .click-settings-help {
+  grid-column: 2;
+}
+
+.click-settings-unit {
+  justify-self: end;
+  margin-left: -8px;
+  color: #7894aa;
+  font-size: 10px;
+}
+
+.click-settings-field:has(> .click-settings-unit) {
+  grid-template-columns:
+    minmax(165px, 0.85fr)
+    minmax(175px, 1.15fr)
+    max-content;
+}
+
+.click-settings-help {
+  grid-column: 2;
+  margin-top: -5px;
+  color: #7894aa;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.click-settings-field:has(> .click-settings-unit)
+  > .click-settings-help {
+  grid-column: 2 / 4;
+}
+
+.click-settings-conditional {
+  min-width: 0;
+  transition: opacity 120ms ease;
+}
+
+.click-settings-conditional.is-disabled {
+  opacity: 0.55;
+}
+
+.click-settings-bitmap {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) max-content;
+  gap: 7px;
+  min-width: 0;
+}
+
+.click-settings-disclosure,
+.click-settings-add,
+.click-settings-list-item-actions button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--click-settings-line-strong);
+  border-radius: 5px;
+  color: var(--click-settings-text);
+  background: rgba(35, 137, 215, 0.11);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.click-settings-disclosure:hover,
+.click-settings-add:hover,
+.click-settings-list-item-actions button:hover {
+  border-color: #4a7697;
+  background: rgba(35, 137, 215, 0.2);
+}
+
+.click-settings-disclosure:focus-visible,
+.click-settings-add:focus-visible,
+.click-settings-list-item-actions button:focus-visible {
+  outline: 2px solid rgba(15, 167, 162, 0.62);
+  outline-offset: 1px;
+}
+
+.click-settings-disclosure:disabled,
+.click-settings-add:disabled,
+.click-settings-list-item-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.click-settings-channel-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(58px, 1fr));
+  gap: 4px;
+  max-height: 155px;
+  padding: 7px;
+  overflow: auto;
+  border: 1px solid var(--click-settings-line);
+  border-radius: 5px;
+  background: rgba(5, 18, 31, 0.46);
+}
+
+.click-settings-channel {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  padding: 3px 5px;
+  border-radius: 4px;
+  color: var(--click-settings-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.click-settings-channel:hover {
+  color: var(--click-settings-text);
+  background: rgba(35, 137, 215, 0.1);
+}
+
+.click-settings-channel input {
+  width: 14px;
+  min-height: 14px;
+  margin: 0;
+  accent-color: var(--click-settings-teal);
+}
+
+.click-settings-pair-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+  min-width: 0;
+}
+
+.click-settings-pair-grid > .click-settings-field {
+  grid-template-columns: minmax(125px, 0.8fr) minmax(90px, 1fr);
+}
+
+.click-settings-pair-grid
+  > .click-settings-field:has(> .click-settings-unit) {
+  grid-template-columns: minmax(115px, 0.8fr) minmax(80px, 1fr) max-content;
+}
+
+.click-settings-list-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 8px 0 0;
+  padding: 10px;
+  border: 1px solid var(--click-settings-line);
+  border-radius: 7px;
+  background: rgba(5, 18, 31, 0.26);
+}
+
+.click-settings-list-heading {
+  display: flex;
+  gap: 12px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.click-settings-list-heading h4 {
+  margin: 0 0 2px;
+  color: var(--click-settings-text);
+  font-size: 11px;
+}
+
+.click-settings-list-heading .click-settings-section-help {
+  max-width: 620px;
+}
+
+.click-settings-empty {
+  margin: 2px 0;
+  padding: 8px 10px;
+  border: 1px dashed rgba(151, 181, 207, 0.25);
+  border-radius: 5px;
+  color: #7894aa;
+  font-size: 10px;
+  text-align: center;
+}
+
+.click-settings-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.click-settings-list-item {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid rgba(151, 181, 207, 0.19);
+  border-radius: 6px;
+  background: rgba(8, 21, 36, 0.66);
+}
+
+.click-settings-list-item-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 37px;
+  padding: 5px 7px 5px 10px;
+  border-bottom: 1px solid rgba(151, 181, 207, 0.14);
+}
+
+.click-settings-list-item-header h5 {
+  margin: 0;
+  color: #8ed2d5;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.click-settings-list-item-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.click-settings-list-item-actions button {
+  min-height: 25px;
+  padding: 3px 7px;
+}
+
+.click-settings-list-item-actions .click-settings-remove {
+  border-color: rgba(218, 102, 102, 0.45);
+  color: #e5abab;
+  background: rgba(218, 102, 102, 0.08);
+}
+
+.click-settings-list-item-body {
+  min-width: 0;
+  padding: 4px 10px 8px;
+}
+
+.click-settings-classifier-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 6px;
+}
+
+.click-settings-classifier-editor > .click-settings-section {
+  border-color: rgba(151, 181, 207, 0.2);
+  background: rgba(5, 18, 31, 0.32);
+}
+
+.click-settings-classifier-editor
+  > .click-settings-section
+  > legend {
+  color: #a7cedf;
+}
+
+.click-settings-criterion-body {
+  min-width: 0;
+  margin: 2px 0 3px 8px;
+  padding-left: 10px;
+  border-left: 2px solid rgba(35, 137, 215, 0.22);
+}
+
+.click-settings-classifier-editor
+  .click-settings-field-checkbox
+  + .click-settings-criterion-body {
+  margin-top: 3px;
+}
+
+.click-settings-delay-editor {
+  display: grid;
+  min-width: 0;
+}
+
+.click-settings-delay-editor > .click-settings-conditional {
+  padding-left: 12px;
+  border-left: 2px solid rgba(35, 137, 215, 0.22);
+}
+
+.click-settings-unsupported {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 11px;
+  border: 1px solid rgba(230, 168, 77, 0.42);
+  border-radius: 7px;
+  color: #d8c3a1;
+  background: rgba(230, 168, 77, 0.075);
+}
+
+.click-settings-unsupported > strong {
+  color: #edc988;
+  font-size: 11px;
+}
+
+.click-settings-unsupported > p {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.click-settings-unsupported .click-settings-section {
+  border-color: rgba(230, 168, 77, 0.24);
+  background: rgba(5, 18, 31, 0.28);
+}
+
+@media (max-width: 820px) {
+  .click-settings-channel-grid {
+    grid-template-columns: repeat(4, minmax(58px, 1fr));
+  }
+
+  .click-settings-pair-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .click-settings-field,
+  .click-settings-field:has(> .click-settings-unit),
+  .click-settings-pair-grid > .click-settings-field,
+  .click-settings-pair-grid
+    > .click-settings-field:has(> .click-settings-unit) {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .click-settings-field > .click-settings-label {
+    grid-column: 1 / -1;
+  }
+
+  .click-settings-field > input,
+  .click-settings-field > select,
+  .click-settings-field > .click-settings-bitmap {
+    grid-column: 1;
+  }
+
+  .click-settings-field > .click-settings-help,
+  .click-settings-field:has(> .click-settings-unit)
+    > .click-settings-help {
+    grid-column: 1 / -1;
+  }
+
+  .click-settings-field-checkbox {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .click-settings-field-checkbox > .click-settings-label {
+    grid-column: 2;
+  }
+
+  .click-settings-field-checkbox > .click-settings-help {
+    grid-column: 2;
+  }
+
+  .click-settings-bitmap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .click-settings-disclosure {
+    justify-self: start;
+  }
+
+  .click-settings-channel-grid {
+    grid-column: 1;
+    grid-template-columns: repeat(2, minmax(58px, 1fr));
+  }
+
+  .click-settings-list-heading,
+  .click-settings-list-item-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .click-settings-list-heading .click-settings-add {
+    align-self: start;
+  }
+}

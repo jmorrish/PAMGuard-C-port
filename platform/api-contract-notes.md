@@ -1,6 +1,27 @@
 # API Contract Notes
 
-## Core Resources
+## Primary project resources
+
+- `Project`: the saved/working controlled-unit configuration
+- `ControlledUnit`: a stable PAMGuard module instance
+- `DataBlock`: a typed runtime output derived from a controlled unit
+- `Acquisition`: a Sound Acquisition controlled unit with a stable `unitId`
+
+The normal operator and supervised-ingest surface is project-authoritative.
+External audio is posted to:
+
+```text
+POST /v1/projects/active/acquisitions/{acquisitionUnitId}/pcm-f32le
+```
+
+with `expectedWorkingRevision` and `startSample`. Discover stable Acquisition
+IDs and the current working revision through:
+
+```text
+GET /v1/projects/active/acquisitions
+```
+
+## Compatibility resources
 
 - `Source`: file, stream URL, direct device, or protocol connector
 - `ArrayConfiguration`: hydrophone/channel metadata
@@ -9,7 +30,7 @@
 - `DetectionSet`: results for one session/time range
 - `SpectrogramTileSet`: browser-ready spectrogram data
 
-## Session Lifecycle
+## Compatibility session lifecycle
 
 ```text
 created -> starting -> running -> reconnecting -> draining -> complete
@@ -31,23 +52,21 @@ running -> stopped
 
 Keep the public API independent from internal detector classes. The API should expose stable scientific concepts and versioned config/result schemas.
 
-## Current C++ Engine Service Surface
+## Current C++ engine service surface
 
-The current C++ service exposes a lower-level engine API for development and integration testing:
+The primary service exposes versioned project/controlled-unit endpoints,
+including stable Acquisition discovery, host binding, capture, and PCM ingest.
 
-- `GET /health`
+The older routes remain explicitly for regression, archive, job, and project
+import compatibility:
+
 - `POST /sessions`
 - `DELETE /sessions/{sessionId}`
 - `POST /sessions/{sessionId}/pcm-f32le`
 
-The PCM endpoint accepts interleaved little-endian `float32` audio frames. Query parameters:
-
-- `startSample`: absolute first sample in the submitted chunk.
-- `timeMs`: optional wall-clock timestamp in milliseconds.
-- `includeSpectrogram`: when true, include renderable spectrogram frame data.
-- `includeSpectrogramComplex`: when true, include complex FFT bins as `{real, imag}` pairs.
-- `spectrogramMaxBins`: cap returned bins per frame.
-- `spectrogramBinStride`: return every Nth bin.
+Both PCM endpoints accept interleaved little-endian `float32` frames.
+Project-native ingest verifies the stable project/unit identity, running
+runtime, audio shape, and exact working revision before audio is accepted.
 
 Current result fields include:
 
@@ -60,4 +79,8 @@ Current result fields include:
 - `whistlePeaks`
 - `whistleRegions`
 
-Live Icecast/BUTT/direct-stream ingest is currently provided by `ffmpeg_stream_ingest`, which decodes media with FFmpeg and posts PCM chunks to the session endpoint.
+Production Icecast/BUTT/direct-stream ingest uses
+`ops/ingest_supervisor.py` with the schema-v2 active-project manifest. It
+launches FFmpeg directly without a shell and posts to the stable Acquisition
+endpoint. `ffmpeg_stream_ingest` is retained for the explicitly named
+legacy-session compatibility mode.

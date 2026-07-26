@@ -23,9 +23,11 @@ $oldArchiveDir = $env:PAMGUARD_RESULT_ARCHIVE_DIR
 $oldMaxSessions = $env:PAMGUARD_MAX_SESSIONS
 $oldRequireSessionMetadata = $env:PAMGUARD_REQUIRE_SESSION_METADATA
 $oldApiKey = $env:PAMGUARD_API_KEY
+$oldLegacyModelCompat = $env:PAMGUARD_LEGACY_MODEL_COMPAT
 
 $process = $null
 try {
+    $env:PAMGUARD_LEGACY_MODEL_COMPAT = "1"
     $env:PAMGUARD_SESSION_CONFIG_DIR = $sessionDir
     $env:PAMGUARD_RESULT_ARCHIVE_DIR = $archiveDir
     $env:PAMGUARD_MAX_SESSIONS = [string]($Sessions + 2)
@@ -208,6 +210,14 @@ finally {
     }
     else {
         Remove-Item Env:\PAMGUARD_API_KEY -ErrorAction SilentlyContinue
+    }
+    if ($oldLegacyModelCompat) {
+        $env:PAMGUARD_LEGACY_MODEL_COMPAT =
+            $oldLegacyModelCompat
+    }
+    else {
+        Remove-Item Env:\PAMGUARD_LEGACY_MODEL_COMPAT `
+            -ErrorAction SilentlyContinue
     }
     Remove-Item -Recurse -Force -Path $root -ErrorAction SilentlyContinue
 }

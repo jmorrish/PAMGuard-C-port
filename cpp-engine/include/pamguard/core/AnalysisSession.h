@@ -7,6 +7,7 @@
 
 #include "pamguard/core/AnalysisConfig.h"
 #include "pamguard/core/AudioFrame.h"
+#include "pamguard/core/LocalisationData.h"
 #include "pamguard/detectors/ClickDetectorEngine.h"
 #include "pamguard/detectors/MhtKernel.h"
 #include "pamguard/detectors/SimpleEchoDetector.h"
@@ -22,72 +23,6 @@
 #include "pamguard/localisation/FarFieldBearingLocaliser.h"
 
 namespace pamguard::core {
-
-/** LSQ bearing summary, shared by click and whistle localisation outputs. */
-struct LsqBearingResult {
-    bool valid = false;
-    double azimuth_radians = 0.0;
-    double elevation_radians = 0.0;
-    double azimuth_error_radians = 0.0;
-    double elevation_error_radians = 0.0;
-    std::size_t used_pairs = 0;
-    /**
-     * The same direction as a unit vector in the hydrophone array's xyz frame.
-     * Unlike the grid localiser's, this needs **no** array-axis rotation:
-     * LSQBearingLocaliser fits raw inter-hydrophone vectors, so its azimuth and
-     * elevation are already in that frame, and PAMGuard's getPlanarVector
-     * round-trips them back to the fitted unit vector exactly. Always one
-     * vector; the ambiguity a plane sub-array carries is not expressed here.
-     */
-    std::vector<localisation::WorldVector> world_vectors;
-    /** The same vectors rotated into the earth frame; empty when the array declares no orientation. */
-    std::vector<localisation::WorldVector> earth_world_vectors;
-};
-
-/**
- * PAMGuard MLGridBearingLocaliser2 output. The angles are the reference's own
- * theta and phi, measured in the sub-array's principal axis frame rather than
- * as compass azimuth and elevation, so they are reported under those names
- * rather than converted.
- */
-struct GridBearingResult {
-    bool valid = false;
-    double theta_radians = 0.0;
-    double phi_radians = 0.0;
-    double theta_error_radians = 0.0;
-    double phi_error_radians = 0.0;
-    /** False for a line sub-array, where the reference returns theta alone. */
-    bool has_phi = false;
-    std::size_t used_pairs = 0;
-    /**
-     * The same direction expressed as unit vectors in the hydrophone array's
-     * xyz frame, via AbstractLocalisation.getWorldVectors. One vector for a
-     * volume sub-array; two for a plane or line, carrying the mirror or
-     * left/right ambiguity that shape cannot resolve.
-     */
-    std::vector<localisation::WorldVector> world_vectors;
-    /** The same vectors rotated into the earth frame; empty when the array declares no orientation. */
-    std::vector<localisation::WorldVector> earth_world_vectors;
-};
-
-struct ClickLocalisationResult {
-    std::size_t click_index = 0;
-    std::int64_t click_start_sample = 0;
-    std::vector<localisation::ChannelPairDelay> delays;
-    LsqBearingResult lsq_bearing;
-    /** PAMGuard's selected localiser for a plane or volume sub-array. */
-    GridBearingResult grid_bearing;
-    /** Shape of the sub-array formed by this click's channels. */
-    localisation::ArrayShapeType array_shape = localisation::ArrayShapeType::None;
-    /** Localiser class PAMGuard's selector picks for that shape. */
-    localisation::BearingLocaliserChoice bearing_localiser = localisation::BearingLocaliserChoice::None;
-};
-
-struct ClickBearingResult {
-    std::size_t click_index = 0;
-    std::int64_t click_start_sample = 0;
-    localisation::FarFieldBearingResult bearing;
-};
 
 struct ClickTrainBearingSummary {
     std::size_t train_id = 0;
@@ -211,6 +146,10 @@ struct LtsaResult {
 struct MatchedTemplateClickResult {
     std::size_t click_index = 0;
     std::int64_t click_start_sample = 0;
+    /** Stable identity of the one legacy-session MT classifier instance. */
+    std::string classifier_instance_id;
+    /** MatchedTemplateParams.type configured for this classifier. */
+    int click_type = 0;
     bool classified = false;
     std::vector<detectors::MtTemplateResult> results;
 };

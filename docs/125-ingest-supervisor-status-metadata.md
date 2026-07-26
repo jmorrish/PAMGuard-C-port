@@ -1,46 +1,39 @@
 # Ingest supervisor status metadata
 
-Date: 2026-07-01
+Updated: 2026-07-25
 
-## What changed
+The supervisor status document is schema version 3. Top-level fields include:
 
-`ops/ingest_supervisor.py` status files now include a top-level status summary:
+- `health`;
+- `workerCount`;
+- `statusCounts`; and
+- `healthCounts`.
 
-- `schemaVersion`
-- `health`
-- `workerCount`
-- `statusCounts`
-- `healthCounts`
+Each worker identifies its stable target with:
 
-`ops/ingest_supervisor.py` status files now include non-secret source/session metadata for each worker:
+- `sourceId`;
+- `targetMode`;
+- `projectId`;
+- `acquisitionUnitId`;
+- `compatibilitySessionId` (normally `null`);
+- `engine` and `source`;
+- `sampleRateHz`, `channelCount`, and `chunkFrames`; and
+- `uptimeMs`.
 
-- `sourceId`
-- `sessionId`
-- `ownerId`
-- `tenantId`
-- `engine`
-- `source`
-- `sampleRateHz`
-- `channelCount`
-- `chunkFrames`
-- `uptimeMs`
+Process fields remain:
 
-Process status fields are still present:
+- `status` and `health`;
+- `pid` and `restarts`;
+- `lastStartUnixMs`, `lastObservedUnixMs`, and `lastExitUnixMs`;
+- `lastExitCode`; and
+- `nextStartUnixMs`.
 
-- `status`
-- `health`
-- `pid`
-- `restarts`
-- `lastStartUnixMs`
-- `lastObservedUnixMs`
-- `lastExitUnixMs`
-- `lastExitCode`
-- `nextStartUnixMs`
+For the production `active-project` mode, `projectId` and
+`acquisitionUnitId` are populated and `compatibilitySessionId` is null. Only
+the explicitly deprecated `legacy-session-compatibility` mode populates the
+compatibility session ID.
 
-## Security note
-
-The status file intentionally does not include the full worker command, because the command may contain API keys.
-
-## Why this matters
-
-For a deployment with many Icecast/BUTT/direct Ethernet streams, operators need to correlate a worker process with the engine session it feeds and identify restart loops quickly.
+The status file intentionally omits the full worker command and API key. It
+also removes URL user-info and query strings from `source`. Operators can
+therefore correlate a source with a stable controlled-unit instance without
+publishing those launch secrets.

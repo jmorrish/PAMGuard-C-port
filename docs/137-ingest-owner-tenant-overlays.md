@@ -2,6 +2,11 @@
 
 Date: 2026-07-01
 
+Compatibility boundary (2026-07-25): this checkpoint documents the retained
+`legacy-session-compatibility` mode only. Schema-v2 active-project manifests
+reject owner/tenant/session overlays and target stable project and Acquisition
+unit IDs instead.
+
 ## What changed
 
 `ffmpeg_stream_ingest` now accepts:

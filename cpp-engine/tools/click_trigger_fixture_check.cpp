@@ -296,6 +296,17 @@ int main(int argc, char** argv) {
                         static_cast<double>(sample_rate));
                     part.sample_rate_hz = sample_rate;
                     part.channel_count = chunk.channel_count;
+                    part.orientation_declared = true;
+                    part.orientation_heading_degrees =
+                        1000.0 + static_cast<double>(offset);
+                    part.orientation_pitch_degrees = 2.5;
+                    part.orientation_roll_degrees = -1.25;
+                    part.navigation_origin_declared = true;
+                    part.navigation_origin_east_metres =
+                        10.0 + static_cast<double>(offset);
+                    part.navigation_origin_north_metres = 20.0;
+                    part.navigation_origin_height_metres = -3.0;
+                    part.navigation_reference_id = "fixture-track";
                     part.interleaved_pcm.resize(frames * part.channel_count);
                     for (std::size_t sample = 0; sample < frames; ++sample) {
                         for (std::size_t channel = 0;
@@ -321,6 +332,28 @@ int main(int argc, char** argv) {
                 first.waveform[0].size() != first.duration_samples ||
                 first.waveform[1].size() != first.duration_samples) {
                 std::cerr << "Click waveform capture failed\n";
+                return 1;
+            }
+            const auto trigger_sample =
+                static_cast<std::size_t>(
+                    first.start_sample +
+                    static_cast<std::int64_t>(config.pre_sample));
+            const auto trigger_chunk_start =
+                trigger_sample / process_chunk_length *
+                process_chunk_length;
+            if (!first.orientation_declared ||
+                first.orientation_heading_degrees !=
+                    1000.0 +
+                        static_cast<double>(trigger_chunk_start) ||
+                !first.navigation_origin_declared ||
+                first.navigation_origin_east_metres !=
+                    10.0 +
+                        static_cast<double>(trigger_chunk_start) ||
+                first.navigation_reference_id !=
+                    "fixture-track") {
+                std::cerr
+                    << "Click did not retain the trigger-onset "
+                       "platform pose\n";
                 return 1;
             }
         }

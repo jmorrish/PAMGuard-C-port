@@ -11,6 +11,11 @@ struct LtsaConfig {
     bool enabled = false;
     // LtsaParameters.intervalSeconds default.
     int interval_seconds = 60;
+    /**
+     * LtsaParameters.channelMap. All bits are selected by default for direct
+     * low-level users; the controlled-unit adapter supplies Java's choice.
+     */
+    std::uint32_t channel_bitmap = 0xFFFFFFFFu;
 };
 
 // One completed averaging period: the PAMGuard LtsaDataUnit equivalent.

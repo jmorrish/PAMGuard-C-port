@@ -2,6 +2,8 @@
 
 Date: 2026-07-23
 
+Graph-native controlled-unit update: 2026-07-25
+
 ## Purpose
 
 Ports PAMGuard's matched-template click classifier (`matchedTemplateClassifer`: `MTProcess` + `MTClassifier`) — the click-level species discriminator that cross-correlates each detected click against a *match* template and a *reject* template and classifies on the difference of the correlation peaks. Item 6, the last of the low-hanging-fruit list. The engine already served the click-train-level template correlation (docs on the CT classifier chain); this is the finer per-click classifier.
@@ -28,10 +30,39 @@ Results: `matchedTemplateClassifications` at schema v26 — per click: `clickInd
 
 The importer maps `MatchedTemplateParams` with full template waveforms; the sample `.psfx` carries a classifier with synthetic 48 kHz templates (the reference's 192 kHz defaults would need decimation against the 96 kHz sample acquisition — see the boundary below).
 
+The active-project controlled unit has one strict canonical settings document:
+`{clickType, normalisationType, peakSearch, peakSmoothing, lengthDb,
+restrictedBins, channelClassification, classifiers:
+[{thresholdToAccept, normalisation, matchTemplate, rejectTemplate}]}`.
+Source identity is owned by the graph binding, not duplicated in settings.
+The low-level `matchedTemplate` session object above is retained only as the
+compatibility/oracle contract.
+
 ## Validation
 
-`matched_template_parity` (new, suite `80/80`): `MatchedTemplateFixtureExporter` drives the **real** `MTClassifier.calcCorrelationMatch` (real FastFFT/JTransforms, interpolation, normalisation), the real `ClickLength` peak search, the real `createRestrictedLenghtWave`, and the real `normaliseWaveform` — only the 15-line channel-aggregation loop is transcribed from `MTProcess.newClickData`, mirrored in the port. Six cases, 13 clicks, 17 correlation results, **maxRelError 5.1e-15**: RMS/peak/none normalisation, peak search on and off, even (300) and odd (301) non-power-of-two FFT lengths, a shorter click against the frozen 300-length template FFT, a 24 kHz template upsampled to a 48 kHz session, a zeroed reject template (NaN path), and two-channel require-one vs require-all aggregation.
+`matched_template_parity` drives the **real** `MTClassifier.calcCorrelationMatch` (real FastFFT/JTransforms, interpolation, normalisation), the real `ClickLength` peak search, the real `createRestrictedLenghtWave`, and the real `normaliseWaveform` — only the 15-line channel-aggregation loop is transcribed from `MTProcess.newClickData`, mirrored in the port. Eight cases, 16 clicks, 20 correlation results, **maxRelError 5.1e-15**: RMS/peak/none normalisation, peak search on and off, even (300) and odd (301) non-power-of-two FFT lengths, a shorter click against the frozen 300-length template FFT, a 24 kHz template upsampled to a 48 kHz session, a 192 kHz template decimated to 48 kHz, split global/per-classifier normalisation, a zeroed reject template (NaN path), and two-channel require-one vs require-all aggregation. The fixture SHA-256 is `24029E7EBCE3855A3069218812374789D6766D2953C7B1D9C8E4276BECE98968`.
 
 ## Claim boundary
 
-Template **decimation** (template rate above the session rate) is not ported: the reference calls jpamutils' `WavInterpolator.decimate`, an external library whose source is not in this tree, and substituting different resampling would silently change every correlation. Sessions configuring such templates are refused at creation with that reason — which means PAMGuard's shipped 192 kHz default templates only work on sessions at ≥ 192 kHz, exactly the honest statement of what is proven. The comparison tolerance is 1e-8 relative (observed 5.1e-15), not bit-exact, because JTransforms' mixed-radix FFTs and the engine's DFT round differently. `MTProcess`'s annotation/symbol/bespoke-flag plumbing (display and storage) and the optional pre-classification FFT filter (`enableFFTFilter`, default off) are out of scope; the per-click type byte is subsumed by the `classified` flag.
+Template decimation is now implemented with the same four-pole Butterworth
+low-pass and natural-cubic interpolation sequence used by jpamutils'
+`WavInterpolator`; the dedicated resampling fixture pins the result. The
+comparison tolerance remains 1e-8 relative (the original correlation fixture
+observed 5.1e-15), not bit-exact, because JTransforms' mixed-radix FFTs and the
+engine's DFT round differently.
+
+The graph-native click path now retains the matched-template annotation and
+applies Java's click-type override/reset semantics. One deliberate portable
+deviation avoids a Java byte/UI defect: canonical click types `128..255` remain
+unsigned and stable across save/reopen, and the dialog's displayed `256` maps
+to portable `0`. Java stores that spinner in a signed byte, making `128..255`
+negative on reopen and wrapping `256` to zero.
+
+This remains a partial module. The browser does not yet accept Java's
+`CTDataUnit` source or classify its `AverageWaveform`; it does not replace or
+write `CTClassifierType.MATCHEDCLICK` click-train flags; and it does not expose
+the Java `ClickTypeProvider` code/name integration. Template import supports
+CSV and built-in templates, but not Java's MAT importer. The optional dormant
+pre-classification FFT-filter settings, Java symbol/display preferences, and
+viewer-only offline reclassification are also outside the current live
+runtime claim.

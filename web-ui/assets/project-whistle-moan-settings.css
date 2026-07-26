@@ -1,0 +1,191 @@
+dialog .whistle-moan-settings-editor {
+  display: grid;
+  gap: 12px;
+}
+
+dialog .whistle-moan-settings-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--shell-dialog-line);
+}
+
+dialog .whistle-moan-settings-tabs button {
+  min-height: 34px;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--shell-dialog-muted);
+}
+
+dialog .whistle-moan-settings-tabs button[aria-selected="true"] {
+  border-color: var(--shell-dialog-line);
+  background: rgba(26, 55, 76, 0.82);
+  color: #8ed2d5;
+}
+
+dialog .whistle-moan-settings-panel {
+  display: grid;
+  gap: 12px;
+}
+
+dialog .whistle-moan-settings-panel[hidden] {
+  display: none;
+}
+
+dialog .whistle-moan-settings-editor fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+}
+
+dialog .whistle-moan-settings-editor legend {
+  color: #8ed2d5;
+  font-weight: 700;
+}
+
+dialog .whistle-moan-settings-field {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(180px, 1.1fr)
+    max-content;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+
+dialog .whistle-moan-settings-field > input,
+dialog .whistle-moan-settings-field > select {
+  width: 100%;
+  min-width: 0;
+}
+
+dialog .whistle-moan-settings-label,
+dialog .whistle-moan-settings-unit,
+dialog .whistle-moan-settings-help {
+  color: var(--shell-dialog-muted);
+}
+
+dialog .whistle-moan-settings-unit,
+dialog .whistle-moan-settings-help {
+  font-size: 10px;
+}
+
+dialog .whistle-moan-settings-help {
+  grid-column: 2 / -1;
+  line-height: 1.35;
+}
+
+dialog .whistle-moan-settings-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+}
+
+dialog .whistle-moan-settings-check input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+dialog .whistle-moan-settings-check .whistle-moan-settings-help {
+  display: block;
+  grid-column: auto;
+  margin-left: 4px;
+}
+
+dialog .whistle-moan-settings-grouping {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(151, 181, 207, 0.12);
+}
+
+dialog .whistle-moan-settings-grouping strong {
+  color: var(--shell-dialog-muted);
+}
+
+dialog .whistle-moan-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 9px 0;
+}
+
+dialog .whistle-moan-settings-channel-host {
+  max-height: 250px;
+  overflow: auto;
+  border: 1px solid rgba(151, 181, 207, 0.13);
+  border-radius: 5px;
+}
+
+dialog .whistle-moan-settings-channel-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+dialog .whistle-moan-settings-channel-table th,
+dialog .whistle-moan-settings-channel-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(151, 181, 207, 0.1);
+  text-align: left;
+}
+
+dialog .whistle-moan-settings-channel-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #102333;
+  color: #8ed2d5;
+  font-size: 10px;
+}
+
+dialog .whistle-moan-settings-channel-table select {
+  min-width: 90px;
+}
+
+dialog .whistle-moan-settings-readiness {
+  padding: 9px 11px;
+  border: 1px solid #8e7235;
+  border-radius: 5px;
+  background: rgba(142, 114, 53, 0.15);
+  color: #f2cf78;
+}
+
+dialog .whistle-moan-settings-readiness[data-state="ready"] {
+  border-color: #2f806c;
+  background: rgba(47, 128, 108, 0.15);
+  color: #8fe0c8;
+}
+
+dialog .whistle-moan-settings-noise-method {
+  display: grid;
+  gap: 5px;
+}
+
+dialog .whistle-moan-settings-noise-method
+  > .whistle-moan-settings-check {
+  margin-bottom: 3px;
+}
+
+@media (max-width: 620px) {
+  dialog .whistle-moan-settings-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  dialog .whistle-moan-settings-field {
+    grid-template-columns: 1fr minmax(110px, 1fr) max-content;
+  }
+
+  dialog .whistle-moan-settings-grouping {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

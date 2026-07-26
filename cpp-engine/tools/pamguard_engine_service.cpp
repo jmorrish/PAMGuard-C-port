@@ -1,5 +1,8 @@
 ﻿#include <cstdint>
 #include <cstring>
+#include <atomic>
+#include <array>
+#include <any>
 #include <cctype>
 #include <algorithm>
 #include <chrono>
@@ -11,14 +14,18 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <memory>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
+#include <numbers>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <httplib.h>
@@ -26,12 +33,35 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <cerrno>
+#include <csignal>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 #include "pamguard/core/SessionManager.h"
+#include "pamguard/core/BuiltInModules.h"
+#include "pamguard/core/ModuleGraphJson.h"
+#include "pamguard/core/ModuleRuntime.h"
+#include "pamguard/core/OperatorNodes.h"
+#include "pamguard/core/FftDetectorNodes.h"
+#include "pamguard/core/DetectorNodes.h"
+#include "pamguard/core/MatchedTemplateSettings.h"
+#include "pamguard/project/BuiltInControlledUnits.h"
+#include "pamguard/project/ControlledUnitJson.h"
+#include "pamguard/project/ProjectAuthority.h"
+#include "pamguard/project/ProjectAuthorityJson.h"
+#include "pamguard/project/ProjectIdentity.h"
+#include "pamguard/project/ProjectStore.h"
+#include "pamguard/project/SoundRecorderControlledUnit.h"
 #include "pamguard/io/WavReader.h"
 #include "pamguard/detectors/CtSpectrumTemplates.h"
 #include "pamguard/dsp/WindowFunction.h"
+#include "pamguard/service/CaptureService.h"
+#include "pamguard/service/TrackedClickEvents.h"
 
 using json = nlohmann::json;
 
@@ -482,12 +512,1053 @@ std::filesystem::path web_ui_file_from_environment() {
     return std::filesystem::path(raw);
 }
 
+bool path_is_within(
+    const std::filesystem::path& root,
+    const std::filesystem::path& candidate) {
+    auto root_part = root.begin();
+    auto candidate_part = candidate.begin();
+    for (; root_part != root.end(); ++root_part, ++candidate_part) {
+        if (candidate_part == candidate.end() ||
+            *root_part != *candidate_part) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::filesystem::path canonical_directory(
+    const std::filesystem::path& path,
+    const char* setting_name) {
+    std::error_code error;
+    const auto canonical = std::filesystem::canonical(path, error);
+    if (error || !std::filesystem::is_directory(canonical, error) || error) {
+        throw std::invalid_argument(
+            std::string(setting_name) +
+            " must name an existing directory");
+    }
+    return canonical;
+}
+
+std::filesystem::path web_asset_root_from_environment(
+    const std::filesystem::path& web_ui_file) {
+    const char* configured = std::getenv("PAMGUARD_WEB_ASSET_DIR");
+    if (configured != nullptr && !std::string(configured).empty()) {
+        return canonical_directory(
+            std::filesystem::path(configured),
+            "PAMGUARD_WEB_ASSET_DIR");
+    }
+
+    if (web_ui_file.empty()) {
+        return {};
+    }
+
+    std::error_code error;
+    const auto canonical_ui =
+        std::filesystem::canonical(web_ui_file, error);
+    if (error ||
+        !std::filesystem::is_regular_file(canonical_ui, error) ||
+        error) {
+        // Preserve the existing / and /index.html behaviour for a missing or
+        // invalid PAMGUARD_WEB_UI_FILE. The HTML handler reports its normal
+        // read error; an unvalidated parent is never used as an asset root.
+        return {};
+    }
+
+    const auto web_root = canonical_ui.parent_path();
+    const auto candidate = web_root / "assets";
+    if (!std::filesystem::exists(candidate, error)) {
+        return {};
+    }
+    if (error) {
+        throw std::invalid_argument(
+            "could not inspect the web UI assets directory");
+    }
+
+    const auto asset_root =
+        canonical_directory(candidate, "web UI assets directory");
+    if (asset_root == web_root ||
+        !path_is_within(web_root, asset_root)) {
+        throw std::invalid_argument(
+            "web UI assets directory escapes the web UI directory");
+    }
+    return asset_root;
+}
+
 std::filesystem::path openapi_file_from_environment() {
     const char* raw = std::getenv("PAMGUARD_OPENAPI_FILE");
     if (raw == nullptr || std::string(raw).empty()) {
         return {};
     }
     return std::filesystem::path(raw);
+}
+
+std::filesystem::path module_graph_file_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_MODULE_GRAPH_FILE");
+    if (raw == nullptr || std::string(raw).empty()) {
+        return {};
+    }
+    return std::filesystem::path(raw);
+}
+
+std::filesystem::path workspace_file_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_WORKSPACE_FILE");
+    if (raw == nullptr || std::string(raw).empty()) {
+        return {};
+    }
+    return std::filesystem::path(raw);
+}
+
+std::filesystem::path project_dir_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_PROJECT_DIR");
+    if (raw == nullptr || std::string(raw).empty()) {
+        return std::filesystem::path("pamguard-projects");
+    }
+    return std::filesystem::path(raw);
+}
+
+struct SoundRecorderDeploymentContext {
+    std::optional<std::filesystem::path> root;
+    std::string readiness_error;
+
+    [[nodiscard]] bool ready() const noexcept {
+        return root.has_value();
+    }
+};
+
+struct ActiveProjectNavigationTrack {
+    std::string project_id;
+    std::uint64_t working_revision = 0;
+    std::deque<pamguard::service::TrackedClickNavigationSample>
+        samples;
+};
+
+SoundRecorderDeploymentContext
+sound_recorder_deployment_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_RECORDING_ROOT");
+    if (raw == nullptr || std::string(raw).empty()) {
+        return {
+            std::nullopt,
+            "PAMGUARD_RECORDING_ROOT is not configured",
+        };
+    }
+    try {
+        const auto candidate =
+            std::filesystem::canonical(std::filesystem::path(raw));
+        if (!std::filesystem::is_directory(candidate)) {
+            return {
+                std::nullopt,
+                "PAMGUARD_RECORDING_ROOT is not an existing directory",
+            };
+        }
+        const auto probe =
+            candidate /
+            (".pamguard-write-probe-" +
+             pamguard::project::generate_uuid_v4());
+        {
+            std::ofstream output(
+                probe,
+                std::ios::binary | std::ios::out |
+                    std::ios::trunc);
+            if (!output) {
+                return {
+                    std::nullopt,
+                    "PAMGUARD_RECORDING_ROOT is not writable",
+                };
+            }
+            output.put('\0');
+            output.flush();
+            if (!output) {
+                output.close();
+                std::error_code ignored;
+                std::filesystem::remove(probe, ignored);
+                return {
+                    std::nullopt,
+                    "PAMGUARD_RECORDING_ROOT is not writable",
+                };
+            }
+        }
+        std::error_code remove_error;
+        const bool removed =
+            std::filesystem::remove(probe, remove_error);
+        if (remove_error || !removed) {
+            return {
+                std::nullopt,
+                "PAMGUARD_RECORDING_ROOT write probe could not be removed",
+            };
+        }
+        return {candidate, {}};
+    }
+    catch (const std::exception&) {
+        return {
+            std::nullopt,
+            "PAMGUARD_RECORDING_ROOT could not be validated",
+        };
+    }
+}
+
+bool uuid_path_component(std::string_view value) {
+    if (value.size() != 36) {
+        return false;
+    }
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        if (index == 8 || index == 13 ||
+            index == 18 || index == 23) {
+            if (value[index] != '-') {
+                return false;
+            }
+            continue;
+        }
+        if (!std::isxdigit(
+                static_cast<unsigned char>(value[index]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string active_project_id_from_environment() {
+    const char* raw = std::getenv("PAMGUARD_ACTIVE_PROJECT_ID");
+    if (raw == nullptr) {
+        return {};
+    }
+    return std::string(raw);
+}
+
+void persist_json_file(
+    const std::filesystem::path& path,
+    const json& document,
+    const char* description) {
+    if (path.empty()) {
+        return;
+    }
+    const auto parent = path.parent_path();
+    if (!parent.empty()) {
+        std::filesystem::create_directories(parent);
+    }
+    static std::atomic<std::uint64_t> next_temp_id{1};
+    auto temporary = path;
+    temporary += ".tmp." +
+        std::to_string(next_temp_id.fetch_add(1));
+    try {
+        {
+            std::ofstream output(
+                temporary,
+                std::ios::binary | std::ios::trunc);
+            if (!output) {
+                throw std::runtime_error(
+                    std::string("could not write ") + description);
+            }
+            output << document.dump(2);
+            output.flush();
+            if (!output) {
+                throw std::runtime_error(
+                    std::string("could not finish writing ") +
+                    description);
+            }
+        }
+#ifdef _WIN32
+        if (!MoveFileExW(
+                temporary.c_str(),
+                path.c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            throw std::runtime_error(
+                std::string("could not atomically replace ") +
+                description + " (Windows error " +
+                std::to_string(GetLastError()) + ")");
+        }
+#else
+        std::filesystem::rename(temporary, path);
+#endif
+    }
+    catch (...) {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        throw;
+    }
+}
+
+bool valid_workspace_id(const std::string& id) {
+    if (id.empty() || id.size() > 128) {
+        return false;
+    }
+    return std::all_of(
+        id.begin(),
+        id.end(),
+        [](unsigned char character) {
+            return std::isalnum(character) ||
+                character == '_' ||
+                character == '-' ||
+                character == '.';
+        });
+}
+
+void validate_workspace_layout(const json& layout) {
+    if (!layout.is_object() ||
+        layout.value("schemaVersion", 0) != 1 ||
+        !layout.contains("displays") ||
+        !layout.at("displays").is_array()) {
+        throw std::invalid_argument(
+            "Workspace must be a schemaVersion 1 object with a displays array");
+    }
+    if (layout.at("displays").size() > 128) {
+        throw std::invalid_argument(
+            "Workspace cannot contain more than 128 displays");
+    }
+    if (layout.contains("name") &&
+        (!layout.at("name").is_string() ||
+         layout.at("name").get_ref<const std::string&>().size() > 256)) {
+        throw std::invalid_argument(
+            "Workspace name must be a string of at most 256 characters");
+    }
+    if (layout.contains("arrangement") &&
+        (!layout.at("arrangement").is_string() ||
+         (layout.at("arrangement") != "grid" &&
+          layout.at("arrangement") != "tabs"))) {
+        throw std::invalid_argument(
+            "Workspace arrangement must be grid or tabs");
+    }
+    if (layout.contains("synchronizedTime") &&
+        !layout.at("synchronizedTime").is_boolean()) {
+        throw std::invalid_argument(
+            "Workspace synchronizedTime must be boolean");
+    }
+    const std::unordered_set<std::string> display_types = {
+        "spectrogram",
+        "events",
+        "waveform",
+        "level",
+        "timeplot",
+        "status",
+        "datamap",
+    };
+    std::unordered_set<std::string> display_ids;
+    for (const auto& display : layout.at("displays")) {
+        if (!display.is_object() ||
+            !display.contains("id") ||
+            !display.at("id").is_string() ||
+            !display.contains("type") ||
+            !display.at("type").is_string()) {
+            throw std::invalid_argument(
+                "Every workspace display requires string id and type");
+        }
+        const auto& id =
+            display.at("id").get_ref<const std::string&>();
+        const auto& type =
+            display.at("type").get_ref<const std::string&>();
+        if (id.empty() || id.size() > 128 ||
+            !display_ids.insert(id).second) {
+            throw std::invalid_argument(
+                "Workspace display IDs must be unique and 1 to 128 characters");
+        }
+        if (!display_types.contains(type)) {
+            throw std::invalid_argument(
+                "Workspace contains an unknown display type: " +
+                type);
+        }
+        if (display.contains("name") &&
+            (!display.at("name").is_string() ||
+             display.at("name")
+                     .get_ref<const std::string&>()
+                     .size() > 256)) {
+            throw std::invalid_argument(
+                "Workspace display names must be strings of at most 256 characters");
+        }
+        if (display.contains("sourceBlockId") &&
+            (!display.at("sourceBlockId").is_string() ||
+             display.at("sourceBlockId")
+                     .get_ref<const std::string&>()
+                     .size() > 512)) {
+            throw std::invalid_argument(
+                "Workspace display sourceBlockId is invalid");
+        }
+    }
+    if (layout.contains("audio") &&
+        !layout.at("audio").is_object()) {
+        throw std::invalid_argument(
+            "Workspace audio settings must be an object");
+    }
+}
+
+void persist_module_graph(
+    const std::filesystem::path& graph_file,
+    const pamguard::core::ModuleGraphDocument& document) {
+    persist_json_file(
+        graph_file,
+        json::parse(
+            pamguard::core::module_graph_to_json(document, false)),
+        "module graph file");
+}
+
+json graph_issues_to_json(const std::vector<pamguard::core::GraphIssue>& issues) {
+    auto result = json::array();
+    for (const auto& issue : issues) {
+        result.push_back({
+            {"code", issue.code},
+            {"message", issue.message},
+            {"moduleId", issue.module_id.empty() ? json(nullptr) : json(issue.module_id)},
+            {"connectionId", issue.connection_id.empty() ? json(nullptr) : json(issue.connection_id)},
+        });
+    }
+    return result;
+}
+
+json module_type_to_json(const pamguard::core::ModuleTypeDescriptor& type) {
+    auto ports = json::array();
+    auto dependencies = json::array();
+    json settings_schema;
+    json default_settings;
+    try {
+        settings_schema = json::parse(type.settings_schema_json);
+    }
+    catch (const std::exception& error) {
+        throw std::runtime_error(
+            "Module type '" + type.id +
+            "' has an invalid settings schema: " + error.what());
+    }
+    try {
+        default_settings = json::parse(type.default_settings_json);
+    }
+    catch (const std::exception& error) {
+        throw std::runtime_error(
+            "Module type '" + type.id +
+            "' has invalid default settings: " + error.what());
+    }
+    for (const auto& port : type.ports) {
+        ports.push_back({
+            {"id", port.id},
+            {"name", port.name},
+            {"direction", port.direction == pamguard::core::PortDirection::Input ? "input" : "output"},
+            {"dataType", port.data_type},
+            {"required", port.required},
+            {"acceptsMultiple", port.accepts_multiple},
+            {"capabilities", port.capabilities},
+        });
+        if (port.direction == pamguard::core::PortDirection::Input &&
+            port.required) {
+            dependencies.push_back({
+                {"portId", port.id},
+                {"dataType", port.data_type},
+                {"capabilities", port.capabilities},
+            });
+        }
+    }
+    return {
+        {"id", type.id},
+        {"name", type.name},
+        {"category", type.category},
+        {"description", type.description},
+        {"minimumInstances", type.minimum_instances},
+        {"maximumInstances", type.maximum_instances
+            ? json(*type.maximum_instances)
+            : json(nullptr)},
+        {"ports", std::move(ports)},
+        {"dependencies", std::move(dependencies)},
+        {"runModes", type.run_modes},
+        {"providedDisplayTypes", type.provided_display_types},
+        {"implementationStatus", type.implementation_status},
+        {"parityStatus", type.parity_status},
+        {"settingsSchema", std::move(settings_schema)},
+        {"defaultSettings", std::move(default_settings)},
+    };
+}
+
+json data_block_to_json(const pamguard::core::DataBlockDescriptor& block) {
+    return {
+        {"id", block.id},
+        {"name", block.name},
+        {"producerModuleId", block.producer_module_id},
+        {"producerPortId", block.producer_port_id},
+        {"dataType", block.data_type},
+        {"schemaVersion", block.schema_version},
+        {"sampleRateHz", block.sample_rate_hz},
+        {"channelBitmap", block.channel_bitmap},
+        {"sequenceBitmap", block.sequence_bitmap},
+        {"minimumFrequencyHz", block.minimum_frequency_hz
+            ? json(*block.minimum_frequency_hz)
+            : json(nullptr)},
+        {"maximumFrequencyHz", block.maximum_frequency_hz
+            ? json(*block.maximum_frequency_hz)
+            : json(nullptr)},
+        {"fftLength", block.fft_length
+            ? json(*block.fft_length)
+            : json(nullptr)},
+        {"fftHop", block.fft_hop
+            ? json(*block.fft_hop)
+            : json(nullptr)},
+        {"calibrationDbOffsetByChannel",
+         block.calibration_db_offset_by_channel},
+        {"voltsPeakToPeak", block.volts_peak_to_peak
+            ? json(*block.volts_peak_to_peak)
+            : json(nullptr)},
+        {"capabilities", block.capabilities},
+        {"historyCapacity", block.history_capacity},
+        {"clockDomainId", block.clock_domain_id},
+        {"retentionPolicy", block.retention_policy},
+        {"persistenceProviders", block.persistence_providers},
+        {"exportProviders", block.export_providers},
+    };
+}
+
+json data_block_stats_to_json(const pamguard::core::DataBlockStats& stats) {
+    return {
+        {"published", stats.published},
+        {"delivered", stats.delivered},
+        {"dropped", stats.dropped},
+        {"observerErrors", stats.observer_errors},
+        {"subscriberCount", stats.subscriber_count},
+        {"historySize", stats.history_size},
+        {"queuedUnits", stats.queued_units},
+        {"maximumQueuedUnits", stats.maximum_queued_units},
+    };
+}
+
+const char* module_state_name(pamguard::core::ModuleState state) {
+    switch (state) {
+    case pamguard::core::ModuleState::Created:
+        return "created";
+    case pamguard::core::ModuleState::Prepared:
+        return "prepared";
+    case pamguard::core::ModuleState::Running:
+        return "running";
+    case pamguard::core::ModuleState::Stopped:
+        return "stopped";
+    case pamguard::core::ModuleState::Error:
+        return "error";
+    }
+    return "unknown";
+}
+
+json data_unit_to_json(const pamguard::core::DataUnit& unit) {
+    json result = {
+        {"typeId", unit.metadata.type_id},
+        {"schemaVersion", unit.metadata.schema_version},
+        {"sourceBlockId", unit.metadata.source_block_id},
+        {"uid", unit.metadata.uid},
+        {"sequence", unit.metadata.sequence},
+        {"timeMs", unit.metadata.time_unix_ms},
+        {"startSample", unit.metadata.start_sample},
+        {"durationSamples", unit.metadata.duration_samples},
+        {"channelBitmap", unit.metadata.channel_bitmap},
+        {"sequenceBitmap", unit.metadata.sequence_bitmap},
+        {"clockDomainId", unit.metadata.clock_domain_id},
+        {"discontinuity", unit.metadata.discontinuity},
+    };
+    if (const auto* audio = std::any_cast<pamguard::core::AudioChunk>(&unit.payload)) {
+        result["payload"] = {
+            {"sampleRateHz", audio->sample_rate_hz},
+            {"channelCount", audio->channel_count},
+            {"interleavedPcm", audio->interleaved_pcm},
+        };
+    }
+    else if (const auto* frame =
+                 std::any_cast<pamguard::dsp::SpectrogramFrame>(&unit.payload)) {
+        json magnitude_squared = json::array();
+        for (const auto& bin : frame->bins) {
+            magnitude_squared.push_back(std::norm(bin));
+        }
+        result["payload"] = {
+            {"channel", frame->channel},
+            {"fftSlice", frame->fft_slice},
+            {"magnitudeSquared", std::move(magnitude_squared)},
+        };
+    }
+    else if (const auto* click =
+                 std::any_cast<pamguard::detectors::ClickDetectionResult>(
+                     &unit.payload)) {
+        auto matched_template_annotations = json::array();
+        for (const auto& annotation :
+             click->matched_template_annotations) {
+            auto best_results = json::array();
+            for (const auto& item :
+                 annotation.best_results) {
+                best_results.push_back({
+                    {"threshold", item.threshold},
+                    {
+                        "matchCorrelation",
+                        item.match_correlation,
+                    },
+                    {
+                        "rejectCorrelation",
+                        item.reject_correlation,
+                    },
+                });
+            }
+            matched_template_annotations.push_back({
+                {
+                    "classifierInstanceId",
+                    annotation.classifier_instance_id,
+                },
+                {"clickType", annotation.click_type},
+                {"classified", annotation.classified},
+                {"bestResults", std::move(best_results)},
+            });
+        }
+        result["payload"] = {
+            {"channelBitmap", click->channel_bitmap},
+            {"triggerBitmap", click->trigger_bitmap},
+            {"startSample", click->start_sample},
+            {"durationSamples", click->duration_samples},
+            {"timeMs", click->time_unix_ms},
+            {"signalExcessDb", click->signal_excess_db},
+            {"channels", click->channels},
+            {"waveform", click->waveform},
+            {"clickType", click->click_type},
+            {"classifiersPassed", click->classifiers_passed},
+            {"delaysInSamples", click->delays_in_samples},
+            {
+                "orientation",
+                click->orientation_declared
+                    ? json({
+                          {
+                              "headingDegrees",
+                              click->
+                                  orientation_heading_degrees,
+                          },
+                          {
+                              "pitchDegrees",
+                              click->
+                                  orientation_pitch_degrees,
+                          },
+                          {
+                              "rollDegrees",
+                              click->
+                                  orientation_roll_degrees,
+                          },
+                      })
+                    : json(nullptr),
+            },
+            {
+                "navigationOriginMetres",
+                click->navigation_origin_declared
+                    ? json({
+                          click->
+                              navigation_origin_east_metres,
+                          click->
+                              navigation_origin_north_metres,
+                          click->
+                              navigation_origin_height_metres,
+                      })
+                    : json(nullptr),
+            },
+            {
+                "navigationReferenceId",
+                click->navigation_origin_declared
+                    ? json(click->navigation_reference_id)
+                    : json(nullptr),
+            },
+            {
+                "earthBearingAmbiguitiesRadians",
+                click->
+                    earth_bearing_ambiguities_radians,
+            },
+            {
+                "matchedTemplateAnnotations",
+                std::move(matched_template_annotations),
+            },
+            {"echo", click->echo},
+        };
+        result["payload"]["bearingRadians"] =
+            click->bearing_radians.has_value()
+            ? json(*click->bearing_radians)
+            : json(nullptr);
+    }
+    else if (const auto* noise =
+                 std::any_cast<pamguard::detectors::ClickNoiseSampleResult>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"channelBitmap", noise->channel_bitmap},
+            {"startSample", noise->start_sample},
+            {"durationSamples", noise->duration_samples},
+            {"timeMs", noise->time_unix_ms},
+            {"channels", noise->channels},
+            {"waveform", noise->waveform},
+        };
+    }
+    else if (const auto* background = std::any_cast<
+                 pamguard::detectors::ClickTriggerBackgroundResult>(
+                 &unit.payload)) {
+        result["payload"] = {
+            {"channelBitmap", background->channel_bitmap},
+            {"timeMs", background->time_unix_ms},
+            {"channels", background->channels},
+            {"values", background->values},
+        };
+    }
+    else if (const auto* trigger = std::any_cast<
+                 pamguard::detectors::ClickTriggerFunctionResult>(
+                 &unit.payload)) {
+        result["payload"] = {
+            {"channelBitmap", trigger->channel_bitmap},
+            {"startSample", trigger->start_sample},
+            {"timeMs", trigger->time_unix_ms},
+            {"channels", trigger->channels},
+            {"signalExcessDb", trigger->signal_excess_db},
+            {"longFilterValues", trigger->long_filter_values},
+        };
+    }
+    else if (const auto* feature =
+                 std::any_cast<pamguard::detectors::ClickFeatureResult>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"clickIndex", feature->click_index},
+            {"clickStartSample", feature->click_start_sample},
+            {"fftLength", feature->fft_length},
+            {"clickLengthSeconds", feature->click_length_seconds},
+            {"peakFrequencyHz", feature->peak_frequency_hz},
+            {"peakWidthHz", feature->peak_width_hz},
+            {"meanFrequencyHz", feature->mean_frequency_hz},
+            {"bandEnergyDb", feature->band_energy_db},
+            {"totalPowerSpectrum", feature->total_power_spectrum},
+        };
+    }
+    else if (const auto* classification =
+                 std::any_cast<
+                     pamguard::detectors::ClickClassificationResult>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"clickIndex", classification->click_index},
+            {"clickStartSample", classification->click_start_sample},
+            {"clickType", classification->click_type},
+            {"discard", classification->discard},
+            {"classifiersPassed", classification->classifiers_passed},
+        };
+    }
+    else if (const auto* matched =
+                 std::any_cast<
+                     pamguard::core::MatchedTemplateClassificationResult>(
+                     &unit.payload)) {
+        auto results = json::array();
+        for (const auto& item :
+             matched->classification.best_results) {
+            results.push_back({
+                {"threshold", item.threshold},
+                {"matchCorrelation", item.match_corr},
+                {"rejectCorrelation", item.reject_corr},
+            });
+        }
+        result["payload"] = {
+            {"clickStartSample", matched->click_start_sample},
+            {
+                "classifierInstanceId",
+                matched->classifier_instance_id,
+            },
+            {"clickType", matched->click_type},
+            {"classified", matched->classification.classified},
+            {"bestResults", std::move(results)},
+        };
+    }
+    else if (const auto* period =
+                 std::any_cast<pamguard::detectors::FftNoisePeriod>(
+                     &unit.payload)) {
+        json bands = json::array();
+        for (const auto& band : period->bands) {
+            bands.push_back({
+                {"mean", band.mean},
+                {"median", band.median},
+                {"low95", band.low_95},
+                {"high95", band.high_95},
+                {"minimum", band.minimum},
+                {"maximum", band.maximum},
+            });
+        }
+        result["payload"] = {
+            {"channel", period->channel},
+            {"endSample", period->end_sample},
+            {"timeMs", period->time_unix_ms},
+            {"nMeasurements", period->n_measurements},
+            {"bands", std::move(bands)},
+        };
+    }
+    else if (const auto* measurement =
+                 std::any_cast<pamguard::core::NoiseBandMeasurement>(
+                     &unit.payload)) {
+        auto bands = json::array();
+        for (const auto& band : measurement->bands) {
+            bands.push_back({
+                {"centreHz", band.centre_hz},
+                {"lowEdgeHz", band.lo_edge_hz},
+                {"highEdgeHz", band.hi_edge_hz},
+            });
+        }
+        result["payload"] = {
+            {"channel", measurement->channel},
+            {"bands", std::move(bands)},
+            {"rmsDb", measurement->rms_db},
+            {"peakDb", measurement->peak_db},
+            {"endSample", measurement->end_sample},
+            {"timeMs", measurement->time_unix_ms},
+        };
+    }
+    else if (const auto* ltsa =
+                 std::any_cast<pamguard::core::LtsaChannelInterval>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"channel", ltsa->channel},
+            {"startTimeMs", ltsa->interval.start_time_ms},
+            {"endTimeMs", ltsa->interval.end_time_ms},
+            {"nFft", ltsa->interval.n_fft},
+            {"startSample", ltsa->interval.start_sample},
+            {"durationSamples", ltsa->interval.duration_samples},
+            {"magnitude", ltsa->interval.magnitude},
+        };
+    }
+    else if (const auto* sample =
+                 std::any_cast<pamguard::detectors::IshmaelDetSample>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"detectionValue", sample->det_value},
+            {"noiseFloor", sample->noise_floor},
+            {"rawValue", sample->raw_value},
+            {"hasNoiseFloor", sample->has_noise_floor},
+        };
+    }
+    else if (const auto* detection =
+                 std::any_cast<pamguard::detectors::IshmaelDetection>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"channel", detection->channel},
+            {"startSample", detection->start_sample},
+            {"durationSamples", detection->duration_samples},
+            {"peakTimeSample", detection->peak_time_sample},
+            {"peakHeight", detection->peak_height},
+            {"startTimeMs", detection->start_time_ms},
+            {"lowFrequencyHz", detection->low_freq_hz},
+            {"highFrequencyHz", detection->high_freq_hz},
+        };
+    }
+    else if (const auto* peak =
+                 std::any_cast<pamguard::detectors::WhistlePeak>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"channel", peak->channel},
+            {"startSample", peak->start_sample},
+            {"timeMs", peak->time_ms},
+            {"sliceNumber", peak->slice_number},
+            {"minimumFrequencyBin", peak->min_freq},
+            {"peakFrequencyBin", peak->peak_freq},
+            {"maximumFrequencyBin", peak->max_freq},
+            {"maximumAmplitude", peak->max_amp},
+            {"signal", peak->signal},
+            {"noise", peak->noise},
+            {"ok", peak->ok},
+        };
+    }
+    else if (const auto* contour =
+                 std::any_cast<
+                     pamguard::detectors::ConnectedRegionResult>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"channel", contour->channel},
+            {"regionNumber", contour->region_number},
+            {"firstSlice", contour->first_slice},
+            {"startSample", contour->start_sample},
+            {"lastStartSample", contour->last_start_sample},
+            {"timeMs", contour->time_ms},
+            {"durationSamples", contour->duration_samples},
+            {"durationSeconds", contour->duration_seconds},
+            {"timeSpanSamples", contour->time_span_samples},
+            {"timeSpanSeconds", contour->time_span_seconds},
+            {"totalPixels", contour->total_pixels},
+            {"minimumFrequencyBin", contour->min_frequency_bin},
+            {"maximumFrequencyBin", contour->max_frequency_bin},
+            {"meanPeakBin", contour->mean_peak_bin},
+            {"peakFrequencyBins", contour->peak_freqs_bins},
+            {"timeBins", contour->times_bins},
+        };
+    }
+    else if (const auto* localisation =
+                 std::any_cast<pamguard::core::ClickLocalisationResult>(
+                     &unit.payload)) {
+        auto delays = json::array();
+        for (const auto& delay : localisation->delays) {
+            delays.push_back({
+                {"pairIndex", delay.pair_index},
+                {"channelA", delay.channel_a},
+                {"channelB", delay.channel_b},
+                {"audioChannelA", delay.audio_channel_a},
+                {"audioChannelB", delay.audio_channel_b},
+                {"geometryConstrained", delay.geometry_constrained},
+                {"maxDelaySamples", delay.max_delay_samples},
+                {"hydrophoneDistanceM", delay.hydrophone_distance_m},
+                {"delaySamples", delay.delay.delay_samples},
+                {"delayScore", delay.delay.delay_score},
+            });
+        }
+        result["payload"] = {
+            {"clickIndex", localisation->click_index},
+            {"clickStartSample", localisation->click_start_sample},
+            {"delays", std::move(delays)},
+            {"arrayShape",
+             static_cast<int>(localisation->array_shape)},
+            {"bearingLocaliser",
+             static_cast<int>(localisation->bearing_localiser)},
+            {"lsqBearingValid", localisation->lsq_bearing.valid},
+            {"gridBearingValid", localisation->grid_bearing.valid},
+        };
+    }
+    else if (const auto* bearing =
+                 std::any_cast<pamguard::core::ClickBearingResult>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"clickIndex", bearing->click_index},
+            {"clickStartSample", bearing->click_start_sample},
+            {"valid", bearing->bearing.valid},
+            {"unitX", bearing->bearing.unit_x},
+            {"unitY", bearing->bearing.unit_y},
+            {"unitZ", bearing->bearing.unit_z},
+            {"azimuthDegrees", bearing->bearing.azimuth_degrees},
+            {"elevationDegrees", bearing->bearing.elevation_degrees},
+            {"residualRmsSeconds",
+             bearing->bearing.residual_rms_seconds},
+            {"usedPairs", bearing->bearing.used_pairs},
+        };
+    }
+    else if (const auto* train =
+                 std::any_cast<
+                     pamguard::core::GraphMhtClickTrainResult>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"trainId", train->train_id},
+            {"channelBitmap", train->channel_bitmap},
+            {"chi2", train->chi2},
+            {"clickCount", train->click_count},
+            {"firstStartSample", train->first_start_sample},
+            {"lastStartSample", train->last_start_sample},
+            {"clickStartSamples", train->click_start_samples},
+            {"clickTimeMs", train->click_time_ms},
+            {"classified", train->classified},
+            {"junkTrain", train->junk_train},
+            {"speciesId", train->species_id},
+            {"classifierSpeciesIds",
+             train->classifier_species_ids},
+            {"templateCorrelation", train->template_correlation},
+        };
+    }
+    else if (const auto* classification =
+                 std::any_cast<
+                     pamguard::core::
+                         GraphClickTrainClassificationResult>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"trainId", classification->train_id},
+            {"junkTrain", classification->junk_train},
+            {"speciesId", classification->species_id},
+            {"classifierSpeciesIds",
+             classification->classifier_species_ids},
+            {"templateCorrelation",
+             classification->template_correlation},
+        };
+    }
+    else if (const auto* train =
+                 std::any_cast<pamguard::detectors::ClickTrainSummary>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"trainId", train->train_id},
+            {"channelBitmap", train->channel_bitmap},
+            {"firstStartSample", train->first_start_sample},
+            {"lastStartSample", train->last_start_sample},
+            {"firstTimeMs", train->first_time_ms},
+            {"lastTimeMs", train->last_time_ms},
+            {"clickStartSamples", train->click_start_samples},
+            {"clickTimeMs", train->click_time_ms},
+            {"clickCount", train->click_count},
+            {"durationSamples", train->duration_samples},
+            {"durationSeconds", train->duration_seconds},
+            {"timeSpanSeconds", train->time_span_seconds},
+            {"lastIciSeconds", train->last_ici_seconds},
+            {"minIciSeconds", train->min_ici_seconds},
+            {"maxIciSeconds", train->max_ici_seconds},
+            {"meanIciSeconds", train->mean_ici_seconds},
+            {"medianIciSeconds", train->median_ici_seconds},
+            {"stdIciSeconds", train->std_ici_seconds},
+            {"iciCv", train->ici_cv},
+            {"clickRateHz", train->click_rate_hz},
+            {"completed", train->completed},
+        };
+    }
+    else if (const auto* level = std::any_cast<
+                 pamguard::core::GraphLevelMeasurement>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"rmsDbfs", level->rms_dbfs},
+            {"peakDbfs", level->peak_dbfs},
+            {"measuredFrames", level->measured_frames},
+        };
+    }
+    else if (const auto* recording = std::any_cast<
+                 pamguard::core::GraphRecordingEvent>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"path", recording->path},
+            {"state", recording->state},
+            {"startSample", recording->start_sample},
+            {"frameCount", recording->frame_count},
+            {"sampleRateHz", recording->sample_rate_hz},
+            {"channelCount", recording->channel_count},
+        };
+    }
+    else if (const auto* alarm = std::any_cast<
+                 pamguard::core::GraphAlarmState>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"active", alarm->active},
+            {"eventCount", alarm->event_count},
+            {"threshold", alarm->threshold},
+            {"windowSeconds", alarm->window_seconds},
+            {"message", alarm->message},
+        };
+    }
+    else if (const auto* event = std::any_cast<
+                 pamguard::core::GraphOperatorEvent>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"category", event->category},
+            {"label", event->label},
+            {"notes", event->notes},
+            {"value", event->value},
+        };
+    }
+    else if (const auto* storage = std::any_cast<
+                 pamguard::core::GraphStorageHealth>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"path", storage->path},
+            {"available", storage->available},
+            {"capacityBytes", storage->capacity_bytes},
+            {"freeBytes", storage->free_bytes},
+            {"availableBytes", storage->available_bytes},
+            {"availablePercent", storage->available_percent},
+            {"status", storage->status},
+        };
+    }
+    else if (const auto* clip = std::any_cast<
+                 pamguard::core::GraphAudioClip>(
+                     &unit.payload)) {
+        result["payload"] = {
+            {"triggerUid", clip->trigger_uid},
+            {"triggerTimeMs", clip->trigger_time_unix_ms},
+            {"triggerStartSample", clip->trigger_start_sample},
+            {"clipStartSample", clip->clip_start_sample},
+            {"sampleRateHz", clip->sample_rate_hz},
+            {"channelCount", clip->channel_count},
+            {"incomplete", clip->incomplete},
+            {"interleavedPcm", clip->interleaved_pcm},
+        };
+    }
+    else {
+        result["payload"] = nullptr;
+    }
+    return result;
+}
+
+std::size_t channel_count_from_bitmap(std::uint32_t bitmap) {
+    std::size_t count = 0;
+    for (std::size_t channel = 0; channel < 32; ++channel) {
+        if ((bitmap & (std::uint32_t{1} << channel)) != 0) {
+            count = channel + 1;
+        }
+    }
+    return count;
 }
 
 // ---------------------------------------------------------------------------
@@ -637,19 +1708,44 @@ std::vector<std::pair<std::string, std::string>> parse_dshow_devices(const std::
 
 struct CaptureProcess {
     std::string session_id;
+    std::string module_id;
+    std::string project_id;
+    std::string acquisition_unit_id;
     std::string device;
+    pamguard::service::CaptureSourceKind source_kind =
+        pamguard::service::CaptureSourceKind::HttpUrl;
     std::size_t sample_rate_hz = 0;
     std::size_t channel_count = 0;
+    std::optional<std::uint64_t> graph_revision;
+    std::optional<std::uint64_t> working_revision;
+    std::optional<std::uint64_t> binding_revision;
 #ifdef _WIN32
     HANDLE process = nullptr;
     HANDLE job = nullptr;
     DWORD pid = 0;
+#else
+    pid_t pid = -1;
 #endif
+};
+
+struct RequiredProjectCapture {
+    pamguard::service::AcquisitionCaptureTarget target;
+    bool child_failed = false;
 };
 
 struct CaptureState {
     std::mutex mutex;
-    std::unordered_map<std::string, CaptureProcess> running; // by session id
+    std::unordered_map<std::string, CaptureProcess> running;
+    /**
+     * A project-owned capture becomes readiness-critical only after an
+     * operator has successfully started it. Explicit capture/runtime stop and
+     * project/revision transitions remove the requirement. Unexpected child
+     * exit leaves the requirement latched so a later status/readiness request
+     * cannot accidentally turn the failure back into "healthy" merely by
+     * reaping the process handle.
+     */
+    std::unordered_map<std::string, RequiredProjectCapture>
+        required_project_captures;
 };
 
 #ifdef _WIN32
@@ -704,7 +1800,153 @@ bool start_capture_process(CaptureProcess& capture, const std::vector<std::strin
     return true;
 }
 
+#else
+
+bool capture_process_running(const CaptureProcess& capture) {
+    if (capture.pid <= 0) {
+        return false;
+    }
+    int status = 0;
+    const auto result = waitpid(capture.pid, &status, WNOHANG);
+    if (result == 0) {
+        return true;
+    }
+    return false;
+}
+
+void close_capture_process(CaptureProcess& capture) {
+    if (capture.pid <= 0) {
+        return;
+    }
+    const auto pid = capture.pid;
+    // The child establishes itself as a process-group leader before exec.
+    // Addressing the negative PID therefore quiesces the ingest bridge and
+    // any FFmpeg descendant without involving a command shell.
+    (void)kill(-pid, SIGTERM);
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        int status = 0;
+        const auto result = waitpid(pid, &status, WNOHANG);
+        if (result == pid ||
+            (result < 0 && errno == ECHILD)) {
+            capture.pid = -1;
+            return;
+        }
+        usleep(100000);
+    }
+    (void)kill(-pid, SIGKILL);
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0 &&
+           errno == EINTR) {
+    }
+    capture.pid = -1;
+}
+
+bool start_capture_process(
+    CaptureProcess& capture,
+    const std::vector<std::string>& args,
+    std::string& error) {
+    if (args.empty()) {
+        error = "capture ingest command is empty";
+        return false;
+    }
+    int exec_status[2]{-1, -1};
+    if (pipe(exec_status) != 0) {
+        error = "could not create the ingest bridge status pipe";
+        return false;
+    }
+    const auto flags = fcntl(exec_status[1], F_GETFD);
+    if (flags < 0 ||
+        fcntl(exec_status[1], F_SETFD, flags | FD_CLOEXEC) < 0) {
+        close(exec_status[0]);
+        close(exec_status[1]);
+        error = "could not secure the ingest bridge status pipe";
+        return false;
+    }
+    const auto pid = fork();
+    if (pid < 0) {
+        close(exec_status[0]);
+        close(exec_status[1]);
+        error = "could not fork the ingest bridge";
+        return false;
+    }
+    if (pid == 0) {
+        close(exec_status[0]);
+        (void)setpgid(0, 0);
+        std::vector<char*> argv;
+        argv.reserve(args.size() + 1);
+        for (const auto& arg : args) {
+            argv.push_back(const_cast<char*>(arg.c_str()));
+        }
+        argv.push_back(nullptr);
+        execvp(argv.front(), argv.data());
+        const auto child_errno = errno;
+        (void)write(
+            exec_status[1],
+            &child_errno,
+            sizeof(child_errno));
+        _exit(127);
+    }
+    close(exec_status[1]);
+    (void)setpgid(pid, pid);
+    int child_errno = 0;
+    std::size_t received = 0;
+    while (received < sizeof(child_errno)) {
+        const auto count = read(
+            exec_status[0],
+            reinterpret_cast<char*>(&child_errno) + received,
+            sizeof(child_errno) - received);
+        if (count > 0) {
+            received += static_cast<std::size_t>(count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        break;
+    }
+    close(exec_status[0]);
+    if (received != 0) {
+        int status = 0;
+        (void)waitpid(pid, &status, 0);
+        error =
+            "could not start the ingest bridge (" +
+            args.front() + "): errno " +
+            std::to_string(child_errno);
+        return false;
+    }
+    capture.pid = pid;
+    return true;
+}
+
 #endif // _WIN32
+
+std::size_t quiesce_module_captures(CaptureState& state) {
+    // Callers must already hold the module graph lifecycle mutex. Capture
+    // routes take that mutex before this state mutex as well, establishing one
+    // lock order across capture and graph/runtime transitions.
+    std::size_t stopped = 0;
+    std::lock_guard<std::mutex> lock(state.mutex);
+    for (auto capture = state.running.begin();
+         capture != state.running.end();) {
+        if (capture->second.module_id.empty()) {
+            ++capture;
+            continue;
+        }
+        close_capture_process(capture->second);
+        capture = state.running.erase(capture);
+        ++stopped;
+    }
+    state.required_project_captures.clear();
+    return stopped;
+}
+
+const char* capture_source_kind_name(
+    pamguard::service::CaptureSourceKind source_kind) {
+    return source_kind ==
+            pamguard::service::CaptureSourceKind::DirectShowDevice
+        ? "dshow"
+        : "url";
+}
 
 std::string cors_origin_from_environment() {
     const char* raw = std::getenv("PAMGUARD_CORS_ORIGIN");
@@ -796,6 +2038,129 @@ std::string read_text_file(const std::filesystem::path& path) {
     std::ostringstream buffer;
     buffer << input.rdbuf();
     return buffer.str();
+}
+
+std::string read_binary_file(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error("could not read file: " + path.string());
+    }
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    if (!input.eof() && input.fail()) {
+        throw std::runtime_error(
+            "could not finish reading file: " + path.string());
+    }
+    return buffer.str();
+}
+
+enum class WebAssetStatus {
+    Ok,
+    Forbidden,
+    NotFound,
+    Unsupported,
+};
+
+struct WebAssetResolution {
+    WebAssetStatus status = WebAssetStatus::NotFound;
+    std::filesystem::path path;
+    std::string_view content_type;
+};
+
+std::string_view web_asset_content_type(
+    const std::filesystem::path& path) {
+    auto extension = path.extension().string();
+    std::transform(
+        extension.begin(),
+        extension.end(),
+        extension.begin(),
+        [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+
+    static const std::unordered_map<std::string, std::string_view> types = {
+        {".css", "text/css; charset=utf-8"},
+        {".js", "application/javascript; charset=utf-8"},
+        {".mjs", "application/javascript; charset=utf-8"},
+        {".json", "application/json; charset=utf-8"},
+        {".map", "application/json; charset=utf-8"},
+        {".svg", "image/svg+xml"},
+        {".png", "image/png"},
+        {".jpg", "image/jpeg"},
+        {".jpeg", "image/jpeg"},
+        {".gif", "image/gif"},
+        {".webp", "image/webp"},
+        {".ico", "image/x-icon"},
+        {".woff", "font/woff"},
+        {".woff2", "font/woff2"},
+        {".ttf", "font/ttf"},
+        {".wasm", "application/wasm"},
+    };
+    const auto found = types.find(extension);
+    return found == types.end() ? std::string_view() : found->second;
+}
+
+WebAssetResolution resolve_web_asset(
+    const std::filesystem::path& asset_root,
+    std::string_view requested_path) {
+    if (requested_path.empty()) {
+        return {WebAssetStatus::NotFound, {}, {}};
+    }
+
+    // cpp-httplib URL-decodes the request path before routing. Reject every
+    // filesystem-significant form that could become a drive, alternate data
+    // stream, parent segment, or second decoding pass on Windows.
+    for (const unsigned char ch : requested_path) {
+        if (ch < 0x20u || ch == 0x7fu ||
+            ch == '\\' || ch == ':' || ch == '%') {
+            return {WebAssetStatus::Forbidden, {}, {}};
+        }
+    }
+    if (requested_path.front() == '/') {
+        return {WebAssetStatus::Forbidden, {}, {}};
+    }
+
+    std::filesystem::path relative;
+    std::size_t start = 0;
+    while (start <= requested_path.size()) {
+        const auto separator = requested_path.find('/', start);
+        const auto end = separator == std::string_view::npos
+            ? requested_path.size()
+            : separator;
+        const auto segment = requested_path.substr(start, end - start);
+        if (segment.empty() || segment == "." || segment == "..") {
+            return {WebAssetStatus::Forbidden, {}, {}};
+        }
+        relative /= std::string(segment);
+        if (separator == std::string_view::npos) {
+            break;
+        }
+        start = separator + 1;
+    }
+    if (relative.empty() || relative.is_absolute() ||
+        relative.has_root_name() || relative.has_root_directory()) {
+        return {WebAssetStatus::Forbidden, {}, {}};
+    }
+
+    const auto content_type = web_asset_content_type(relative);
+    if (content_type.empty()) {
+        return {WebAssetStatus::Unsupported, {}, {}};
+    }
+
+    std::error_code error;
+    const auto resolved =
+        std::filesystem::canonical(asset_root / relative, error);
+    if (error) {
+        return {WebAssetStatus::NotFound, {}, {}};
+    }
+    if (resolved == asset_root ||
+        !path_is_within(asset_root, resolved)) {
+        return {WebAssetStatus::Forbidden, {}, {}};
+    }
+    if (!std::filesystem::is_regular_file(resolved, error) || error) {
+        return {WebAssetStatus::NotFound, {}, {}};
+    }
+    return {WebAssetStatus::Ok, resolved, content_type};
 }
 
 void append_result_archive(const std::filesystem::path& archive_dir, const std::string& session_id, const json& result_body) {
@@ -2146,9 +3511,16 @@ void validate_analysis_config(const pamguard::core::AnalysisConfig& config) {
             validate_nonnegative_range(config.detector.click_features.mean_frequency_range_hz, "click.features.meanFrequencyRangeHz");
         }
         if (config.detector.click_train_tracker_enabled) {
-            if (!std::isfinite(config.detector.click_train.max_ici_seconds) || config.detector.click_train.max_ici_seconds <= 0.0 ||
+            if (!std::isfinite(config.detector.click_train.min_ici_seconds) ||
+                !std::isfinite(config.detector.click_train.max_ici_seconds) ||
+                config.detector.click_train.min_ici_seconds < 0.0 ||
+                config.detector.click_train.max_ici_seconds <= 0.0 ||
+                config.detector.click_train.min_ici_seconds >
+                    config.detector.click_train.max_ici_seconds ||
                 config.detector.click_train.min_clicks == 0) {
-                throw std::invalid_argument("click.train.maxIciSeconds and click.train.minClicks must be positive");
+                throw std::invalid_argument(
+                    "click.train ICI range must be ordered and non-negative, "
+                    "and click.train.minClicks must be positive");
             }
         }
     }
@@ -2726,32 +4098,39 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
                 throw std::invalid_argument("matchFilt needs a non-empty kernel waveform");
             }
         }
-        const auto matched = body.value("matchedTemplate", json::object());
         auto& mt_config = config.detector.matched_template;
-        mt_config.enabled = matched.value("enabled", false);
+        if (body.contains("matchedTemplate")) {
+            const auto& matched = body.at("matchedTemplate");
+            if (!matched.is_object() ||
+                !matched.contains("enabled") ||
+                !matched.at("enabled").is_boolean()) {
+                throw std::invalid_argument(
+                    "matchedTemplate must be an object with boolean enabled");
+            }
+            mt_config.enabled = matched.at("enabled").get<bool>();
+            if (!mt_config.enabled && matched.size() != 1) {
+                throw std::invalid_argument(
+                    "disabled matchedTemplate accepts only the enabled field");
+            }
+        }
         if (mt_config.enabled) {
-            mt_config.normalisation_type = matched.value("normalisationType", mt_config.normalisation_type);
-            mt_config.peak_search = matched.value("peakSearch", mt_config.peak_search);
-            mt_config.peak_smoothing = matched.value("peakSmoothing", mt_config.peak_smoothing);
-            mt_config.length_db = matched.value("lengthDb", mt_config.length_db);
-            mt_config.restricted_bins = matched.value("restrictedBins", mt_config.restricted_bins);
-            mt_config.channel_classification = matched.value("channelClassification", mt_config.channel_classification);
-            const auto classifiers = matched.value("classifiers", json::array());
-            for (const auto& entry : classifiers) {
-                pamguard::detectors::MtTemplatePair pair;
-                pair.threshold_to_accept = entry.value("thresholdToAccept", pair.threshold_to_accept);
-                const auto parse_template = [](const json& t, pamguard::detectors::MatchTemplateWaveform& out) {
-                    out.name = t.value("name", std::string("template"));
-                    out.sample_rate_hz = t.value("sampleRateHz", 0.0);
-                    out.waveform = t.value("waveform", std::vector<double>{});
-                };
-                parse_template(entry.value("match", json::object()), pair.match_template);
-                parse_template(entry.value("reject", json::object()), pair.reject_template);
-                mt_config.classifiers.push_back(std::move(pair));
-            }
-            if (mt_config.classifiers.empty() || mt_config.restricted_bins <= 0) {
-                throw std::invalid_argument("matchedTemplate needs classifiers and positive restrictedBins");
-            }
+            auto settings_value = body.at("matchedTemplate");
+            settings_value.erase("enabled");
+            const auto settings =
+                pamguard::core::matched_template_settings_from_json(
+                    settings_value.dump(),
+                    1);
+            config.detector.matched_template_click_type =
+                settings.click_type;
+            mt_config.normalisation_type =
+                settings.normalisation_type;
+            mt_config.peak_search = settings.peak_search;
+            mt_config.peak_smoothing = settings.peak_smoothing;
+            mt_config.length_db = settings.length_db;
+            mt_config.restricted_bins = settings.restricted_bins;
+            mt_config.channel_classification =
+                settings.channel_classification;
+            mt_config.classifiers = settings.classifiers;
             // Surface template problems (decimation, empty waveforms) at
             // session creation rather than at first audio.
             pamguard::detectors::MatchedTemplateClassifier probe(
@@ -3068,6 +4447,10 @@ pamguard::core::AnalysisConfig parse_config(const json& body) {
         const auto click_train = click.value("train", json::object());
         config.detector.click_train_tracker_enabled = click_train.value("enabled", false);
         if (config.detector.click_train_tracker_enabled) {
+            config.detector.click_train.min_ici_seconds =
+                click_train.value(
+                    "minIciSeconds",
+                    config.detector.click_train.min_ici_seconds);
             config.detector.click_train.max_ici_seconds = click_train.value("maxIciSeconds", config.detector.click_train.max_ici_seconds);
             config.detector.click_train.min_clicks = click_train.value("minClicks", config.detector.click_train.min_clicks);
             const auto algorithm = click_train.value("algorithm", std::string("ici"));
@@ -3403,15 +4786,55 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
 
     out["clicks"] = json::array();
     for (const auto& click : result.clicks) {
+        auto matched_template_annotations = json::array();
+        for (const auto& annotation :
+             click.matched_template_annotations) {
+            auto best_results = json::array();
+            for (const auto& match : annotation.best_results) {
+                json match_result = {
+                    {"threshold", match.threshold},
+                    {
+                        "matchCorrelation",
+                        match.match_correlation,
+                    },
+                };
+                if (std::isfinite(
+                        match.reject_correlation)) {
+                    match_result["rejectCorrelation"] =
+                        match.reject_correlation;
+                }
+                best_results.push_back(
+                    std::move(match_result));
+            }
+            matched_template_annotations.push_back({
+                {
+                    "classifierInstanceId",
+                    annotation.classifier_instance_id,
+                },
+                {"clickType", annotation.click_type},
+                {"classified", annotation.classified},
+                {"bestResults", std::move(best_results)},
+            });
+        }
         json item = {
             {"startSample", click.start_sample},
             {"durationSamples", click.duration_samples},
             {"timeMs", click.time_unix_ms},
             {"triggerBitmap", click.trigger_bitmap},
             {"signalExcessDb", click.signal_excess_db},
+            {"clickType", click.click_type},
+            {"classifiersPassed", click.classifiers_passed},
+            {"delaysInSamples", click.delays_in_samples},
+            {
+                "matchedTemplateAnnotations",
+                std::move(matched_template_annotations),
+            },
             {"waveformChannels", click.waveform.size()},
             {"waveformSamples", click.waveform.empty() ? 0 : click.waveform.front().size()},
         };
+        item["bearingRadians"] = click.bearing_radians.has_value()
+            ? json(*click.bearing_radians)
+            : json(nullptr);
         if (options.echo_detection_running) {
             item["echo"] = click.echo;
         }
@@ -3944,6 +5367,11 @@ json result_to_json(const pamguard::core::AnalysisResult& result, const ResultJs
         out["matchedTemplateClassifications"].push_back({
             {"clickIndex", entry.click_index},
             {"clickStartSample", entry.click_start_sample},
+            {
+                "classifierInstanceId",
+                entry.classifier_instance_id,
+            },
+            {"clickType", entry.click_type},
             {"classified", entry.classified},
             {"results", std::move(results)},
         });
@@ -4297,6 +5725,7 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
     click_train = {
         {"enabled", config.detector.click_train_tracker_enabled},
         {"algorithm", config.detector.click_train_mht ? "mht" : "ici"},
+        {"minIciSeconds", config.detector.click_train.min_ici_seconds},
         {"maxIciSeconds", config.detector.click_train.max_ici_seconds},
         {"minClicks", config.detector.click_train.min_clicks},
     };
@@ -4571,40 +6000,31 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
     };
     body["matchedTemplate"] = {
         {"enabled", config.detector.matched_template.enabled},
-        {"normalisationType",
-         config.detector.matched_template.normalisation_type},
-        {"peakSearch", config.detector.matched_template.peak_search},
-        {"peakSmoothing",
-         config.detector.matched_template.peak_smoothing},
-        {"lengthDb", config.detector.matched_template.length_db},
-        {"restrictedBins",
-         config.detector.matched_template.restricted_bins},
-        {"channelClassification",
-         config.detector.matched_template.channel_classification},
-        {"classifiers", json::array()},
     };
-    for (const auto& classifier :
-         config.detector.matched_template.classifiers) {
-        json pair = {
-            {"thresholdToAccept", classifier.threshold_to_accept},
-            {"match", {
-                {"name", classifier.match_template.name},
-                {"sampleRateHz",
-                 classifier.match_template.sample_rate_hz},
-                {"waveform", classifier.match_template.waveform},
-            }},
-        };
-        if (!classifier.reject_template.waveform.empty() &&
-            classifier.reject_template.sample_rate_hz > 0.0) {
-            pair["reject"] = {
-                {"name", classifier.reject_template.name},
-                {"sampleRateHz",
-                 classifier.reject_template.sample_rate_hz},
-                {"waveform", classifier.reject_template.waveform},
-            };
-        }
-        body["matchedTemplate"]["classifiers"].push_back(
-            std::move(pair));
+    if (config.detector.matched_template.enabled) {
+        pamguard::core::MatchedTemplateSettings settings;
+        settings.click_type =
+            config.detector.matched_template_click_type;
+        settings.normalisation_type =
+            config.detector.matched_template.normalisation_type;
+        settings.peak_search =
+            config.detector.matched_template.peak_search;
+        settings.peak_smoothing =
+            config.detector.matched_template.peak_smoothing;
+        settings.length_db =
+            config.detector.matched_template.length_db;
+        settings.restricted_bins =
+            config.detector.matched_template.restricted_bins;
+        settings.channel_classification =
+            config.detector.matched_template.channel_classification;
+        settings.classifiers =
+            config.detector.matched_template.classifiers;
+        auto canonical = json::parse(
+            pamguard::core::matched_template_settings_to_json(
+                settings,
+                1));
+        canonical["enabled"] = true;
+        body["matchedTemplate"] = std::move(canonical);
     }
     body["array"] = {
         {"id", config.array.id},
@@ -4662,6 +6082,943 @@ json config_to_json(const pamguard::core::AnalysisConfig& config, const SessionR
 void json_response(httplib::Response& res, const json& body, int status = 200) {
     res.status = status;
     res.set_content(body.dump(), "application/json");
+}
+
+void encoded_json_response(
+    httplib::Response& res,
+    std::string body,
+    int status = 200,
+    const std::string& etag = {}) {
+    res.status = status;
+    if (!etag.empty()) {
+        res.set_header("ETag", etag);
+    }
+    res.set_header("Cache-Control", "no-store");
+    res.set_content(
+        std::move(body),
+        "application/json; charset=utf-8");
+}
+
+std::string projection_status_name(
+    const pamguard::project::ProjectProjectionResult& projection) {
+    switch (projection.status()) {
+    case pamguard::project::ProjectionStatus::Invalid:
+        return "invalid";
+    case pamguard::project::ProjectionStatus::NeedsConfiguration:
+        return "needsConfiguration";
+    case pamguard::project::ProjectionStatus::Runnable:
+        return "runnable";
+    }
+    return "invalid";
+}
+
+bool inject_sound_recorder_deployment(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const SoundRecorderDeploymentContext& deployment,
+    pamguard::core::ModuleGraphDocument& graph) {
+    for (const auto& unit : snapshot.project.controlled_units) {
+        if (unit.type_id != "pamguard.sound-recorder") {
+            continue;
+        }
+        if (!deployment.ready() ||
+            !uuid_path_component(snapshot.project.project_id) ||
+            !uuid_path_component(unit.id)) {
+            return false;
+        }
+        const auto* projected =
+            snapshot.projection.index.find_runtime_node(
+                unit.id,
+                "recorder-process");
+        if (!projected ||
+            projected->runtime_type_id !=
+                "pamguard.sound-recorder") {
+            return false;
+        }
+        const auto runtime = std::find_if(
+            graph.modules.begin(),
+            graph.modules.end(),
+            [&](const auto& module) {
+                return module.id == projected->runtime_node_id &&
+                    module.type_id ==
+                        "pamguard.sound-recorder";
+            });
+        if (runtime == graph.modules.end()) {
+            return false;
+        }
+        try {
+            const auto placeholder =
+                json::parse(runtime->settings_json);
+            if (!placeholder.is_object() ||
+                !placeholder.contains("settings") ||
+                !placeholder.at("settings").is_object()) {
+                return false;
+            }
+            const auto folder =
+                *deployment.root /
+                snapshot.project.project_id /
+                unit.id;
+            runtime->settings_json =
+                pamguard::project::
+                    sound_recorder_runtime_settings_json(
+                        placeholder.at("settings").dump(),
+                        1,
+                        {
+                            folder.string(),
+                        });
+        }
+        catch (const std::exception&) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool project_runtime_deployment_ready(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const SoundRecorderDeploymentContext& deployment) {
+    if (!snapshot.projection.runnable()) {
+        return false;
+    }
+    auto graph = snapshot.projection.graph;
+    return inject_sound_recorder_deployment(
+        snapshot,
+        deployment,
+        graph);
+}
+
+pamguard::core::ModuleGraphDocument project_runtime_document(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const SoundRecorderDeploymentContext& deployment) {
+    if (snapshot.projection.runnable()) {
+        auto graph = snapshot.projection.graph;
+        if (inject_sound_recorder_deployment(
+                snapshot,
+                deployment,
+                graph)) {
+            return graph;
+        }
+    }
+    // An editor-valid but incomplete project remains saveable. Its previous
+    // runtime must not remain addressable, so install a stopped, empty
+    // runtime at the active working revision until every required portable
+    // binding and deployment-owned storage binding is ready.
+    pamguard::core::ModuleGraphDocument graph;
+    graph.revision = snapshot.projection.graph.revision;
+    return graph;
+}
+
+std::unique_ptr<pamguard::core::ModuleRuntime>
+preflight_project_runtime(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const SoundRecorderDeploymentContext& deployment) {
+    auto candidate =
+        std::make_unique<pamguard::core::ModuleRuntime>();
+    candidate->configure(
+        project_runtime_document(snapshot, deployment));
+    return candidate;
+}
+
+void activate_prepared_project_runtime(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const SoundRecorderDeploymentContext& deployment,
+    pamguard::core::ModuleGraph& graph,
+    pamguard::core::ModuleRuntime& runtime,
+    pamguard::core::ModuleRuntime& prepared_runtime) {
+    const auto validation =
+        graph.restore(
+            project_runtime_document(snapshot, deployment));
+    if (!validation.valid()) {
+        const auto message = validation.issues.empty()
+            ? std::string("unknown graph validation error")
+            : validation.issues.front().message;
+        throw std::runtime_error(
+            "Generated project runtime graph is invalid: " + message);
+    }
+    runtime.swap_stopped(prepared_runtime);
+}
+
+void activate_project_runtime(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const SoundRecorderDeploymentContext& deployment,
+    pamguard::core::ModuleGraph& graph,
+    pamguard::core::ModuleRuntime& runtime) {
+    auto prepared =
+        preflight_project_runtime(snapshot, deployment);
+    activate_prepared_project_runtime(
+        snapshot,
+        deployment,
+        graph,
+        runtime,
+        *prepared);
+}
+
+int project_authority_http_status(
+    const pamguard::project::ProjectAuthorityError& error) {
+    if (error.code() == "precondition_required") {
+        return 428;
+    }
+    if (error.code() == "precondition_failed") {
+        return 412;
+    }
+    if (error.code() == "dirty_project" ||
+        error.code() == "durable_conflict") {
+        return 409;
+    }
+    if (error.code() == "public_input_not_found") {
+        return 404;
+    }
+    if (error.code() == "project_save_failed" ||
+        error.code() == "project_save_uncertain" ||
+        error.code() == "validated_only_candidate") {
+        return 500;
+    }
+    return 422;
+}
+
+void project_authority_error_response(
+    httplib::Response& res,
+    const pamguard::project::ProjectAuthorityError& error) {
+    json body = {
+        {"error", error.what()},
+        {"code", error.code()},
+    };
+    if (!error.current_etag().empty()) {
+        body["currentEtag"] = error.current_etag();
+    }
+    encoded_json_response(
+        res,
+        body.dump(),
+        project_authority_http_status(error),
+        error.current_etag());
+}
+
+void project_runtime_running_response(
+    httplib::Response& res,
+    const pamguard::project::ActiveProjectSnapshot& snapshot) {
+    encoded_json_response(
+        res,
+        json({
+            {
+                "error",
+                "Project changes that can alter runtime state require the "
+                "module runtime to be stopped",
+            },
+            {"code", "runtime_running"},
+            {"currentEtag", snapshot.etag},
+        }).dump(),
+        409,
+        snapshot.etag);
+}
+
+std::vector<std::string> active_acquisition_unit_ids(
+    const pamguard::project::ActiveProjectSnapshot& snapshot) {
+    std::vector<std::string> result;
+    for (const auto& unit :
+         snapshot.project.controlled_units) {
+        if (unit.type_id == "pamguard.acquisition") {
+            result.push_back(unit.id);
+        }
+    }
+    return result;
+}
+
+std::vector<std::string> active_sound_recorder_unit_ids(
+    const pamguard::project::ActiveProjectSnapshot& snapshot) {
+    std::vector<std::string> result;
+    for (const auto& unit :
+         snapshot.project.controlled_units) {
+        if (unit.type_id == "pamguard.sound-recorder") {
+            result.push_back(unit.id);
+        }
+    }
+    return result;
+}
+
+const pamguard::project::ControlledUnitInstance*
+find_active_acquisition(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const std::string_view unit_id) {
+    const auto found = std::find_if(
+        snapshot.project.controlled_units.begin(),
+        snapshot.project.controlled_units.end(),
+        [unit_id](const auto& unit) {
+            return unit.id == unit_id;
+        });
+    if (found == snapshot.project.controlled_units.end() ||
+        found->type_id != "pamguard.acquisition") {
+        return nullptr;
+    }
+    return &*found;
+}
+
+const pamguard::project::ProjectedPublicOutput*
+find_active_acquisition_audio_output(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const std::string_view unit_id) {
+    return snapshot.projection.index.find_public_output(
+        unit_id,
+        "rawAudio");
+}
+
+const pamguard::project::ControlledUnitInstance*
+find_active_sound_recorder(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const std::string_view unit_id) {
+    const auto found = std::find_if(
+        snapshot.project.controlled_units.begin(),
+        snapshot.project.controlled_units.end(),
+        [unit_id](const auto& unit) {
+            return unit.id == unit_id;
+        });
+    if (found == snapshot.project.controlled_units.end() ||
+        found->type_id != "pamguard.sound-recorder") {
+        return nullptr;
+    }
+    return &*found;
+}
+
+const pamguard::project::ProjectedRuntimeNode*
+find_active_sound_recorder_runtime(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const std::string_view unit_id) {
+    return snapshot.projection.index.find_runtime_node(
+        unit_id,
+        "recorder-process");
+}
+
+std::string sound_recorder_transport_name(
+    const pamguard::core::SoundRecorderTransportState state) {
+    switch (state) {
+    case pamguard::core::SoundRecorderTransportState::Off:
+        return "off";
+    case pamguard::core::SoundRecorderTransportState::Continuous:
+        return "continuous";
+    }
+    throw std::logic_error(
+        "Unknown sound-recorder transport state");
+}
+
+const pamguard::project::ControlledUnitInstance*
+find_active_click_detector(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    const std::string_view unit_id) {
+    const auto found = std::find_if(
+        snapshot.project.controlled_units.begin(),
+        snapshot.project.controlled_units.end(),
+        [unit_id](const auto& unit) {
+            return unit.id == unit_id;
+        });
+    if (found == snapshot.project.controlled_units.end() ||
+        found->type_id != "pamguard.click-detector") {
+        return nullptr;
+    }
+    return &*found;
+}
+
+std::string project_mode_name(
+    const pamguard::project::ProjectMode mode) {
+    switch (mode) {
+    case pamguard::project::ProjectMode::Normal:
+        return "normal";
+    case pamguard::project::ProjectMode::Mixed:
+        return "mixed";
+    case pamguard::project::ProjectMode::Viewer:
+        return "viewer";
+    }
+    throw std::logic_error("Unknown project mode");
+}
+
+pamguard::service::TrackedClickLocaliserSettings
+tracked_click_localiser_settings(
+    const pamguard::project::ControlledUnitInstance& unit) {
+    const auto settings = json::parse(unit.settings_json);
+    const auto& tracked =
+        settings.at("localisation").at("trackedTrain");
+    pamguard::service::TrackedClickLocaliserSettings result;
+    result.is_selected.clear();
+    for (const auto& selected : tracked.at("isSelected")) {
+        result.is_selected.push_back(selected.get<bool>());
+    }
+    result.max_range_m = tracked.at("maxRangeM").get<double>();
+    result.max_height_m = tracked.at("maxHeightM").get<double>();
+    result.min_height_m = tracked.at("minHeightM").get<double>();
+    result.max_time_milliseconds =
+        tracked.at("maxTimeMilliseconds").get<std::uint64_t>();
+    result.limit_points = tracked.at("limitPoints").get<bool>();
+    result.max_points =
+        tracked.at("maxPoints").get<std::size_t>();
+    return result;
+}
+
+json tracked_click_localiser_settings_to_json(
+    const pamguard::service::TrackedClickLocaliserSettings& settings) {
+    return {
+        {"isSelected", settings.is_selected},
+        {"maxRangeM", settings.max_range_m},
+        {"maxHeightM", settings.max_height_m},
+        {"minHeightM", settings.min_height_m},
+        {
+            "maxTimeMilliseconds",
+            settings.max_time_milliseconds,
+        },
+        {"limitPoints", settings.limit_points},
+        {"maxPoints", settings.max_points},
+    };
+}
+
+json tracked_click_assessment_to_json(
+    const pamguard::service::
+        TrackedClickLocalisationAssessment& assessment) {
+    json algorithms = json::array();
+    for (const auto& algorithm : assessment.algorithms) {
+        algorithms.push_back({
+            {"javaIndex", algorithm.java_index},
+            {"id", algorithm.id},
+            {"javaName", algorithm.java_name},
+            {"selected", algorithm.selected},
+            {"available", algorithm.available},
+            {
+                "unavailableReason",
+                algorithm.available
+                    ? json(nullptr)
+                    : json(algorithm.unavailable_reason),
+            },
+        });
+    }
+    return {
+        {
+            "status",
+            pamguard::service::
+                tracked_click_localisation_status_name(
+                    assessment.status),
+        },
+        {"available", assessment.available()},
+        {"code", assessment.code},
+        {"message", assessment.message},
+        {"algorithms", std::move(algorithms)},
+    };
+}
+
+const char* tracked_target_motion_status_name(
+    const pamguard::localisation::TrackedTargetMotionStatus status) {
+    using Status =
+        pamguard::localisation::TrackedTargetMotionStatus;
+    switch (status) {
+    case Status::success:
+        return "success";
+    case Status::invalid_point_limit:
+        return "invalid_point_limit";
+    case Status::non_finite_input:
+        return "non_finite_input";
+    case Status::no_observations:
+        return "no_observations";
+    case Status::degenerate_fit:
+        return "degenerate_fit";
+    case Status::non_convergent_bearings:
+        return "non_convergent_bearings";
+    }
+    return "unknown";
+}
+
+json finite_number_or_null(const double value) {
+    return std::isfinite(value) ? json(value) : json(nullptr);
+}
+
+json tracked_click_localisation_run_to_json(
+    const pamguard::service::TrackedClickLocalisationRun& run) {
+    json ambiguities = json::array();
+    for (const auto& ambiguity : run.ambiguities) {
+        const auto& fit = ambiguity.fit;
+        json item = {
+            {"ambiguityIndex", ambiguity.ambiguity_index},
+            {"accepted", ambiguity.accepted()},
+            {
+                "fit",
+                {
+                    {
+                        "status",
+                        tracked_target_motion_status_name(
+                            fit.status),
+                    },
+                    {"succeeded", fit.succeeded()},
+                    {
+                        "positionMetres",
+                        {
+                            finite_number_or_null(
+                                fit.position_metres[0]),
+                            finite_number_or_null(
+                                fit.position_metres[1]),
+                            finite_number_or_null(
+                                fit.position_metres[2]),
+                        },
+                    },
+                    {
+                        "rawChi2",
+                        finite_number_or_null(fit.raw_chi2),
+                    },
+                    {
+                        "reducedChi2",
+                        finite_number_or_null(
+                            fit.reduced_chi2),
+                    },
+                    {"aic", finite_number_or_null(fit.aic)},
+                    {
+                        "perpendicularErrorMetres",
+                        finite_number_or_null(
+                            fit.
+                                perpendicular_error_metres),
+                    },
+                    {
+                        "parallelErrorMetres",
+                        finite_number_or_null(
+                            fit.parallel_error_metres),
+                    },
+                    {
+                        "errorAngleRadians",
+                        finite_number_or_null(
+                            fit.error_angle_radians),
+                    },
+                    {
+                        "referenceObservationIndex",
+                        fit.reference_observation_index ==
+                                std::numeric_limits<
+                                    std::size_t>::max()
+                            ? json(nullptr)
+                            : json(
+                                  fit.
+                                      reference_observation_index),
+                    },
+                    {
+                        "selectedObservationIndices",
+                        fit.selected_observation_indices,
+                    },
+                },
+            },
+            {
+                "beamSampleTimeMs",
+                ambiguity.beam_sample_time_ms
+                    ? json(*ambiguity.beam_sample_time_ms)
+                    : json(nullptr),
+            },
+            {
+                "beamDistanceMetres",
+                ambiguity.beam_distance_metres
+                    ? finite_number_or_null(
+                          *ambiguity.beam_distance_metres)
+                    : json(nullptr),
+            },
+        };
+        if (ambiguity.filter_input) {
+            item["filterInput"] = {
+                {
+                    "perpendicularDistanceMetres",
+                    finite_number_or_null(
+                        ambiguity.filter_input->
+                            perpendicular_distance_metres),
+                },
+                {
+                    "heightMetres",
+                    finite_number_or_null(
+                        ambiguity.filter_input->
+                            height_metres),
+                },
+            };
+        }
+        else {
+            item["filterInput"] = nullptr;
+        }
+        if (ambiguity.filter_assessment) {
+            item["filterAssessment"] = {
+                {
+                    "passesRunawayGuard",
+                    ambiguity.filter_assessment->
+                        passes_runaway_guard,
+                },
+                {
+                    "passesConfiguredLimits",
+                    ambiguity.filter_assessment->
+                        passes_configured_limits,
+                },
+                {
+                    "accepted",
+                    ambiguity.filter_assessment->accepted,
+                },
+            };
+        }
+        else {
+            item["filterAssessment"] = nullptr;
+        }
+        ambiguities.push_back(std::move(item));
+    }
+    return {
+        {
+            "status",
+            pamguard::service::
+                tracked_click_localisation_run_status_name(
+                    run.status),
+        },
+        {"executed", run.executed()},
+        {"accepted", run.accepted()},
+        {"code", run.code},
+        {"message", run.message},
+        {
+            "assessment",
+            tracked_click_assessment_to_json(run.assessment),
+        },
+        {"ambiguities", std::move(ambiguities)},
+    };
+}
+
+json tracked_click_event_to_json(
+    const pamguard::service::TrackedClickEvent& event,
+    const pamguard::service::
+        TrackedClickLocalisationAssessment& assessment) {
+    json clicks = json::array();
+    for (const auto& click : event.clicks) {
+        clicks.push_back({
+            {"uid", click.uid},
+            {"startSample", click.start_sample},
+            {"timeMs", click.time_ms},
+            {"channelBitmap", click.channel_bitmap},
+            {
+                "bearingRadians",
+                click.bearing_radians
+                    ? json(*click.bearing_radians)
+                    : json(nullptr),
+            },
+            {
+                "originMetres",
+                click.origin_metres
+                    ? json(*click.origin_metres)
+                    : json(nullptr),
+            },
+            {
+                "headingRadians",
+                click.heading_radians
+                    ? json(*click.heading_radians)
+                    : json(nullptr),
+            },
+            {
+                "earthBearingAmbiguitiesRadians",
+                click.earth_bearing_ambiguities_radians,
+            },
+            {
+                "navigationReferenceId",
+                click.navigation_reference_id.empty()
+                    ? json(nullptr)
+                    : json(click.navigation_reference_id),
+            },
+        });
+    }
+    return {
+        {"eventId", event.event_id},
+        {"comment", event.comment},
+        {"clickCount", event.clicks.size()},
+        {
+            "startTimeMs",
+            event.clicks.empty()
+                ? json(nullptr)
+                : json(event.clicks.front().time_ms),
+        },
+        {
+            "endTimeMs",
+            event.clicks.empty()
+                ? json(nullptr)
+                : json(event.clicks.back().time_ms),
+        },
+        {"clicks", std::move(clicks)},
+        {
+            "localisation",
+            tracked_click_assessment_to_json(assessment),
+        },
+    };
+}
+
+std::vector<pamguard::service::TrackedClickObservation>
+resolve_retained_clicks(
+    const json& requested_clicks,
+    const std::shared_ptr<pamguard::core::DataBlock>& click_block) {
+    if (!requested_clicks.is_array() ||
+        requested_clicks.empty() ||
+        requested_clicks.size() > 4096) {
+        throw std::invalid_argument(
+            "clicks must contain between 1 and 4096 retained-click "
+            "locators");
+    }
+    const auto history = click_block->recent_history();
+    std::vector<pamguard::service::TrackedClickObservation> result;
+    result.reserve(requested_clicks.size());
+    for (const auto& locator : requested_clicks) {
+        if (!locator.is_object() ||
+            locator.size() != 3 ||
+            !locator.contains("uid") ||
+            !locator.contains("startSample") ||
+            !locator.contains("channelBitmap")) {
+            throw std::invalid_argument(
+                "Each retained-click locator must contain only uid, "
+                "startSample, and channelBitmap");
+        }
+        const auto uid = locator.at("uid").get<std::uint64_t>();
+        const auto start_sample =
+            locator.at("startSample").get<std::int64_t>();
+        const auto channel_bitmap =
+            locator.at("channelBitmap").get<std::uint32_t>();
+        const auto found = std::find_if(
+            history.begin(),
+            history.end(),
+            [&](const auto& unit) {
+                return unit.metadata.uid == uid &&
+                    unit.metadata.start_sample == start_sample &&
+                    unit.metadata.channel_bitmap == channel_bitmap;
+            });
+        if (found == history.end()) {
+            throw std::out_of_range(
+                "A requested click is no longer present in the retained "
+                "Click Detector history");
+        }
+        const auto* click = std::any_cast<
+            pamguard::detectors::ClickDetectionResult>(
+                &found->payload);
+        if (!click) {
+            throw std::logic_error(
+                "Click Detector public output contains a non-click "
+                "payload");
+        }
+        pamguard::service::TrackedClickObservation observation{
+            found->metadata.uid,
+            found->metadata.start_sample,
+            found->metadata.time_unix_ms,
+            found->metadata.channel_bitmap,
+            click->bearing_radians,
+        };
+        if (click->navigation_origin_declared) {
+            observation.origin_metres =
+                std::array<double, 3>{
+                    click->navigation_origin_east_metres,
+                    click->navigation_origin_north_metres,
+                    click->navigation_origin_height_metres,
+                };
+            observation.navigation_reference_id =
+                click->navigation_reference_id;
+        }
+        if (click->orientation_declared) {
+            observation.heading_radians =
+                click->orientation_heading_degrees *
+                std::numbers::pi / 180.0;
+        }
+        observation.earth_bearing_ambiguities_radians =
+            click->earth_bearing_ambiguities_radians;
+        result.push_back(std::move(observation));
+    }
+    return result;
+}
+
+pamguard::service::AcquisitionCaptureTarget
+acquisition_capture_target(
+    const pamguard::project::ActiveProjectSnapshot& snapshot,
+    std::string unit_id) {
+    return {
+        snapshot.project.project_id,
+        std::move(unit_id),
+        snapshot.working_revision,
+    };
+}
+
+json acquisition_host_binding_to_json(
+    const pamguard::service::
+        AcquisitionHostBindingSnapshot& binding) {
+    json source;
+    if (const auto* device = std::get_if<
+            pamguard::service::ExactAudioDeviceHostBinding>(
+            &binding.source)) {
+        source = {
+            {"kind", "device"},
+            {"deviceName", device->device_name},
+        };
+    }
+    else {
+        const auto& url = std::get<
+            pamguard::service::NonSecretHttpUrlHostBinding>(
+            binding.source);
+        source = {
+            {"kind", "url"},
+            {"url", url.url},
+        };
+    }
+    return {
+        {"schemaVersion", 1},
+        {"projectId", binding.target.project_id},
+        {
+            "acquisitionUnitId",
+            binding.target.acquisition_unit_id,
+        },
+        {
+            "workingRevision",
+            binding.target.working_revision,
+        },
+        {"bindingRevision", binding.binding_revision},
+        {"source", std::move(source)},
+    };
+}
+
+void working_revision_conflict_response(
+    httplib::Response& res,
+    const std::uint64_t requested,
+    const std::uint64_t current) {
+    json_response(
+        res,
+        {
+            {
+                "error",
+                "The active project working revision changed",
+            },
+            {"code", "working_revision_conflict"},
+            {"requestedWorkingRevision", requested},
+            {"currentWorkingRevision", current},
+        },
+        409);
+}
+
+void active_project_mismatch_response(
+    httplib::Response& res,
+    const std::string& requested,
+    const std::string& current) {
+    json_response(
+        res,
+        {
+            {
+                "error",
+                "The expected project is not active",
+            },
+            {"code", "active_project_mismatch"},
+            {"requestedProjectId", requested},
+            {"currentProjectId", current},
+        },
+        409);
+}
+
+void acquisition_binding_conflict_response(
+    httplib::Response& res,
+    const pamguard::service::
+        AcquisitionHostBindingConflict& error) {
+    json_response(
+        res,
+        {
+            {"error", error.what()},
+            {"code", "binding_revision_conflict"},
+            {
+                "expectedBindingRevision",
+                error.expected_binding_revision(),
+            },
+            {
+                "currentBindingRevision",
+                error.current_binding_revision()
+                    ? json(*error.current_binding_revision())
+                    : json(nullptr),
+            },
+        },
+        409);
+}
+
+void stale_acquisition_target_response(
+    httplib::Response& res,
+    const pamguard::service::
+        StaleAcquisitionCaptureTarget& error) {
+    working_revision_conflict_response(
+        res,
+        error.requested_working_revision(),
+        error.current_working_revision());
+}
+
+std::uint64_t required_json_uint64(
+    const json& body,
+    const char* name) {
+    if (!body.contains(name) ||
+        !body.at(name).is_number_unsigned()) {
+        throw std::invalid_argument(
+            std::string(name) +
+            " is required and must be an unsigned integer");
+    }
+    return body.at(name).get<std::uint64_t>();
+}
+
+std::uint64_t required_query_uint64(
+    const httplib::Request& req,
+    const char* name) {
+    if (!req.has_param(name)) {
+        throw std::invalid_argument(
+            std::string(name) +
+            " query parameter is required");
+    }
+    const auto value = req.get_param_value(name);
+    if (value.empty() || value.front() == '-') {
+        throw std::invalid_argument(
+            std::string(name) +
+            " must be an unsigned integer");
+    }
+    std::size_t parsed = 0;
+    const auto result = std::stoull(value, &parsed);
+    if (parsed != value.size()) {
+        throw std::invalid_argument(
+            std::string(name) +
+            " must be an unsigned integer");
+    }
+    return result;
+}
+
+std::string required_query_string(
+    const httplib::Request& req,
+    const char* name) {
+    if (!req.has_param(name)) {
+        throw std::invalid_argument(
+            std::string(name) +
+            " query parameter is required");
+    }
+    const auto value = req.get_param_value(name);
+    if (value.empty()) {
+        throw std::invalid_argument(
+            std::string(name) +
+            " query parameter must not be empty");
+    }
+    return value;
+}
+
+double required_finite_query_double(
+    const httplib::Request& req,
+    const char* name) {
+    if (!req.has_param(name)) {
+        throw std::invalid_argument(
+            std::string(name) +
+            " query parameter is required");
+    }
+    const auto value = req.get_param_value(name);
+    std::size_t parsed = 0;
+    const double result = std::stod(value, &parsed);
+    if (parsed != value.size() || !std::isfinite(result)) {
+        throw std::invalid_argument(
+            std::string(name) +
+            " must be a finite number");
+    }
+    return result;
+}
+
+void require_working_revision(
+    const std::uint64_t expected,
+    const pamguard::project::ActiveProjectSnapshot& snapshot) {
+    if (expected != snapshot.working_revision) {
+        throw pamguard::service::StaleAcquisitionCaptureTarget(
+            expected,
+            snapshot.working_revision);
+    }
+}
+
+bool capture_bridge_source_is_safe(
+    const std::string_view source) noexcept {
+    // ffmpeg_stream_ingest currently constructs FFmpeg's command through
+    // popen. Keep shell expansion characters out of even an exact,
+    // enumerated/bounded source until that bridge executes FFmpeg directly.
+    return source.find_first_of("\"$`%!") ==
+        std::string_view::npos;
 }
 
 /**
@@ -4835,7 +7192,27 @@ int main(int argc, char** argv) {
     const auto ingest_status_file = ingest_status_file_from_environment();
     const auto audit_log_file = audit_log_file_from_environment();
     const auto web_ui_file = web_ui_file_from_environment();
+    std::filesystem::path web_asset_root;
+    try {
+        web_asset_root =
+            web_asset_root_from_environment(web_ui_file);
+    }
+    catch (const std::exception& error) {
+        std::cerr << "Invalid web asset configuration: "
+                  << error.what() << "\n";
+        return 2;
+    }
     const auto openapi_file = openapi_file_from_environment();
+    const auto module_graph_file = module_graph_file_from_environment();
+    const auto workspace_file = workspace_file_from_environment();
+    const auto project_dir = project_dir_from_environment();
+    const auto sound_recorder_deployment =
+        sound_recorder_deployment_from_environment();
+    const auto requested_active_project_id =
+        active_project_id_from_environment();
+    const bool legacy_model_compat =
+        bool_from_environment(
+            "PAMGUARD_LEGACY_MODEL_COMPAT");
     const auto cors_origin = cors_origin_from_environment();
     const auto api_key = api_key_from_environment();
 
@@ -4843,11 +7220,29 @@ int main(int argc, char** argv) {
     const auto ffmpeg_path = ffmpeg_path_from_environment();
     const auto ingest_exe = ingest_exe_path(argc > 0 ? argv[0] : nullptr);
     CaptureState capture_state;
+    pamguard::service::AcquisitionHostBindingStore
+        acquisition_host_bindings;
+    std::unordered_map<
+        std::string,
+        std::unique_ptr<
+            pamguard::service::TrackedClickEventStore>>
+        tracked_click_events;
+    std::unordered_map<
+        std::string,
+        ActiveProjectNavigationTrack>
+        project_navigation_tracks;
 #ifdef _WIN32
     if (capture_enabled && !api_key.empty()) {
         // The spawned ingest bridge reads the key from the inherited
         // environment rather than the (inspectable) command line.
         SetEnvironmentVariableA("PAMGUARD_CAPTURE_API_KEY", api_key.c_str());
+    }
+#else
+    if (capture_enabled && !api_key.empty()) {
+        (void)setenv(
+            "PAMGUARD_CAPTURE_API_KEY",
+            api_key.c_str(),
+            1);
     }
 #endif
 
@@ -4862,13 +7257,300 @@ int main(int argc, char** argv) {
     JobQueueState job_state;
 
     pamguard::core::SessionManager manager;
+    pamguard::core::ModuleRegistry module_registry;
+    pamguard::core::register_builtin_module_types(module_registry);
+    if (legacy_model_compat &&
+        !requested_active_project_id.empty()) {
+        std::cerr
+            << "PAMGUARD_LEGACY_MODEL_COMPAT and "
+               "PAMGUARD_ACTIVE_PROJECT_ID are mutually exclusive\n";
+        return 2;
+    }
+    pamguard::project::ControlledUnitRegistry controlled_unit_registry;
+    pamguard::project::register_builtin_controlled_units(
+        controlled_unit_registry);
+    std::unique_ptr<pamguard::project::ProjectStore> project_store;
+    std::unique_ptr<pamguard::project::ProjectAuthority>
+        project_authority_owner;
+    try {
+        project_store =
+            std::make_unique<pamguard::project::ProjectStore>(
+                project_dir);
+        project_authority_owner =
+            std::make_unique<pamguard::project::ProjectAuthority>(
+                controlled_unit_registry,
+                module_registry,
+                *project_store);
+        if (!requested_active_project_id.empty()) {
+            const auto current =
+                project_authority_owner->snapshot();
+            auto prepared =
+                project_authority_owner->prepare_open(
+                    current.etag,
+                    requested_active_project_id,
+                    true);
+            preflight_project_runtime(
+                prepared.preview(),
+                sound_recorder_deployment);
+            (void)project_authority_owner->
+                commit_project_switch(std::move(prepared));
+        }
+    }
+    catch (const std::exception& error) {
+        std::cerr << "Could not initialize project authority: "
+                  << error.what() << "\n";
+        return 2;
+    }
+    auto& project_authority = *project_authority_owner;
+
+    pamguard::core::ModuleGraph module_graph(module_registry);
+    // This is the outer lifecycle lock for both graph/runtime transitions and
+    // project, graph/runtime, and capture transitions. If capture state is
+    // also needed, acquire this mutex first and CaptureState::mutex second.
+    std::mutex module_graph_update_mutex;
+    if (!legacy_model_compat &&
+        !module_graph_file.empty()) {
+        std::cerr
+            << "PAMGUARD_MODULE_GRAPH_FILE is ignored: the active project "
+               "is now the only writable graph authority\n";
+    }
+    if (legacy_model_compat &&
+        !module_graph_file.empty() &&
+        std::filesystem::exists(module_graph_file)) {
+        try {
+            const auto document =
+                pamguard::core::module_graph_from_json(
+                    read_text_file(module_graph_file));
+            pamguard::core::ModuleRuntime candidate_runtime;
+            candidate_runtime.configure(document);
+            const auto restored =
+                module_graph.restore(document);
+            if (!restored.valid()) {
+                throw std::runtime_error(
+                    "persisted compatibility graph is invalid: " +
+                    graph_issues_to_json(
+                        restored.issues).dump());
+            }
+            std::cout
+                << "Loaded isolated legacy compatibility graph revision "
+                << document.revision << "\n";
+        }
+        catch (const std::exception& error) {
+            std::cerr
+                << "Could not load legacy compatibility graph "
+                << module_graph_file.string() << ": "
+                << error.what() << "\n";
+        }
+    }
+    pamguard::core::ModuleRuntime module_runtime;
+    bool project_runtime_prepared = false;
+    try {
+        if (legacy_model_compat) {
+            module_runtime.configure(
+                module_graph.snapshot());
+        }
+        else {
+            const auto active =
+                project_authority.snapshot();
+            activate_project_runtime(
+                active,
+                sound_recorder_deployment,
+                module_graph,
+                module_runtime);
+            project_runtime_prepared =
+                project_runtime_deployment_ready(
+                    active,
+                    sound_recorder_deployment);
+        }
+    }
+    catch (const std::exception& error) {
+        std::cerr << "Could not prepare initial module runtime: "
+                  << error.what() << "\n";
+        return 2;
+    }
+    // Callers hold module_graph_update_mutex after HTTP serving begins. This
+    // reconciles the binding registry from the one project authority and
+    // ensures no project-owned child can survive a project, revision, unit,
+    // runtime, or generated-node transition.
+    const auto reconcile_acquisition_host_state =
+        [&](const pamguard::project::ActiveProjectSnapshot& snapshot)
+            -> std::size_t {
+        const auto acquisition_ids =
+            active_acquisition_unit_ids(snapshot);
+        (void)acquisition_host_bindings.reconcile_project(
+            snapshot.project.project_id,
+            snapshot.working_revision,
+            acquisition_ids);
+        const std::unordered_set<std::string> active_ids(
+            acquisition_ids.begin(),
+            acquisition_ids.end());
+        for (auto track = project_navigation_tracks.begin();
+             track != project_navigation_tracks.end();) {
+            if (!active_ids.contains(track->first) ||
+                track->second.project_id !=
+                    snapshot.project.project_id ||
+                track->second.working_revision !=
+                    snapshot.working_revision) {
+                track =
+                    project_navigation_tracks.erase(track);
+            }
+            else {
+                ++track;
+            }
+        }
+        std::size_t stopped = 0;
+        std::lock_guard capture_lock(capture_state.mutex);
+        for (auto capture = capture_state.running.begin();
+             capture != capture_state.running.end();) {
+            if (capture_process_running(capture->second)) {
+                ++capture;
+                continue;
+            }
+            const auto requirement =
+                capture_state.required_project_captures.find(
+                    capture->first);
+            if (requirement !=
+                capture_state.required_project_captures.end()) {
+                requirement->second.child_failed = true;
+            }
+            close_capture_process(capture->second);
+            capture = capture_state.running.erase(capture);
+        }
+        for (auto capture = capture_state.running.begin();
+             capture != capture_state.running.end();) {
+            const auto& value = capture->second;
+            if (value.project_id.empty()) {
+                ++capture;
+                continue;
+            }
+            const auto* output =
+                find_active_acquisition_audio_output(
+                    snapshot,
+                    value.acquisition_unit_id);
+            const bool stale =
+                value.project_id !=
+                    snapshot.project.project_id ||
+                !value.working_revision ||
+                *value.working_revision !=
+                    snapshot.working_revision ||
+                !active_ids.contains(
+                    value.acquisition_unit_id) ||
+                !output ||
+                value.module_id !=
+                    output->runtime_node_id ||
+                !module_runtime.running() ||
+                module_runtime.revision() !=
+                    snapshot.working_revision ||
+                !module_runtime.find_block(
+                    output->block_id);
+            if (!stale) {
+                ++capture;
+                continue;
+            }
+            capture_state.required_project_captures.erase(
+                capture->first);
+            close_capture_process(capture->second);
+            capture = capture_state.running.erase(capture);
+            ++stopped;
+        }
+        for (auto requirement =
+                 capture_state.required_project_captures.begin();
+             requirement !=
+                 capture_state.required_project_captures.end();) {
+            const auto& target = requirement->second.target;
+            const auto* output =
+                find_active_acquisition_audio_output(
+                    snapshot,
+                    target.acquisition_unit_id);
+            const bool stale =
+                target.project_id !=
+                    snapshot.project.project_id ||
+                target.working_revision !=
+                    snapshot.working_revision ||
+                !active_ids.contains(
+                    target.acquisition_unit_id) ||
+                !output ||
+                !module_runtime.running() ||
+                module_runtime.revision() !=
+                    snapshot.working_revision ||
+                !module_runtime.find_block(output->block_id);
+            if (!stale) {
+                ++requirement;
+                continue;
+            }
+            requirement =
+                capture_state.required_project_captures.erase(
+                    requirement);
+        }
+        return stopped;
+    };
+    (void)reconcile_acquisition_host_state(
+        project_authority.snapshot());
+    // Callers hold module_graph_update_mutex. Tracked events are runtime
+    // scientific data tied to retained click UIDs, so a project graph
+    // revision change clears membership exactly when those retained blocks
+    // are replaced.
+    const auto tracked_click_store =
+        [&](const pamguard::project::ActiveProjectSnapshot& snapshot,
+            const std::string& unit_id)
+            -> pamguard::service::TrackedClickEventStore& {
+        auto& store = tracked_click_events[unit_id];
+        if (!store) {
+            store = std::make_unique<
+                pamguard::service::TrackedClickEventStore>();
+        }
+        store->reconcile({
+            snapshot.project.project_id,
+            unit_id,
+            snapshot.working_revision,
+        });
+        return *store;
+    };
+    json workspace_store = {
+        {"schemaVersion", 1},
+        {"workspaces", json::object()},
+    };
+    std::mutex workspace_mutex;
+    if (legacy_model_compat &&
+        !workspace_file.empty() &&
+        std::filesystem::exists(workspace_file)) {
+        try {
+            auto loaded = json::parse(read_text_file(workspace_file));
+            if (!loaded.is_object() ||
+                loaded.value("schemaVersion", 0) != 1 ||
+                !loaded.contains("workspaces") ||
+                !loaded.at("workspaces").is_object()) {
+                throw std::invalid_argument(
+                    "workspace store has an unsupported schema");
+            }
+            for (const auto& [id, layout] :
+                 loaded.at("workspaces").items()) {
+                if (!valid_workspace_id(id)) {
+                    throw std::invalid_argument(
+                        "workspace store contains an invalid id");
+                }
+                validate_workspace_layout(layout);
+            }
+            workspace_store = std::move(loaded);
+            std::cout << "Loaded "
+                      << workspace_store.at("workspaces").size()
+                      << " persisted workspaces\n";
+        }
+        catch (const std::exception& error) {
+            std::cerr << "Could not load persisted workspaces "
+                      << workspace_file.string() << ": "
+                      << error.what() << "\n";
+        }
+    }
     std::mutex configs_mutex;
     std::mutex archive_mutex;
     std::mutex audit_mutex;
     std::unordered_map<std::string, pamguard::core::AnalysisConfig> configs;
     std::unordered_map<std::string, SessionRuntimeStats> runtime_stats;
 
-    if (!session_config_dir.empty() && std::filesystem::exists(session_config_dir)) {
+    if (legacy_model_compat &&
+        !session_config_dir.empty() &&
+        std::filesystem::exists(session_config_dir)) {
         for (const auto& entry : std::filesystem::directory_iterator(session_config_dir)) {
             if (!entry.is_regular_file() || entry.path().extension() != ".json") {
                 continue;
@@ -4913,16 +7595,970 @@ int main(int argc, char** argv) {
     }
     server.set_post_routing_handler([&](const httplib::Request&, httplib::Response& res) {
         res.set_header("Access-Control-Allow-Origin", cors_origin);
-        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key");
-        res.set_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+        res.set_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, X-API-Key, If-Match");
+        res.set_header("Access-Control-Expose-Headers", "ETag");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     });
 
     server.Options(R"(.*)", [&](const httplib::Request&, httplib::Response& res) {
         res.status = 204;
         res.set_header("Access-Control-Allow-Origin", cors_origin);
-        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key");
-        res.set_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+        res.set_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, X-API-Key, If-Match");
+        res.set_header("Access-Control-Expose-Headers", "ETag");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     });
+
+    const auto request_etag =
+        [](const httplib::Request& req) -> std::string {
+        return req.has_header("If-Match")
+            ? req.get_header_value("If-Match")
+            : std::string{};
+    };
+
+    const auto require_project_authority_mode =
+        [&](httplib::Response& res) -> bool {
+        if (!legacy_model_compat) {
+            return true;
+        }
+        json_response(
+            res,
+            {
+                {
+                    "error",
+                    "The unified project authority is disabled while "
+                    "isolated legacy model compatibility is active",
+                },
+                {"code", "legacy_model_compat_active"},
+            },
+            409);
+        return false;
+    };
+
+    const auto require_legacy_analysis_compatibility =
+        [&](httplib::Response& res) -> bool {
+        if (legacy_model_compat) {
+            res.set_header("Deprecation", "true");
+            return true;
+        }
+        json_response(
+            res,
+            {
+                {
+                    "error",
+                    "Legacy compatibility routes are not exposed in "
+                    "project authority mode",
+                },
+                {"code", "legacy_compatibility_required"},
+            },
+            404);
+        return false;
+    };
+
+    const auto restore_project_runtime =
+        [&](const pamguard::project::ActiveProjectSnapshot& snapshot,
+            bool restart) -> std::string {
+        try {
+            activate_project_runtime(
+                snapshot,
+                sound_recorder_deployment,
+                module_graph,
+                module_runtime);
+            project_runtime_prepared =
+                project_runtime_deployment_ready(
+                    snapshot,
+                    sound_recorder_deployment);
+            if (restart) {
+                if (!project_runtime_prepared) {
+                    throw std::runtime_error(
+                        "previous project is not runnable");
+                }
+                module_runtime.start();
+            }
+            return {};
+        }
+        catch (const std::exception& error) {
+            return error.what();
+        }
+    };
+
+    server.Get(
+        "/v1/controlled-unit-types",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            try {
+                encoded_json_response(
+                    res,
+                    pamguard::project::
+                        controlled_unit_catalogue_to_json(
+                            controlled_unit_registry));
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "catalogue_unavailable"},
+                    },
+                    500);
+            }
+        });
+
+    server.Get(
+        "/v1/projects",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            try {
+                encoded_json_response(
+                    res,
+                    pamguard::project::saved_project_list_to_json(
+                        project_store->list()));
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "project_store_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Get(
+        "/v1/projects/active",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            std::lock_guard lifecycle_lock(
+                module_graph_update_mutex);
+            const auto snapshot =
+                project_authority.snapshot();
+            encoded_json_response(
+                res,
+                pamguard::project::
+                    active_project_snapshot_to_json(snapshot),
+                200,
+                snapshot.etag);
+        });
+
+    server.Get(
+        "/v1/projects/active/inspection",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            std::lock_guard lifecycle_lock(
+                module_graph_update_mutex);
+            const auto snapshot =
+                project_authority.snapshot();
+            encoded_json_response(
+                res,
+                pamguard::project::project_inspection_to_json(
+                    snapshot),
+                200,
+                snapshot.etag);
+        });
+
+    server.Get(
+        "/v1/projects/active/compatible-sources",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            if (!req.has_param("unitId") ||
+                !req.has_param("inputRole")) {
+                json_response(
+                    res,
+                    {
+                        {
+                            "error",
+                            "unitId and inputRole query parameters "
+                            "are required",
+                        },
+                        {"code", "invalid_query"},
+                    },
+                    400);
+                return;
+            }
+            const auto unit_id =
+                req.get_param_value("unitId");
+            const auto input_role =
+                req.get_param_value("inputRole");
+            try {
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto sources =
+                    project_authority.compatible_sources(
+                        unit_id,
+                        input_role);
+                const auto snapshot =
+                    project_authority.snapshot();
+                encoded_json_response(
+                    res,
+                    pamguard::project::
+                        project_compatible_sources_to_json(
+                            unit_id,
+                            input_role,
+                            sources),
+                    200,
+                    snapshot.etag);
+            }
+            catch (
+                const pamguard::project::ProjectAuthorityError&
+                    error) {
+                project_authority_error_response(res, error);
+            }
+            catch (const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_query"},
+                    },
+                    400);
+            }
+        });
+
+    server.Post(
+        "/v1/projects/active/mutations",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto batch =
+                    pamguard::project::
+                        project_mutation_batch_from_json(
+                            req.body);
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto before =
+                    project_authority.snapshot();
+                if (!batch.validate_only &&
+                    !batch.operations.empty() &&
+                    module_runtime.running()) {
+                    project_runtime_running_response(
+                        res,
+                        before);
+                    return;
+                }
+
+                auto prepared =
+                    project_authority.prepare_mutation(
+                        request_etag(req),
+                        batch);
+                const auto& preview = prepared.preview();
+                if (batch.validate_only) {
+                    encoded_json_response(
+                        res,
+                        pamguard::project::
+                            project_mutation_result_to_json(
+                                preview),
+                        200,
+                        before.etag);
+                    return;
+                }
+                if (!preview.changed) {
+                    auto result =
+                        project_authority.commit_mutation(
+                            std::move(prepared));
+                    (void)reconcile_acquisition_host_state(
+                        result.active);
+                    encoded_json_response(
+                        res,
+                        pamguard::project::
+                            project_mutation_result_to_json(
+                                result),
+                        200,
+                        result.active.etag);
+                    return;
+                }
+
+                auto prepared_runtime =
+                    preflight_project_runtime(
+                        preview.active,
+                        sound_recorder_deployment);
+                bool runtime_installed = false;
+                try {
+                    activate_prepared_project_runtime(
+                        preview.active,
+                        sound_recorder_deployment,
+                        module_graph,
+                        module_runtime,
+                        *prepared_runtime);
+                    runtime_installed = true;
+                    auto result =
+                        project_authority.commit_mutation(
+                            std::move(prepared));
+                    project_runtime_prepared =
+                        project_runtime_deployment_ready(
+                            result.active,
+                            sound_recorder_deployment);
+                    (void)reconcile_acquisition_host_state(
+                        result.active);
+                    append_audit_event(
+                        audit_log_file,
+                        audit_mutex,
+                        {
+                            {"event", "project_mutation"},
+                            {
+                                "projectId",
+                                result.active.project.project_id,
+                            },
+                            {
+                                "workingRevision",
+                                result.active.working_revision,
+                            },
+                            {
+                                "projectionStatus",
+                                projection_status_name(
+                                    result.active.projection),
+                            },
+                        });
+                    encoded_json_response(
+                        res,
+                        pamguard::project::
+                            project_mutation_result_to_json(
+                                result),
+                        200,
+                        result.active.etag);
+                }
+                catch (...) {
+                    std::string rollback_error;
+                    if (runtime_installed) {
+                        try {
+                            activate_prepared_project_runtime(
+                                before,
+                                sound_recorder_deployment,
+                                module_graph,
+                                module_runtime,
+                                *prepared_runtime);
+                            project_runtime_prepared =
+                                project_runtime_deployment_ready(
+                                    before,
+                                    sound_recorder_deployment);
+                        }
+                        catch (const std::exception& error) {
+                            rollback_error = error.what();
+                        }
+                    }
+                    else {
+                        rollback_error =
+                            restore_project_runtime(
+                                before,
+                                false);
+                    }
+                    if (!rollback_error.empty()) {
+                        throw std::runtime_error(
+                            "Project mutation failed and runtime "
+                            "rollback also failed: " +
+                            rollback_error);
+                    }
+                    throw;
+                }
+            }
+            catch (
+                const pamguard::project::
+                    ProjectAuthorityJsonError& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_project_request"},
+                    },
+                    400);
+            }
+            catch (
+                const pamguard::project::ProjectAuthorityError&
+                    error) {
+                project_authority_error_response(res, error);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "project_runtime_error"},
+                    },
+                    500);
+            }
+        });
+
+    const auto activate_prepared_switch =
+        [&](pamguard::project::PreparedProjectSwitch prepared,
+            const char* audit_event,
+            httplib::Response& res) {
+        const auto before = project_authority.snapshot();
+        const auto candidate = prepared.preview();
+        auto prepared_runtime =
+            preflight_project_runtime(
+                candidate,
+                sound_recorder_deployment);
+        const bool was_running = module_runtime.running();
+        std::size_t captures_stopped = 0;
+        if (was_running) {
+            captures_stopped =
+                quiesce_module_captures(capture_state);
+            module_runtime.stop();
+        }
+        bool runtime_installed = false;
+        try {
+            activate_prepared_project_runtime(
+                candidate,
+                sound_recorder_deployment,
+                module_graph,
+                module_runtime,
+                *prepared_runtime);
+            runtime_installed = true;
+            auto active =
+                project_authority.commit_project_switch(
+                    std::move(prepared));
+            project_runtime_prepared =
+                project_runtime_deployment_ready(
+                    active,
+                    sound_recorder_deployment);
+            (void)reconcile_acquisition_host_state(
+                active);
+            append_audit_event(
+                audit_log_file,
+                audit_mutex,
+                {
+                    {"event", audit_event},
+                    {"projectId", active.project.project_id},
+                    {"workingRevision", active.working_revision},
+                    {"stoppedRuntime", was_running},
+                    {"capturesStopped", captures_stopped},
+                });
+            encoded_json_response(
+                res,
+                pamguard::project::
+                    active_project_snapshot_to_json(active),
+                200,
+                active.etag);
+        }
+        catch (...) {
+            std::string rollback_error;
+            if (runtime_installed) {
+                try {
+                    activate_prepared_project_runtime(
+                        before,
+                        sound_recorder_deployment,
+                        module_graph,
+                        module_runtime,
+                        *prepared_runtime);
+                    project_runtime_prepared =
+                        project_runtime_deployment_ready(
+                            before,
+                            sound_recorder_deployment);
+                    if (was_running) {
+                        module_runtime.start();
+                    }
+                }
+                catch (const std::exception& error) {
+                    rollback_error = error.what();
+                }
+            }
+            else {
+                rollback_error =
+                    restore_project_runtime(
+                        before,
+                        was_running);
+            }
+            if (!rollback_error.empty()) {
+                throw std::runtime_error(
+                    "Project switch failed and runtime rollback "
+                    "also failed: " +
+                    rollback_error);
+            }
+            throw;
+        }
+    };
+
+    server.Post(
+        "/v1/projects/active/new",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto command =
+                    pamguard::project::
+                        new_project_request_from_json(req.body);
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                auto prepared =
+                    project_authority.prepare_new_project(
+                        request_etag(req),
+                        command.name,
+                        command.description,
+                        command.discard_dirty);
+                activate_prepared_switch(
+                    std::move(prepared),
+                    "project_new",
+                    res);
+            }
+            catch (
+                const pamguard::project::
+                    ProjectAuthorityJsonError& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_project_request"},
+                    },
+                    400);
+            }
+            catch (
+                const pamguard::project::ProjectAuthorityError&
+                    error) {
+                project_authority_error_response(res, error);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "project_switch_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Post(
+        "/v1/projects/active/open",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto command =
+                    pamguard::project::
+                        open_project_request_from_json(req.body);
+                if (!project_store->exists(
+                        command.project_id)) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Saved project does not exist",
+                            },
+                            {"code", "project_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                auto prepared =
+                    project_authority.prepare_open(
+                        request_etag(req),
+                        command.project_id,
+                        command.discard_dirty);
+                activate_prepared_switch(
+                    std::move(prepared),
+                    "project_open",
+                    res);
+            }
+            catch (
+                const pamguard::project::
+                    ProjectAuthorityJsonError& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_project_request"},
+                    },
+                    400);
+            }
+            catch (
+                const pamguard::project::
+                    UnsupportedProjectFile& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "unsupported_project"},
+                    },
+                    422);
+            }
+            catch (
+                const pamguard::project::
+                    CorruptProjectFile& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "corrupt_project"},
+                    },
+                    422);
+            }
+            catch (
+                const pamguard::project::ProjectAuthorityError&
+                    error) {
+                project_authority_error_response(res, error);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "project_switch_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Post(
+        "/v1/projects/active/save",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            if (!req.body.empty()) {
+                json_response(
+                    res,
+                    {
+                        {
+                            "error",
+                            "Save does not accept a request body",
+                        },
+                        {"code", "invalid_project_request"},
+                    },
+                    400);
+                return;
+            }
+            try {
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto active =
+                    project_authority.save(
+                        request_etag(req));
+                append_audit_event(
+                    audit_log_file,
+                    audit_mutex,
+                    {
+                        {"event", "project_save"},
+                        {
+                            "projectId",
+                            active.project.project_id,
+                        },
+                        {
+                            "savedRevision",
+                            active.saved_revision
+                                ? json(*active.saved_revision)
+                                : json(nullptr),
+                        },
+                    });
+                encoded_json_response(
+                    res,
+                    pamguard::project::
+                        active_project_snapshot_to_json(active),
+                    200,
+                    active.etag);
+            }
+            catch (
+                const pamguard::project::ProjectFileConflict&
+                    error) {
+                const auto current =
+                    project_authority.snapshot();
+                encoded_json_response(
+                    res,
+                    json({
+                        {"error", error.what()},
+                        {"code", "saved_project_conflict"},
+                        {"currentEtag", current.etag},
+                    }).dump(),
+                    409,
+                    current.etag);
+            }
+            catch (
+                const pamguard::project::ProjectAuthorityError&
+                    error) {
+                project_authority_error_response(res, error);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "project_save_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Post(
+        "/v1/projects/active/save-as",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto command =
+                    pamguard::project::
+                        save_as_project_request_from_json(
+                            req.body);
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto before =
+                    project_authority.snapshot();
+                if (module_runtime.running()) {
+                    project_runtime_running_response(
+                        res,
+                        before);
+                    return;
+                }
+                auto prepared =
+                    project_authority.prepare_save_as(
+                        request_etag(req),
+                        command.name);
+                const auto candidate =
+                    prepared.preview();
+                auto prepared_runtime =
+                    preflight_project_runtime(
+                        candidate,
+                        sound_recorder_deployment);
+                pamguard::project::ActiveProjectSnapshot active;
+                bool runtime_installed = false;
+                try {
+                    activate_prepared_project_runtime(
+                        candidate,
+                        sound_recorder_deployment,
+                        module_graph,
+                        module_runtime,
+                        *prepared_runtime);
+                    runtime_installed = true;
+                    active =
+                        project_authority.commit_save_as(
+                            std::move(prepared));
+                    project_runtime_prepared =
+                        project_runtime_deployment_ready(
+                            active,
+                            sound_recorder_deployment);
+                    (void)reconcile_acquisition_host_state(
+                        active);
+                }
+                catch (...) {
+                    std::string rollback_error;
+                    if (runtime_installed) {
+                        try {
+                            activate_prepared_project_runtime(
+                                before,
+                                sound_recorder_deployment,
+                                module_graph,
+                                module_runtime,
+                                *prepared_runtime);
+                            project_runtime_prepared =
+                                project_runtime_deployment_ready(
+                                    before,
+                                    sound_recorder_deployment);
+                        }
+                        catch (const std::exception& error) {
+                            rollback_error = error.what();
+                        }
+                    }
+                    else {
+                        rollback_error =
+                            restore_project_runtime(
+                                before,
+                                false);
+                    }
+                    if (!rollback_error.empty()) {
+                        throw std::runtime_error(
+                            "Save As failed and runtime rollback "
+                            "also failed: " +
+                            rollback_error);
+                    }
+                    throw;
+                }
+                append_audit_event(
+                    audit_log_file,
+                    audit_mutex,
+                    {
+                        {"event", "project_save_as"},
+                        {
+                            "projectId",
+                            active.project.project_id,
+                        },
+                        {
+                            "savedRevision",
+                            active.saved_revision
+                                ? json(*active.saved_revision)
+                                : json(nullptr),
+                        },
+                    });
+                res.set_header(
+                    "Location",
+                    "/v1/projects/" +
+                        active.project.project_id);
+                encoded_json_response(
+                    res,
+                    pamguard::project::
+                        active_project_snapshot_to_json(active),
+                    201,
+                    active.etag);
+            }
+            catch (
+                const pamguard::project::
+                    ProjectAuthorityJsonError& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_project_request"},
+                    },
+                    400);
+            }
+            catch (
+                const pamguard::project::ProjectFileConflict&
+                    error) {
+                const auto current =
+                    project_authority.snapshot();
+                encoded_json_response(
+                    res,
+                    json({
+                        {"error", error.what()},
+                        {"code", "saved_project_conflict"},
+                        {"currentEtag", current.etag},
+                    }).dump(),
+                    409,
+                    current.etag);
+            }
+            catch (
+                const pamguard::project::ProjectAuthorityError&
+                    error) {
+                project_authority_error_response(res, error);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "project_save_error"},
+                    },
+                    500);
+            }
+        });
+
+    // Register this parameterized route after every fixed active-project
+    // route so "active" can never be interpreted as a durable project ID.
+    server.Get(
+        R"(/v1/projects/([^/]+))",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            const auto project_id =
+                req.matches[1].str();
+            try {
+                if (!pamguard::project::is_uuid_v4(project_id)) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "projectId must be a lowercase UUIDv4",
+                            },
+                            {"code", "invalid_project_id"},
+                        },
+                        400);
+                    return;
+                }
+                if (!project_store->exists(project_id)) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Saved project does not exist",
+                            },
+                            {"code", "project_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                const auto loaded =
+                    project_store->load(project_id);
+                const auto etag =
+                    pamguard::project::project_authority_etag(
+                        project_id,
+                        loaded.envelope.authority_revision,
+                        loaded.envelope.content_hash,
+                        loaded.envelope.content_hash);
+                encoded_json_response(
+                    res,
+                    pamguard::project::
+                        project_file_envelope_to_json(
+                            loaded.envelope),
+                    200,
+                    etag);
+            }
+            catch (
+                const pamguard::project::
+                    UnsupportedProjectFile& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "unsupported_project"},
+                    },
+                    422);
+            }
+            catch (
+                const pamguard::project::
+                    CorruptProjectFile& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "corrupt_project"},
+                    },
+                    422);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "project_store_error"},
+                    },
+                    500);
+            }
+        });
 
     // ---- live sound-card capture (opt-in, Windows/DirectShow) ----
 
@@ -4942,6 +8578,2701 @@ int main(int argc, char** argv) {
         return {};
 #endif
     };
+
+    const auto stop_acquisition_capture =
+        [&](const pamguard::service::AcquisitionCaptureTarget&
+                target) -> bool {
+        const auto key =
+            pamguard::service::
+                acquisition_capture_target_key(target);
+        std::lock_guard capture_lock(capture_state.mutex);
+        const bool was_required =
+            capture_state.required_project_captures.erase(key) != 0;
+        const auto found = capture_state.running.find(key);
+        if (found == capture_state.running.end()) {
+            return was_required;
+        }
+        close_capture_process(found->second);
+        capture_state.running.erase(found);
+        return true;
+    };
+
+    const auto acquisition_not_found_response =
+        [](httplib::Response& res) {
+        json_response(
+            res,
+            {
+                {
+                    "error",
+                    "The unit is not an active Acquisition "
+                    "controlled-unit instance",
+                },
+                {"code", "acquisition_not_found"},
+            },
+            404);
+    };
+
+    const auto sound_recorder_not_found_response =
+        [](httplib::Response& res) {
+        json_response(
+            res,
+            {
+                {
+                    "error",
+                    "The unit is not an active Sound Recorder "
+                    "controlled-unit instance",
+                },
+                {"code", "sound_recorder_not_found"},
+            },
+            404);
+    };
+
+    const auto sound_recorder_status_document =
+        [&](const pamguard::project::ActiveProjectSnapshot& snapshot,
+            const std::string& unit_id) -> json {
+        const bool runtime_prepared =
+            project_runtime_prepared &&
+            module_runtime.revision() ==
+                snapshot.working_revision;
+        const bool runtime_running =
+            runtime_prepared && module_runtime.running();
+        json body = {
+            {"schemaVersion", 1},
+            {"projectId", snapshot.project.project_id},
+            {"soundRecorderUnitId", unit_id},
+            {"workingRevision", snapshot.working_revision},
+            {
+                "configurationReady",
+                snapshot.projection.runnable(),
+            },
+            {
+                "deploymentReady",
+                sound_recorder_deployment.ready(),
+            },
+            {"runtimePrepared", runtime_prepared},
+            {"runtimeRunning", runtime_running},
+            {"transport", "off"},
+            {"fileOpen", false},
+            {"currentFileName", nullptr},
+            {"framesInCurrentFile", 0},
+            {"completedFileCount", 0},
+            {"selectedChannelBitmap", 0},
+            {"sampleRateHz", 0},
+            {"channelCount", 0},
+            {"bitDepth", 16},
+        };
+        if (!sound_recorder_deployment.ready()) {
+            body["deploymentError"] =
+                sound_recorder_deployment.readiness_error;
+        }
+        const auto* projected =
+            find_active_sound_recorder_runtime(
+                snapshot,
+                unit_id);
+        if (!runtime_prepared || projected == nullptr ||
+            projected->runtime_type_id !=
+                "pamguard.sound-recorder") {
+            return body;
+        }
+        const auto status =
+            module_runtime.sound_recorder_status(
+                projected->runtime_node_id);
+        body["transport"] =
+            sound_recorder_transport_name(status.transport);
+        body["fileOpen"] = status.file_open;
+        body["currentFileName"] =
+            status.file_open
+            ? json(status.current_path.filename().string())
+            : json(nullptr);
+        body["framesInCurrentFile"] =
+            status.frames_in_current_file;
+        body["completedFileCount"] =
+            status.completed_file_count;
+        body["selectedChannelBitmap"] =
+            status.selected_channel_bitmap;
+        body["sampleRateHz"] = status.sample_rate_hz;
+        body["channelCount"] = status.channel_count;
+        body["bitDepth"] = status.bit_depth;
+        return body;
+    };
+
+    server.Get(
+        R"(/v1/projects/active/sound-recorders/([^/]+)/status)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_sound_recorder(
+                        snapshot,
+                        unit_id)) {
+                    sound_recorder_not_found_response(res);
+                    return;
+                }
+                encoded_json_response(
+                    res,
+                    sound_recorder_status_document(
+                        snapshot,
+                        unit_id).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "sound_recorder_status_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Put(
+        R"(/v1/projects/active/sound-recorders/([^/]+)/transport)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto body = json::parse(req.body);
+                if (!body.is_object() ||
+                    body.size() != 2 ||
+                    !body.contains("transport") ||
+                    !body.at("transport").is_string()) {
+                    throw std::invalid_argument(
+                        "Sound Recorder transport body must "
+                        "contain only expectedWorkingRevision "
+                        "and transport");
+                }
+                const auto expected_working_revision =
+                    required_json_uint64(
+                        body,
+                        "expectedWorkingRevision");
+                const auto requested_name =
+                    body.at("transport").get<std::string>();
+                const bool unsupported =
+                    requested_name == "cycle" ||
+                    requested_name == "restore-last";
+                pamguard::core::SoundRecorderTransportState
+                    requested =
+                        pamguard::core::
+                            SoundRecorderTransportState::Off;
+                if (requested_name == "continuous") {
+                    requested =
+                        pamguard::core::
+                            SoundRecorderTransportState::
+                                Continuous;
+                }
+                else if (requested_name != "off" &&
+                         !unsupported) {
+                    throw std::invalid_argument(
+                        "transport must be off, continuous, "
+                        "cycle, or restore-last");
+                }
+
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                require_working_revision(
+                    expected_working_revision,
+                    snapshot);
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_sound_recorder(
+                        snapshot,
+                        unit_id)) {
+                    sound_recorder_not_found_response(res);
+                    return;
+                }
+                if (unsupported) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Cycle and restore-last transport "
+                                "are not implemented yet",
+                            },
+                            {
+                                "code",
+                                "sound_recorder_transport_unsupported",
+                            },
+                        },
+                        501);
+                    return;
+                }
+                if (!sound_recorder_deployment.ready()) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                sound_recorder_deployment.
+                                    readiness_error,
+                            },
+                            {
+                                "code",
+                                "sound_recorder_storage_unavailable",
+                            },
+                        },
+                        503);
+                    return;
+                }
+                if (!project_runtime_prepared ||
+                    module_runtime.revision() !=
+                        snapshot.working_revision) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "The Sound Recorder runtime is "
+                                "not prepared at the active "
+                                "working revision",
+                            },
+                            {
+                                "code",
+                                "sound_recorder_runtime_unprepared",
+                            },
+                        },
+                        409);
+                    return;
+                }
+                if (!module_runtime.running()) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "The module runtime must be "
+                                "running before Recorder "
+                                "transport can change",
+                            },
+                            {
+                                "code",
+                                "sound_recorder_runtime_not_running",
+                            },
+                        },
+                        409);
+                    return;
+                }
+                const auto* projected =
+                    find_active_sound_recorder_runtime(
+                        snapshot,
+                        unit_id);
+                if (projected == nullptr ||
+                    projected->runtime_type_id !=
+                        "pamguard.sound-recorder") {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "The Sound Recorder runtime node "
+                                "is unavailable",
+                            },
+                            {
+                                "code",
+                                "sound_recorder_runtime_unavailable",
+                            },
+                        },
+                        409);
+                    return;
+                }
+                const auto result =
+                    module_runtime.set_sound_recorder_transport(
+                        projected->runtime_node_id,
+                        requested);
+                if (result ==
+                    pamguard::core::SoundRecorderCommandResult::
+                        NodeNotRunning) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "The Sound Recorder node is not "
+                                "running",
+                            },
+                            {
+                                "code",
+                                "sound_recorder_runtime_not_running",
+                            },
+                        },
+                        409);
+                    return;
+                }
+                if (result ==
+                    pamguard::core::SoundRecorderCommandResult::
+                        UnsupportedOperationMode) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "The requested Sound Recorder "
+                                "transport is unsupported",
+                            },
+                            {
+                                "code",
+                                "sound_recorder_transport_unsupported",
+                            },
+                        },
+                        501);
+                    return;
+                }
+                append_audit_event(
+                    audit_log_file,
+                    audit_mutex,
+                    {
+                        {
+                            "event",
+                            "sound_recorder_transport_changed",
+                        },
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"unitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                        {"transport", requested_name},
+                        {
+                            "alreadyInRequestedMode",
+                            result ==
+                                pamguard::core::
+                                    SoundRecorderCommandResult::
+                                        AlreadyInRequestedMode,
+                        },
+                    });
+                auto response =
+                    sound_recorder_status_document(
+                        snapshot,
+                        unit_id);
+                response["commandResult"] =
+                    result ==
+                        pamguard::core::
+                            SoundRecorderCommandResult::
+                                AlreadyInRequestedMode
+                    ? "already-in-requested-mode"
+                    : "applied";
+                encoded_json_response(
+                    res,
+                    response.dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (
+                const pamguard::service::
+                    StaleAcquisitionCaptureTarget& error) {
+                stale_acquisition_target_response(
+                    res,
+                    error);
+            }
+            catch (const json::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {
+                            "code",
+                            "invalid_sound_recorder_transport",
+                        },
+                    },
+                    400);
+            }
+            catch (const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {
+                            "code",
+                            "invalid_sound_recorder_transport",
+                        },
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {
+                            "code",
+                            "sound_recorder_transport_error",
+                        },
+                    },
+                    500);
+            }
+        });
+
+    server.Get(
+        R"(/v1/projects/active/click-detectors/([^/]+)/tracked-events)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                const auto unit_id = req.matches[1].str();
+                const auto* unit =
+                    find_active_click_detector(
+                        snapshot,
+                        unit_id);
+                if (!unit) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Click Detector controlled unit "
+                                "does not exist",
+                            },
+                            {"code", "click_detector_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                auto& store =
+                    tracked_click_store(snapshot, unit_id);
+                const auto settings =
+                    tracked_click_localiser_settings(*unit);
+                const auto mode =
+                    project_mode_name(snapshot.project.mode);
+                json events = json::array();
+                for (const auto& event : store.events()) {
+                    events.push_back(
+                        tracked_click_event_to_json(
+                            event,
+                            store.assess_localisation(
+                                event.event_id,
+                                settings,
+                                mode)));
+                }
+                const auto* output =
+                    snapshot.projection.index
+                        .find_public_output(
+                            unit_id,
+                            "clicks");
+                encoded_json_response(
+                    res,
+                    json({
+                        {"schemaVersion", 1},
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"workingRevision", snapshot.working_revision},
+                        {"clickDetectorUnitId", unit_id},
+                        {
+                            "sourceBlockId",
+                            output
+                                ? json(output->block_id)
+                                : json(nullptr),
+                        },
+                        {
+                            "runtimeRunning",
+                            module_runtime.running(),
+                        },
+                        {
+                            "persistence",
+                            "retained-runtime-data",
+                        },
+                        {
+                            "settings",
+                            tracked_click_localiser_settings_to_json(
+                                settings),
+                        },
+                        {"events", std::move(events)},
+                    }).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "tracked_event_state_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Post(
+        R"(/v1/projects/active/click-detectors/([^/]+)/tracked-events:assign)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto body = json::parse(req.body);
+                if (!body.is_object() ||
+                    body.size() != 2 ||
+                    !body.contains("clicks") ||
+                    !body.contains("eventId")) {
+                    throw std::invalid_argument(
+                        "Assignment body must contain only clicks and "
+                        "eventId");
+                }
+                std::optional<std::uint64_t> event_id;
+                if (!body.at("eventId").is_null()) {
+                    event_id =
+                        body.at("eventId").get<std::uint64_t>();
+                    if (*event_id == 0) {
+                        throw std::invalid_argument(
+                            "eventId must be positive or null");
+                    }
+                }
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                const auto unit_id = req.matches[1].str();
+                const auto* unit =
+                    find_active_click_detector(
+                        snapshot,
+                        unit_id);
+                if (!unit) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Click Detector controlled unit "
+                                "does not exist",
+                            },
+                            {"code", "click_detector_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                const auto* output =
+                    snapshot.projection.index
+                        .find_public_output(
+                            unit_id,
+                            "clicks");
+                const auto block =
+                    output
+                    ? module_runtime.find_block(
+                          output->block_id)
+                    : nullptr;
+                if (!block ||
+                    module_runtime.revision() !=
+                        snapshot.working_revision) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "The Click Detector retained-click "
+                                "runtime is not prepared at the active "
+                                "project revision",
+                            },
+                            {"code", "click_runtime_unavailable"},
+                        },
+                        409);
+                    return;
+                }
+                auto& store =
+                    tracked_click_store(snapshot, unit_id);
+                const auto assigned = store.assign(
+                    resolve_retained_clicks(
+                        body.at("clicks"),
+                        block),
+                    event_id);
+                const auto settings =
+                    tracked_click_localiser_settings(*unit);
+                encoded_json_response(
+                    res,
+                    tracked_click_event_to_json(
+                        assigned,
+                        store.assess_localisation(
+                            assigned.event_id,
+                            settings,
+                            project_mode_name(
+                                snapshot.project.mode)))
+                        .dump(),
+                    event_id ? 200 : 201,
+                    snapshot.etag);
+            }
+            catch (const std::out_of_range& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "tracked_click_or_event_not_found"},
+                    },
+                    404);
+            }
+            catch (const json::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_tracked_event_request"},
+                    },
+                    400);
+            }
+            catch (const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_tracked_event_request"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "tracked_event_state_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Delete(
+        R"(/v1/projects/active/click-detectors/([^/]+)/tracked-clicks/([^/]+))",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                std::size_t parsed = 0;
+                const auto raw_uid = req.matches[2].str();
+                const auto uid =
+                    std::stoull(raw_uid, &parsed);
+                if (parsed != raw_uid.size() || uid == 0) {
+                    throw std::invalid_argument(
+                        "Tracked click UID must be positive");
+                }
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_click_detector(
+                        snapshot,
+                        unit_id)) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Click Detector controlled unit "
+                                "does not exist",
+                            },
+                            {"code", "click_detector_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                auto& store =
+                    tracked_click_store(snapshot, unit_id);
+                if (!store.remove_click(uid)) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Click is not assigned to a tracked "
+                                "event",
+                            },
+                            {"code", "tracked_click_not_assigned"},
+                        },
+                        404);
+                    return;
+                }
+                encoded_json_response(
+                    res,
+                    json({
+                        {"removed", true},
+                        {"clickUid", uid},
+                    }).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_tracked_event_request"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "tracked_event_state_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Post(
+        R"(/v1/projects/active/click-detectors/([^/]+)/tracked-events/([^/]+):reassign)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                std::size_t parsed = 0;
+                const auto raw_source = req.matches[2].str();
+                const auto source_id =
+                    std::stoull(raw_source, &parsed);
+                if (parsed != raw_source.size() ||
+                    source_id == 0) {
+                    throw std::invalid_argument(
+                        "Source tracked event ID must be positive");
+                }
+                const auto body = json::parse(req.body);
+                if (!body.is_object() ||
+                    body.size() != 1 ||
+                    !body.contains("targetEventId")) {
+                    throw std::invalid_argument(
+                        "Reassignment body must contain only "
+                        "targetEventId");
+                }
+                const auto target_id =
+                    body.at("targetEventId")
+                        .get<std::uint64_t>();
+                if (target_id == 0) {
+                    throw std::invalid_argument(
+                        "targetEventId must be positive");
+                }
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                const auto unit_id = req.matches[1].str();
+                const auto* unit =
+                    find_active_click_detector(
+                        snapshot,
+                        unit_id);
+                if (!unit) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Click Detector controlled unit "
+                                "does not exist",
+                            },
+                            {"code", "click_detector_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                auto& store =
+                    tracked_click_store(snapshot, unit_id);
+                const auto assigned =
+                    store.reassign_event(
+                        source_id,
+                        target_id);
+                const auto settings =
+                    tracked_click_localiser_settings(*unit);
+                encoded_json_response(
+                    res,
+                    tracked_click_event_to_json(
+                        assigned,
+                        store.assess_localisation(
+                            assigned.event_id,
+                            settings,
+                            project_mode_name(
+                                snapshot.project.mode)))
+                        .dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (const std::out_of_range& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "tracked_event_not_found"},
+                    },
+                    404);
+            }
+            catch (const json::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_tracked_event_request"},
+                    },
+                    400);
+            }
+            catch (const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_tracked_event_request"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "tracked_event_state_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Delete(
+        R"(/v1/projects/active/click-detectors/([^/]+)/tracked-events/([^/]+))",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                std::size_t parsed = 0;
+                const auto raw_event = req.matches[2].str();
+                const auto event_id =
+                    std::stoull(raw_event, &parsed);
+                if (parsed != raw_event.size() ||
+                    event_id == 0) {
+                    throw std::invalid_argument(
+                        "Tracked event ID must be positive");
+                }
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_click_detector(
+                        snapshot,
+                        unit_id)) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Click Detector controlled unit "
+                                "does not exist",
+                            },
+                            {"code", "click_detector_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                auto& store =
+                    tracked_click_store(snapshot, unit_id);
+                if (!store.delete_event(event_id)) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Tracked event does not exist",
+                            },
+                            {"code", "tracked_event_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                encoded_json_response(
+                    res,
+                    json({
+                        {"deleted", true},
+                        {"eventId", event_id},
+                    }).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_tracked_event_request"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "tracked_event_state_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Post(
+        R"(/v1/projects/active/click-detectors/([^/]+)/tracked-events/([^/]+):localise)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                if (!req.body.empty()) {
+                    const auto body = json::parse(req.body);
+                    if (!body.is_object() || !body.empty()) {
+                        throw std::invalid_argument(
+                            "Localise body must be an empty object");
+                    }
+                }
+                std::size_t parsed = 0;
+                const auto raw_event = req.matches[2].str();
+                const auto event_id =
+                    std::stoull(raw_event, &parsed);
+                if (parsed != raw_event.size() ||
+                    event_id == 0) {
+                    throw std::invalid_argument(
+                        "Tracked event ID must be positive");
+                }
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                const auto unit_id = req.matches[1].str();
+                const auto* unit =
+                    find_active_click_detector(
+                        snapshot,
+                        unit_id);
+                if (!unit) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Click Detector controlled unit "
+                                "does not exist",
+                            },
+                            {"code", "click_detector_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                auto& store =
+                    tracked_click_store(snapshot, unit_id);
+                const auto settings =
+                    tracked_click_localiser_settings(*unit);
+                const auto events = store.events();
+                const auto event = std::find_if(
+                    events.begin(),
+                    events.end(),
+                    [&](const auto& candidate) {
+                        return candidate.event_id == event_id;
+                    });
+                if (event == events.end()) {
+                    throw std::out_of_range(
+                        "Tracked event does not exist");
+                }
+                std::vector<
+                    pamguard::service::
+                        TrackedClickNavigationSample>
+                    navigation_track;
+                if (!event->clicks.empty()) {
+                    const auto& navigation_reference =
+                        event->clicks.front().
+                            navigation_reference_id;
+                    const auto found_track =
+                        project_navigation_tracks.find(
+                            navigation_reference);
+                    if (!navigation_reference.empty() &&
+                        found_track !=
+                            project_navigation_tracks.end() &&
+                        found_track->second.project_id ==
+                            snapshot.project.project_id &&
+                        found_track->second.
+                                working_revision ==
+                            snapshot.working_revision) {
+                        const auto first_time =
+                            event->clicks.front().time_ms;
+                        const auto last_time =
+                            event->clicks.back().time_ms;
+                        const long double margin =
+                            static_cast<long double>(
+                                settings.
+                                    max_time_milliseconds);
+                        const long double window_start =
+                            static_cast<long double>(
+                                first_time) -
+                            margin;
+                        const long double window_end =
+                            static_cast<long double>(
+                                last_time) +
+                            margin;
+                        for (const auto& sample :
+                             found_track->second.samples) {
+                            const long double sample_time =
+                                static_cast<long double>(
+                                    sample.time_ms);
+                            if (sample_time >= window_start &&
+                                sample_time <= window_end) {
+                                navigation_track.push_back(
+                                    sample);
+                            }
+                        }
+                    }
+                }
+                const auto run =
+                    store.run_localisation(
+                        event_id,
+                        settings,
+                        project_mode_name(
+                            snapshot.project.mode),
+                        navigation_track);
+                encoded_json_response(
+                    res,
+                    tracked_click_localisation_run_to_json(
+                        run).dump(),
+                    run.executed() ? 200 : 409,
+                    snapshot.etag);
+            }
+            catch (const std::out_of_range& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "tracked_event_not_found"},
+                    },
+                    404);
+            }
+            catch (const json::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_tracked_event_request"},
+                    },
+                    400);
+            }
+            catch (const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_tracked_event_request"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "tracked_event_state_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Get(
+        "/v1/projects/active/acquisitions",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                (void)reconcile_acquisition_host_state(
+                    snapshot);
+                auto acquisitions = json::array();
+                for (const auto& unit :
+                     snapshot.project.controlled_units) {
+                    if (unit.type_id !=
+                        "pamguard.acquisition") {
+                        continue;
+                    }
+                    const auto target =
+                        acquisition_capture_target(
+                            snapshot,
+                            unit.id);
+                    const auto binding =
+                        acquisition_host_bindings.find(
+                            target);
+                    const auto* output =
+                        find_active_acquisition_audio_output(
+                            snapshot,
+                            unit.id);
+                    const auto block = output
+                        ? module_runtime.find_block(
+                              output->block_id)
+                        : nullptr;
+                    bool running = false;
+                    {
+                        const auto key =
+                            pamguard::service::
+                                acquisition_capture_target_key(
+                                    target);
+                        std::lock_guard capture_lock(
+                            capture_state.mutex);
+                        running =
+                            capture_state.running.contains(key);
+                    }
+                    acquisitions.push_back({
+                        {"unitId", unit.id},
+                        {"name", unit.name},
+                        {"typeId", unit.type_id},
+                        {
+                            "sampleRateHz",
+                            block
+                                ? json(block->descriptor().
+                                      sample_rate_hz)
+                                : json(nullptr),
+                        },
+                        {
+                            "channelCount",
+                            block
+                                ? json(channel_count_from_bitmap(
+                                      block->descriptor().
+                                          channel_bitmap))
+                                : json(nullptr),
+                        },
+                        {
+                            "hostBindingRevision",
+                            binding
+                                ? json(binding->
+                                      binding_revision)
+                                : json(nullptr),
+                        },
+                        {
+                            "configurationStatus",
+                            binding
+                                ? "configured"
+                                : "needsConfiguration",
+                        },
+                        {"captureRunning", running},
+                    });
+                }
+                encoded_json_response(
+                    res,
+                    json({
+                        {"schemaVersion", 1},
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                        {
+                            "runtimeRunning",
+                            module_runtime.running(),
+                        },
+                        {
+                            "captureEnabled",
+                            capture_enabled,
+                        },
+                        {
+                            "urlCaptureCapability",
+#ifdef _WIN32
+                            capture_enabled
+                                ? "available"
+                                : "disabled",
+#else
+                            "unavailable-current-ingest-bridge",
+#endif
+                        },
+#ifdef _WIN32
+                        {
+                            "audioDeviceCaptureCapability",
+                            capture_enabled
+                                ? "windows-directshow"
+                                : "disabled",
+                        },
+#else
+                        {
+                            "audioDeviceCaptureCapability",
+                            "unavailable-on-this-platform",
+                        },
+#endif
+                        {
+                            "acquisitions",
+                            std::move(acquisitions),
+                        },
+                    }).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "acquisition_state_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Get(
+        R"(/v1/projects/active/acquisitions/([^/]+)/host-binding)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                (void)reconcile_acquisition_host_state(
+                    snapshot);
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_acquisition(
+                        snapshot,
+                        unit_id)) {
+                    acquisition_not_found_response(res);
+                    return;
+                }
+                const auto binding =
+                    acquisition_host_bindings.find(
+                        acquisition_capture_target(
+                            snapshot,
+                            unit_id));
+                if (!binding) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "No host binding exists for the "
+                                "Acquisition instance",
+                            },
+                            {"code", "host_binding_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                encoded_json_response(
+                    res,
+                    acquisition_host_binding_to_json(
+                        *binding).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (
+                const pamguard::service::
+                    StaleAcquisitionCaptureTarget& error) {
+                stale_acquisition_target_response(
+                    res,
+                    error);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "acquisition_state_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Put(
+        R"(/v1/projects/active/acquisitions/([^/]+)/host-binding)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto body = json::parse(req.body);
+                if (!body.is_object() ||
+                    body.size() != 3 ||
+                    !body.contains("source") ||
+                    !body.at("source").is_object()) {
+                    throw std::invalid_argument(
+                        "Host binding body must contain only "
+                        "expectedWorkingRevision, "
+                        "expectedBindingRevision, and source");
+                }
+                const auto expected_working_revision =
+                    required_json_uint64(
+                        body,
+                        "expectedWorkingRevision");
+                const auto expected_binding_revision =
+                    required_json_uint64(
+                        body,
+                        "expectedBindingRevision");
+                const auto& source_body =
+                    body.at("source");
+                if (!source_body.contains("kind") ||
+                    !source_body.at("kind").is_string()) {
+                    throw std::invalid_argument(
+                        "source.kind is required");
+                }
+                const auto kind =
+                    source_body.at("kind").
+                        get<std::string>();
+                pamguard::service::
+                    AcquisitionHostBindingSource source =
+                        pamguard::service::
+                            NonSecretHttpUrlHostBinding{};
+                std::vector<std::pair<std::string, std::string>>
+                    devices;
+                if (kind == "url") {
+                    if (source_body.size() != 2 ||
+                        !source_body.contains("url") ||
+                        !source_body.at("url").is_string()) {
+                        throw std::invalid_argument(
+                            "A URL source must contain only kind "
+                            "and url");
+                    }
+                    source = pamguard::service::
+                        NonSecretHttpUrlHostBinding{
+                            source_body.at("url").
+                                get<std::string>(),
+                        };
+                }
+                else if (kind == "device") {
+                    if (source_body.size() != 2 ||
+                        !source_body.contains("deviceName") ||
+                        !source_body.at("deviceName").
+                            is_string()) {
+                        throw std::invalid_argument(
+                            "A device source must contain only "
+                            "kind and deviceName");
+                    }
+                    if (!capture_enabled) {
+                        json_response(
+                            res,
+                            {
+                                {
+                                    "error",
+                                    "Capture is disabled; set "
+                                    "PAMGUARD_CAPTURE_ENABLED=1 "
+                                    "before binding a host device",
+                                },
+                                {"code", "capture_disabled"},
+                            },
+                            503);
+                        return;
+                    }
+#ifndef _WIN32
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Exact host audio-device binding "
+                                "is only available through "
+                                "Windows DirectShow; URL capture "
+                                "is available on this platform",
+                            },
+                            {
+                                "code",
+                                "audio_device_capture_unavailable",
+                            },
+                        },
+                        501);
+                    return;
+#else
+                    std::string device_error;
+                    devices =
+                        list_capture_devices(device_error);
+                    if (!device_error.empty()) {
+                        json_response(
+                            res,
+                            {
+                                {"error", device_error},
+                                {
+                                    "code",
+                                    "device_enumeration_failed",
+                                },
+                            },
+                            502);
+                        return;
+                    }
+#endif
+                    source = pamguard::service::
+                        ExactAudioDeviceHostBinding{
+                            source_body.at("deviceName").
+                                get<std::string>(),
+                        };
+                }
+                else {
+                    throw std::invalid_argument(
+                        "source.kind must be url or device");
+                }
+
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                require_working_revision(
+                    expected_working_revision,
+                    snapshot);
+                (void)reconcile_acquisition_host_state(
+                    snapshot);
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_acquisition(
+                        snapshot,
+                        unit_id)) {
+                    acquisition_not_found_response(res);
+                    return;
+                }
+                const auto target =
+                    acquisition_capture_target(
+                        snapshot,
+                        unit_id);
+                const auto binding =
+                    acquisition_host_bindings.put(
+                        target,
+                        expected_binding_revision,
+                        std::move(source),
+                        devices);
+                const bool capture_stopped =
+                    stop_acquisition_capture(target);
+                append_audit_event(
+                    audit_log_file,
+                    audit_mutex,
+                    {
+                        {
+                            "event",
+                            "acquisition_host_binding_put",
+                        },
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"unitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                        {
+                            "bindingRevision",
+                            binding.binding_revision,
+                        },
+                        {"captureStopped", capture_stopped},
+                    });
+                encoded_json_response(
+                    res,
+                    json({
+                        {
+                            "hostBinding",
+                            acquisition_host_binding_to_json(
+                                binding),
+                        },
+                        {
+                            "captureStopped",
+                            capture_stopped,
+                        },
+                    }).dump(),
+                    expected_binding_revision == 0
+                        ? 201
+                        : 200,
+                    snapshot.etag);
+            }
+            catch (
+                const pamguard::service::
+                    AcquisitionHostBindingConflict& error) {
+                acquisition_binding_conflict_response(
+                    res,
+                    error);
+            }
+            catch (
+                const pamguard::service::
+                    StaleAcquisitionCaptureTarget& error) {
+                stale_acquisition_target_response(
+                    res,
+                    error);
+            }
+            catch (
+                const pamguard::service::
+                    InactiveAcquisitionCaptureTarget&) {
+                acquisition_not_found_response(res);
+            }
+            catch (
+                const json::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_host_binding"},
+                    },
+                    400);
+            }
+            catch (
+                const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_host_binding"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "host_binding_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Delete(
+        R"(/v1/projects/active/acquisitions/([^/]+)/host-binding)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto body = json::parse(req.body);
+                if (!body.is_object() ||
+                    body.size() != 2) {
+                    throw std::invalid_argument(
+                        "Host binding delete body must contain "
+                        "only expectedWorkingRevision and "
+                        "expectedBindingRevision");
+                }
+                const auto expected_working_revision =
+                    required_json_uint64(
+                        body,
+                        "expectedWorkingRevision");
+                const auto expected_binding_revision =
+                    required_json_uint64(
+                        body,
+                        "expectedBindingRevision");
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                require_working_revision(
+                    expected_working_revision,
+                    snapshot);
+                (void)reconcile_acquisition_host_state(
+                    snapshot);
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_acquisition(
+                        snapshot,
+                        unit_id)) {
+                    acquisition_not_found_response(res);
+                    return;
+                }
+                const auto target =
+                    acquisition_capture_target(
+                        snapshot,
+                        unit_id);
+                const bool deleted =
+                    acquisition_host_bindings.erase(
+                        target,
+                        expected_binding_revision);
+                const bool capture_stopped =
+                    stop_acquisition_capture(target);
+                append_audit_event(
+                    audit_log_file,
+                    audit_mutex,
+                    {
+                        {
+                            "event",
+                            "acquisition_host_binding_delete",
+                        },
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"unitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                        {"deleted", deleted},
+                        {"captureStopped", capture_stopped},
+                    });
+                encoded_json_response(
+                    res,
+                    json({
+                        {"deleted", deleted},
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"acquisitionUnitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                        {
+                            "captureStopped",
+                            capture_stopped,
+                        },
+                    }).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (
+                const pamguard::service::
+                    AcquisitionHostBindingConflict& error) {
+                acquisition_binding_conflict_response(
+                    res,
+                    error);
+            }
+            catch (
+                const pamguard::service::
+                    StaleAcquisitionCaptureTarget& error) {
+                stale_acquisition_target_response(
+                    res,
+                    error);
+            }
+            catch (
+                const pamguard::service::
+                    InactiveAcquisitionCaptureTarget&) {
+                acquisition_not_found_response(res);
+            }
+            catch (
+                const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_host_binding_delete"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "host_binding_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Get(
+        R"(/v1/projects/active/acquisitions/([^/]+)/capture-status)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                (void)reconcile_acquisition_host_state(
+                    snapshot);
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_acquisition(
+                        snapshot,
+                        unit_id)) {
+                    acquisition_not_found_response(res);
+                    return;
+                }
+                const auto target =
+                    acquisition_capture_target(
+                        snapshot,
+                        unit_id);
+                const auto binding =
+                    acquisition_host_bindings.find(target);
+                json process_id = nullptr;
+                bool running = false;
+                {
+                    const auto key =
+                        pamguard::service::
+                            acquisition_capture_target_key(
+                                target);
+                    std::lock_guard capture_lock(
+                        capture_state.mutex);
+                    const auto capture =
+                        capture_state.running.find(key);
+                    if (capture !=
+                        capture_state.running.end()) {
+                        running = true;
+                        process_id = capture->second.pid;
+                    }
+                }
+                encoded_json_response(
+                    res,
+                    json({
+                        {"schemaVersion", 1},
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"acquisitionUnitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                        {"captureEnabled", capture_enabled},
+                        {
+                            "hostBindingRevision",
+                            binding
+                                ? json(binding->
+                                      binding_revision)
+                                : json(nullptr),
+                        },
+                        {"running", running},
+                        {"processId", process_id},
+                    }).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "acquisition_state_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Post(
+        R"(/v1/projects/active/acquisitions/([^/]+)/capture:start)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            if (!capture_enabled) {
+                json_response(
+                    res,
+                    {
+                        {
+                            "error",
+                            "Capture is disabled; set "
+                            "PAMGUARD_CAPTURE_ENABLED=1",
+                        },
+                        {"code", "capture_disabled"},
+                    },
+                    503);
+                return;
+            }
+            try {
+                const auto body = json::parse(req.body);
+                if (!body.is_object() ||
+                    body.size() != 1) {
+                    throw std::invalid_argument(
+                        "Capture start body must contain only "
+                        "expectedWorkingRevision");
+                }
+                const auto expected_working_revision =
+                    required_json_uint64(
+                        body,
+                        "expectedWorkingRevision");
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                require_working_revision(
+                    expected_working_revision,
+                    snapshot);
+                (void)reconcile_acquisition_host_state(
+                    snapshot);
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_acquisition(
+                        snapshot,
+                        unit_id)) {
+                    acquisition_not_found_response(res);
+                    return;
+                }
+                const auto* output =
+                    find_active_acquisition_audio_output(
+                        snapshot,
+                        unit_id);
+                const auto source_block = output
+                    ? module_runtime.find_block(
+                          output->block_id)
+                    : nullptr;
+                if (!module_runtime.running() ||
+                    module_runtime.revision() !=
+                        snapshot.working_revision ||
+                    !output ||
+                    !source_block ||
+                    source_block->descriptor().data_type !=
+                        pamguard::core::kRawAudioDataType) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "The active Acquisition runtime "
+                                "is not running at the expected "
+                                "working revision",
+                            },
+                            {
+                                "code",
+                                "acquisition_runtime_unavailable",
+                            },
+                        },
+                        409);
+                    return;
+                }
+                const auto target =
+                    acquisition_capture_target(
+                        snapshot,
+                        unit_id);
+                const auto binding =
+                    acquisition_host_bindings.find(target);
+                if (!binding) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Create a host binding before "
+                                "starting capture",
+                            },
+                            {"code", "host_binding_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                std::string source;
+                auto source_kind =
+                    pamguard::service::
+                        CaptureSourceKind::HttpUrl;
+                std::string public_kind = "url";
+                if (const auto* device = std::get_if<
+                        pamguard::service::
+                            ExactAudioDeviceHostBinding>(
+                        &binding->source)) {
+#ifndef _WIN32
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "Host audio-device capture is "
+                                "only available through Windows "
+                                "DirectShow; URL capture is "
+                                "available on this platform",
+                            },
+                            {
+                                "code",
+                                "audio_device_capture_unavailable",
+                            },
+                        },
+                        501);
+                    return;
+#else
+                    std::string device_error;
+                    const auto devices =
+                        list_capture_devices(device_error);
+                    if (!device_error.empty()) {
+                        json_response(
+                            res,
+                            {
+                                {"error", device_error},
+                                {
+                                    "code",
+                                    "device_enumeration_failed",
+                                },
+                            },
+                            502);
+                        return;
+                    }
+                    if (!pamguard::service::
+                            is_exact_enumerated_audio_device(
+                                devices,
+                                device->device_name)) {
+                        json_response(
+                            res,
+                            {
+                                {
+                                    "error",
+                                    "The bound audio device is "
+                                    "not currently enumerated",
+                                },
+                                {
+                                    "code",
+                                    "bound_device_unavailable",
+                                },
+                            },
+                            409);
+                        return;
+                    }
+#endif
+                    source = device->device_name;
+                    source_kind =
+                        pamguard::service::
+                            CaptureSourceKind::
+                                DirectShowDevice;
+                    public_kind = "device";
+                }
+                else {
+                    source = std::get<
+                        pamguard::service::
+                            NonSecretHttpUrlHostBinding>(
+                        binding->source).url;
+#ifndef _WIN32
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "URL capture cannot start on this "
+                                "platform because the current "
+                                "ffmpeg_stream_ingest bridge uses "
+                                "a shell-backed, Windows-binary "
+                                "FFmpeg pipe. Use supervised PCM "
+                                "ingest until that bridge executes "
+                                "FFmpeg directly",
+                            },
+                            {
+                                "code",
+                                "url_capture_bridge_unavailable",
+                            },
+                        },
+                        501);
+                    return;
+#endif
+                }
+                if (!capture_bridge_source_is_safe(source)) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "The bound source contains shell "
+                                "expansion characters unsupported "
+                                "by the current FFmpeg ingest "
+                                "bridge",
+                            },
+                            {
+                                "code",
+                                "capture_bridge_source_unsupported",
+                            },
+                        },
+                        422);
+                    return;
+                }
+
+                const auto target_key =
+                    pamguard::service::
+                        acquisition_capture_target_key(target);
+                std::lock_guard capture_lock(
+                    capture_state.mutex);
+                const auto existing =
+                    capture_state.running.find(target_key);
+                if (existing !=
+                    capture_state.running.end()) {
+                    if (capture_process_running(
+                            existing->second)) {
+                        json_response(
+                            res,
+                            {
+                                {
+                                    "error",
+                                    "A capture is already running "
+                                    "for this Acquisition instance",
+                                },
+                                {
+                                    "code",
+                                    "capture_already_running",
+                                },
+                            },
+                            409);
+                        return;
+                    }
+                    const auto requirement =
+                        capture_state.required_project_captures.find(
+                            target_key);
+                    if (requirement !=
+                        capture_state.required_project_captures.end()) {
+                        requirement->second.child_failed = true;
+                    }
+                    close_capture_process(
+                        existing->second);
+                    capture_state.running.erase(existing);
+                }
+                const auto sample_rate =
+                    static_cast<std::size_t>(std::llround(
+                        source_block->descriptor().
+                            sample_rate_hz));
+                const auto channel_count =
+                    channel_count_from_bitmap(
+                        source_block->descriptor().
+                            channel_bitmap);
+                CaptureProcess capture;
+                capture.module_id =
+                    output->runtime_node_id;
+                capture.project_id =
+                    snapshot.project.project_id;
+                capture.acquisition_unit_id = unit_id;
+                capture.device = source;
+                capture.source_kind = source_kind;
+                capture.sample_rate_hz = sample_rate;
+                capture.channel_count = channel_count;
+                capture.graph_revision =
+                    snapshot.working_revision;
+                capture.working_revision =
+                    snapshot.working_revision;
+                capture.binding_revision =
+                    binding->binding_revision;
+                pamguard::service::
+                    CaptureIngestCommandOptions
+                        command_options;
+                command_options.ingest_executable =
+                    ingest_exe;
+                command_options.ffmpeg_executable =
+                    ffmpeg_path;
+                command_options.engine_url =
+                    "http://127.0.0.1:" +
+                    std::to_string(port);
+                command_options.project_id =
+                    snapshot.project.project_id;
+                command_options.acquisition_unit_id =
+                    unit_id;
+                command_options.working_revision =
+                    snapshot.working_revision;
+                command_options.source = source;
+                command_options.source_kind =
+                    source_kind;
+                command_options.sample_rate_hz =
+                    sample_rate;
+                command_options.channel_count =
+                    channel_count;
+                command_options.pass_api_key_environment =
+                    !api_key.empty();
+                const auto args =
+                    pamguard::service::
+                        build_capture_ingest_command(
+                            command_options);
+                std::string start_error;
+                if (!start_capture_process(
+                        capture,
+                        args,
+                        start_error)) {
+                    json_response(
+                        res,
+                        {
+                            {"error", start_error},
+                            {
+                                "code",
+                                "capture_process_start_failed",
+                            },
+                        },
+                        502);
+                    return;
+                }
+                const auto process_id = capture.pid;
+                capture_state.running.emplace(
+                    target_key,
+                    std::move(capture));
+                capture_state.required_project_captures.insert_or_assign(
+                    target_key,
+                    RequiredProjectCapture{
+                        target,
+                        false,
+                    });
+                append_audit_event(
+                    audit_log_file,
+                    audit_mutex,
+                    {
+                        {
+                            "event",
+                            "acquisition_capture_start",
+                        },
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"unitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                        {
+                            "bindingRevision",
+                            binding->binding_revision,
+                        },
+                        {"kind", public_kind},
+                    });
+                encoded_json_response(
+                    res,
+                    json({
+                        {"started", true},
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"acquisitionUnitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                        {
+                            "bindingRevision",
+                            binding->binding_revision,
+                        },
+                        {"kind", public_kind},
+                        {"sampleRateHz", sample_rate},
+                        {"channelCount", channel_count},
+                        {"processId", process_id},
+                    }).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (
+                const pamguard::service::
+                    StaleAcquisitionCaptureTarget& error) {
+                stale_acquisition_target_response(
+                    res,
+                    error);
+            }
+            catch (
+                const json::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_capture_request"},
+                    },
+                    400);
+            }
+            catch (
+                const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_capture_request"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "capture_start_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Post(
+        R"(/v1/projects/active/acquisitions/([^/]+)/capture:stop)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto body = json::parse(req.body);
+                if (!body.is_object() ||
+                    body.size() != 1) {
+                    throw std::invalid_argument(
+                        "Capture stop body must contain only "
+                        "expectedWorkingRevision");
+                }
+                const auto expected_working_revision =
+                    required_json_uint64(
+                        body,
+                        "expectedWorkingRevision");
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                require_working_revision(
+                    expected_working_revision,
+                    snapshot);
+                (void)reconcile_acquisition_host_state(
+                    snapshot);
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_acquisition(
+                        snapshot,
+                        unit_id)) {
+                    acquisition_not_found_response(res);
+                    return;
+                }
+                const auto stopped =
+                    stop_acquisition_capture(
+                        acquisition_capture_target(
+                            snapshot,
+                            unit_id));
+                if (!stopped) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "No capture is registered for "
+                                "this Acquisition instance",
+                            },
+                            {"code", "capture_not_found"},
+                        },
+                        404);
+                    return;
+                }
+                append_audit_event(
+                    audit_log_file,
+                    audit_mutex,
+                    {
+                        {
+                            "event",
+                            "acquisition_capture_stop",
+                        },
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"unitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                    });
+                encoded_json_response(
+                    res,
+                    json({
+                        {"stopped", true},
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"acquisitionUnitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                    }).dump(),
+                    200,
+                    snapshot.etag);
+            }
+            catch (
+                const pamguard::service::
+                    StaleAcquisitionCaptureTarget& error) {
+                stale_acquisition_target_response(
+                    res,
+                    error);
+            }
+            catch (
+                const json::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_capture_request"},
+                    },
+                    400);
+            }
+            catch (
+                const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_capture_request"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "capture_stop_error"},
+                    },
+                    500);
+            }
+        });
+
+    server.Post(
+        R"(/v1/projects/active/acquisitions/([^/]+)/pcm-f32le)",
+        [&](const httplib::Request& req,
+            httplib::Response& res) {
+            if (!require_authorized(req, res, api_key)) {
+                return;
+            }
+            if (!require_project_authority_mode(res)) {
+                return;
+            }
+            try {
+                const auto expected_project_id =
+                    required_query_string(
+                        req,
+                        "expectedProjectId");
+                const auto expected_working_revision =
+                    required_query_uint64(
+                        req,
+                        "expectedWorkingRevision");
+                std::lock_guard lifecycle_lock(
+                    module_graph_update_mutex);
+                const auto snapshot =
+                    project_authority.snapshot();
+                if (expected_project_id !=
+                    snapshot.project.project_id) {
+                    active_project_mismatch_response(
+                        res,
+                        expected_project_id,
+                        snapshot.project.project_id);
+                    return;
+                }
+                require_working_revision(
+                    expected_working_revision,
+                    snapshot);
+                (void)reconcile_acquisition_host_state(
+                    snapshot);
+                const auto unit_id = req.matches[1].str();
+                if (!find_active_acquisition(
+                        snapshot,
+                        unit_id)) {
+                    acquisition_not_found_response(res);
+                    return;
+                }
+                const auto* output =
+                    find_active_acquisition_audio_output(
+                        snapshot,
+                        unit_id);
+                const auto source_block = output
+                    ? module_runtime.find_block(
+                          output->block_id)
+                    : nullptr;
+                if (!module_runtime.running() ||
+                    module_runtime.revision() !=
+                        snapshot.working_revision ||
+                    !output ||
+                    !source_block ||
+                    source_block->descriptor().data_type !=
+                        pamguard::core::kRawAudioDataType) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "The active Acquisition runtime "
+                                "is not running at the expected "
+                                "working revision",
+                            },
+                            {
+                                "code",
+                                "acquisition_runtime_unavailable",
+                            },
+                        },
+                        409);
+                    return;
+                }
+                if (max_pcm_body_bytes > 0 &&
+                    req.body.size() >
+                        max_pcm_body_bytes) {
+                    json_response(
+                        res,
+                        {
+                            {
+                                "error",
+                                "PCM body exceeds maximum size",
+                            },
+                            {
+                                "code",
+                                "pcm_body_too_large",
+                            },
+                            {
+                                "maxPcmBodyBytes",
+                                max_pcm_body_bytes,
+                            },
+                        },
+                        413);
+                    return;
+                }
+                const auto channel_count =
+                    channel_count_from_bitmap(
+                        source_block->descriptor().
+                            channel_bitmap);
+                const auto sample_rate =
+                    static_cast<std::uint32_t>(
+                        std::llround(
+                            source_block->descriptor().
+                                sample_rate_hz));
+                const auto bytes_per_frame =
+                    channel_count * sizeof(float);
+                if (req.body.empty() ||
+                    bytes_per_frame == 0 ||
+                    req.body.size() %
+                        bytes_per_frame != 0) {
+                    throw std::invalid_argument(
+                        "PCM body must contain whole "
+                        "interleaved f32le frames");
+                }
+                const auto frame_count =
+                    req.body.size() / bytes_per_frame;
+                const auto start_sample =
+                    parse_uint64_param(
+                        req,
+                        "startSample",
+                        0);
+                const auto time_ms =
+                    req.has_param("timeMs")
+                    ? static_cast<std::int64_t>(
+                          std::stoll(
+                              req.get_param_value(
+                                  "timeMs")))
+                    : static_cast<std::int64_t>(
+                          static_cast<double>(
+                              start_sample) *
+                          1000.0 / sample_rate);
+                pamguard::core::AudioChunk chunk;
+                chunk.start_sample = start_sample;
+                chunk.time_unix_ms = time_ms;
+                chunk.sample_rate_hz = sample_rate;
+                chunk.channel_count = channel_count;
+                const int orientation_field_count =
+                    static_cast<int>(
+                        req.has_param("headingDegrees")) +
+                    static_cast<int>(
+                        req.has_param("pitchDegrees")) +
+                    static_cast<int>(
+                        req.has_param("rollDegrees"));
+                if (orientation_field_count != 0 &&
+                    orientation_field_count != 3) {
+                    throw std::invalid_argument(
+                        "headingDegrees, pitchDegrees, and "
+                        "rollDegrees must be supplied together");
+                }
+                if (orientation_field_count == 3) {
+                    chunk.orientation_declared = true;
+                    chunk.orientation_heading_degrees =
+                        required_finite_query_double(
+                            req,
+                            "headingDegrees");
+                    chunk.orientation_pitch_degrees =
+                        required_finite_query_double(
+                            req,
+                            "pitchDegrees");
+                    chunk.orientation_roll_degrees =
+                        required_finite_query_double(
+                            req,
+                            "rollDegrees");
+                }
+                const int origin_field_count =
+                    static_cast<int>(
+                        req.has_param("originEastMetres")) +
+                    static_cast<int>(
+                        req.has_param("originNorthMetres")) +
+                    static_cast<int>(
+                        req.has_param("originHeightMetres"));
+                if (origin_field_count != 0 &&
+                    origin_field_count != 3) {
+                    throw std::invalid_argument(
+                        "originEastMetres, originNorthMetres, "
+                        "and originHeightMetres must be supplied "
+                        "together");
+                }
+                if (origin_field_count == 3) {
+                    chunk.navigation_origin_declared = true;
+                    chunk.navigation_origin_east_metres =
+                        required_finite_query_double(
+                            req,
+                            "originEastMetres");
+                    chunk.navigation_origin_north_metres =
+                        required_finite_query_double(
+                            req,
+                            "originNorthMetres");
+                    chunk.navigation_origin_height_metres =
+                        required_finite_query_double(
+                            req,
+                            "originHeightMetres");
+                    chunk.navigation_reference_id = unit_id;
+                }
+                chunk.interleaved_pcm.resize(
+                    frame_count * channel_count);
+                const auto* bytes =
+                    reinterpret_cast<
+                        const unsigned char*>(
+                            req.body.data());
+                for (std::size_t frame = 0;
+                     frame < frame_count;
+                     ++frame) {
+                    for (std::size_t channel = 0;
+                         channel < channel_count;
+                         ++channel) {
+                        const auto offset =
+                            (frame * channel_count +
+                             channel) *
+                            sizeof(float);
+                        chunk.interleaved_pcm[
+                            frame * channel_count +
+                            channel] =
+                            read_float_le(
+                                bytes + offset);
+                    }
+                }
+                std::optional<
+                    pamguard::service::
+                        TrackedClickNavigationSample>
+                    navigation_sample;
+                if (chunk.navigation_origin_declared) {
+                    navigation_sample =
+                        pamguard::service::
+                            TrackedClickNavigationSample{
+                                time_ms,
+                                {
+                                    chunk.
+                                        navigation_origin_east_metres,
+                                    chunk.
+                                        navigation_origin_north_metres,
+                                    chunk.
+                                        navigation_origin_height_metres,
+                                },
+                            };
+                }
+                module_runtime.ingest(
+                    output->runtime_node_id,
+                    std::move(chunk));
+                if (navigation_sample) {
+                    auto& track =
+                        project_navigation_tracks[unit_id];
+                    if (track.project_id !=
+                            snapshot.project.project_id ||
+                        track.working_revision !=
+                            snapshot.working_revision) {
+                        track = {
+                            snapshot.project.project_id,
+                            snapshot.working_revision,
+                            {},
+                        };
+                    }
+                    track.samples.push_back(
+                        *navigation_sample);
+                    constexpr std::size_t
+                        kMaximumNavigationSamples =
+                            65'536;
+                    while (track.samples.size() >
+                           kMaximumNavigationSamples) {
+                        track.samples.pop_front();
+                    }
+                }
+                encoded_json_response(
+                    res,
+                    json({
+                        {"accepted", true},
+                        {
+                            "projectId",
+                            snapshot.project.project_id,
+                        },
+                        {"acquisitionUnitId", unit_id},
+                        {
+                            "workingRevision",
+                            snapshot.working_revision,
+                        },
+                        {"inputFrames", frame_count},
+                        {"startSample", start_sample},
+                        {
+                            "orientationAccepted",
+                            orientation_field_count == 3,
+                        },
+                        {
+                            "navigationSampleAccepted",
+                            navigation_sample.has_value(),
+                        },
+                    }).dump(),
+                    202,
+                    snapshot.etag);
+            }
+            catch (
+                const pamguard::service::
+                    StaleAcquisitionCaptureTarget& error) {
+                stale_acquisition_target_response(
+                    res,
+                    error);
+            }
+            catch (
+                const std::invalid_argument& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "invalid_pcm_request"},
+                    },
+                    400);
+            }
+            catch (const std::exception& error) {
+                json_response(
+                    res,
+                    {
+                        {"error", error.what()},
+                        {"code", "pcm_ingest_error"},
+                    },
+                    500);
+            }
+        });
 
     server.Get("/capture/devices", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
@@ -4968,25 +11299,82 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
         json list = json::array();
+        std::lock_guard lifecycle_lock(
+            module_graph_update_mutex);
+        const auto current_graph_revision =
+            module_runtime.revision();
 #ifdef _WIN32
         std::lock_guard<std::mutex> lock(capture_state.mutex);
-        for (auto& [session_id, capture] : capture_state.running) {
+        pamguard::service::reap_dead_capture_entries(
+            capture_state.running,
+            [](const CaptureProcess& capture) {
+                return capture_process_running(capture);
+            },
+            [](CaptureProcess& capture) {
+                close_capture_process(capture);
+            });
+        // A module capture is valid only for the exact prepared graph
+        // revision and acquisition output against which it was started.
+        // Lifecycle transitions normally quiesce these entries first; this
+        // defensive pass prevents any stale child surviving a failed or
+        // externally interrupted transition.
+        for (auto capture = capture_state.running.begin();
+             capture != capture_state.running.end();) {
+            const auto& value = capture->second;
+            const bool stale_module_capture =
+                !value.module_id.empty() &&
+                (!value.graph_revision ||
+                 *value.graph_revision != current_graph_revision ||
+                 !module_runtime.running() ||
+                 !module_runtime.find_block(
+                     pamguard::core::ModuleRuntime::block_id(
+                         value.module_id,
+                         "audio")));
+            if (stale_module_capture) {
+                close_capture_process(capture->second);
+                capture = capture_state.running.erase(capture);
+                continue;
+            }
+            ++capture;
+        }
+        for (auto& [target_key, capture] : capture_state.running) {
+            (void)target_key;
             list.push_back({
-                {"sessionId", session_id},
+                {"sessionId", capture.session_id.empty()
+                    ? json(nullptr)
+                    : json(capture.session_id)},
+                {"moduleId", capture.module_id.empty()
+                    ? json(nullptr)
+                    : json(capture.module_id)},
                 {"source", capture.device},
+                {"kind", capture_source_kind_name(
+                    capture.source_kind)},
                 {"sampleRateHz", capture.sample_rate_hz},
                 {"channels", capture.channel_count},
                 {"pid", capture.pid},
-                {"running", capture_process_running(capture)},
+                {"running", true},
+                {"graphRevision", capture.graph_revision
+                    ? json(*capture.graph_revision)
+                    : json(nullptr)},
             });
         }
 #endif
-        json_response(res, {{"captureEnabled", capture_enabled}, {"captures", std::move(list)}});
+        json_response(res, {
+            {"captureEnabled", capture_enabled},
+            {"currentGraphRevision", current_graph_revision},
+            {"captures", std::move(list)},
+        });
     });
 
     server.Post("/capture/start", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         if (!capture_enabled) {
@@ -4999,21 +11387,84 @@ int main(int argc, char** argv) {
         try {
             const auto body = json::parse(req.body);
             const auto session_id = body.value("sessionId", std::string());
+            const auto module_id = body.value("moduleId", std::string());
             const auto device = body.value("device", std::string());
             const auto url = body.value("url", std::string());
-            if (session_id.empty() || (device.empty() == url.empty())) {
-                json_response(res, {{"error", "sessionId and exactly one of device (sound card) or url (stream) are required"}}, 400);
+            if ((session_id.empty() == module_id.empty()) ||
+                (device.empty() == url.empty())) {
+                json_response(res, {{"error", "exactly one of sessionId or moduleId, and exactly one of device or url, are required"}}, 400);
                 return;
             }
-            if (!url.empty() && url.rfind("http://", 0) != 0 && url.rfind("https://", 0) != 0) {
+            if (!module_id.empty() &&
+                (!body.contains("expectedGraphRevision") ||
+                 !body.at("expectedGraphRevision").
+                    is_number_unsigned())) {
+                json_response(res, {
+                    {"error",
+                     "expectedGraphRevision is required for a module capture and must be an unsigned integer"},
+                }, 400);
+                return;
+            }
+            const auto target_id =
+                pamguard::service::capture_target_key(
+                    session_id,
+                    module_id);
+            if (!url.empty() &&
+                !pamguard::service::is_http_capture_url(url)) {
                 // Only plain http(s) stream URLs: no file paths, lavfi
                 // graphs, or protocol tricks reach the child command line.
                 json_response(res, {{"error", "url must start with http:// or https://"}}, 400);
                 return;
             }
+            // Start, stop, status, runtime stop/reset, and graph replacement
+            // all pass through this outer lock. A capture cannot be validated
+            // against one revision and registered after that revision stops.
+            std::lock_guard lifecycle_lock(
+                module_graph_update_mutex);
             std::size_t sample_rate = 0;
             std::size_t channel_count = 0;
-            {
+            std::optional<std::uint64_t> graph_revision;
+            if (!module_id.empty()) {
+                const auto current_graph_revision =
+                    module_runtime.revision();
+                const auto expected_graph_revision =
+                    body.at("expectedGraphRevision").
+                        get<std::uint64_t>();
+                if (expected_graph_revision !=
+                    current_graph_revision) {
+                    json_response(res, {
+                        {"error",
+                         "capture target graph revision is stale"},
+                        {"code", "graph_revision_conflict"},
+                        {"expectedGraphRevision",
+                         expected_graph_revision},
+                        {"currentGraphRevision",
+                         current_graph_revision},
+                    }, 409);
+                    return;
+                }
+                const auto source_block = module_runtime.find_block(
+                    pamguard::core::ModuleRuntime::block_id(
+                        module_id,
+                        "audio"));
+                if (!module_runtime.running() ||
+                    !source_block ||
+                    source_block->descriptor().data_type !=
+                        pamguard::core::kRawAudioDataType) {
+                    json_response(
+                        res,
+                        {{"error", "moduleId is not a running acquisition module"}},
+                        404);
+                    return;
+                }
+                sample_rate = static_cast<std::size_t>(
+                    std::llround(
+                        source_block->descriptor().sample_rate_hz));
+                channel_count = channel_count_from_bitmap(
+                    source_block->descriptor().channel_bitmap);
+                graph_revision = module_runtime.revision();
+            }
+            else {
                 std::lock_guard<std::mutex> lock(configs_mutex);
                 const auto found = configs.find(session_id);
                 if (found == configs.end()) {
@@ -5032,9 +11483,11 @@ int main(int argc, char** argv) {
                     json_response(res, {{"error", error}}, 502);
                     return;
                 }
-                const bool known = std::any_of(devices.begin(), devices.end(), [&](const auto& entry) {
-                    return entry.second == "audio" && entry.first == device;
-                });
+                const bool known =
+                    pamguard::service::
+                        is_exact_enumerated_audio_device(
+                            devices,
+                            device);
                 if (!known) {
                     json_response(res, {{"error", "device is not an enumerated audio capture device: " + device}}, 400);
                     return;
@@ -5042,10 +11495,10 @@ int main(int argc, char** argv) {
             }
 
             std::lock_guard<std::mutex> lock(capture_state.mutex);
-            auto existing = capture_state.running.find(session_id);
+            auto existing = capture_state.running.find(target_id);
             if (existing != capture_state.running.end()) {
                 if (capture_process_running(existing->second)) {
-                    json_response(res, {{"error", "a capture is already running for this session"}}, 409);
+                    json_response(res, {{"error", "a capture is already running for this target"}}, 409);
                     return;
                 }
                 close_capture_process(existing->second);
@@ -5054,61 +11507,57 @@ int main(int argc, char** argv) {
 
             CaptureProcess capture;
             capture.session_id = session_id;
+            capture.module_id = module_id;
             capture.device = device.empty() ? url : device;
+            capture.source_kind = device.empty()
+                ? pamguard::service::CaptureSourceKind::HttpUrl
+                : pamguard::service::
+                    CaptureSourceKind::DirectShowDevice;
             capture.sample_rate_hz = sample_rate;
             capture.channel_count = channel_count;
-            std::vector<std::string> args = {ingest_exe};
-            if (!device.empty()) {
-                args.push_back("--ffmpeg-input-option");
-                args.push_back("-f");
-                args.push_back("--ffmpeg-input-option");
-                args.push_back("dshow");
-                args.push_back("--source");
-                args.push_back("audio=" + device);
-            }
-            else {
-                // Icecast/HTTP streams deliver at their own live rate.
-                args.push_back("--source");
-                args.push_back(url);
-            }
-            const std::vector<std::string> more_args = {
-                "--session", session_id,
-                "--engine", "http://127.0.0.1:" + std::to_string(port),
-                "--sample-rate", std::to_string(sample_rate),
-                "--channels", std::to_string(channel_count),
-                // ~50 ms chunks: the live display advances at this cadence,
-                // so it must be small enough to read as continuous.
-                "--chunk-frames", std::to_string(std::max<std::size_t>(1, sample_rate / 20)),
-                // Full-spectrum preview frames: the result feed carries them
-                // to the web UI's live waterfall (0 = all bins).
-                "--preview-bins", "0",
-                // Click waveforms feed the click detector display's
-                // waveform/Wigner panel.
-                "--click-waveforms",
-                "--ffmpeg", ffmpeg_path,
-                "--restart",
-                "--resume-from-engine",
-            };
-            args.insert(args.end(), more_args.begin(), more_args.end());
-            if (!api_key.empty()) {
-                args.push_back("--api-key-env");
-                args.push_back("PAMGUARD_CAPTURE_API_KEY");
-            }
+            capture.graph_revision = graph_revision;
+            pamguard::service::CaptureIngestCommandOptions
+                command_options;
+            command_options.ingest_executable = ingest_exe;
+            command_options.ffmpeg_executable = ffmpeg_path;
+            command_options.engine_url =
+                "http://127.0.0.1:" +
+                std::to_string(port);
+            command_options.session_id = session_id;
+            command_options.module_id = module_id;
+            command_options.source =
+                device.empty() ? url : device;
+            command_options.source_kind = capture.source_kind;
+            command_options.sample_rate_hz = sample_rate;
+            command_options.channel_count = channel_count;
+            command_options.pass_api_key_environment =
+                !api_key.empty();
+            const auto args =
+                pamguard::service::build_capture_ingest_command(
+                    command_options);
             if (!start_capture_process(capture, args, error)) {
                 json_response(res, {{"error", error}}, 502);
                 return;
             }
             const auto pid = capture.pid;
             const auto source = capture.device;
-            capture_state.running.emplace(session_id, std::move(capture));
+            capture_state.running.emplace(target_id, std::move(capture));
             json_response(res, {
                 {"started", true},
-                {"sessionId", session_id},
+                {"sessionId", session_id.empty()
+                    ? json(nullptr)
+                    : json(session_id)},
+                {"moduleId", module_id.empty()
+                    ? json(nullptr)
+                    : json(module_id)},
                 {"source", source},
                 {"kind", device.empty() ? "url" : "dshow"},
                 {"sampleRateHz", sample_rate},
                 {"channels", channel_count},
                 {"pid", pid},
+                {"graphRevision", graph_revision
+                    ? json(*graph_revision)
+                    : json(nullptr)},
             });
         }
         catch (const std::exception& error_ex) {
@@ -5121,21 +11570,73 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
 #ifndef _WIN32
         json_response(res, {{"error", "sound-card capture is only implemented for Windows/DirectShow"}}, 501);
 #else
         try {
             const auto body = json::parse(req.body);
             const auto session_id = body.value("sessionId", std::string());
+            const auto module_id = body.value("moduleId", std::string());
+            if (session_id.empty() == module_id.empty()) {
+                throw std::invalid_argument(
+                    "exactly one of sessionId or moduleId is required");
+            }
+            if (!module_id.empty() &&
+                (!body.contains("expectedGraphRevision") ||
+                 !body.at("expectedGraphRevision").
+                    is_number_unsigned())) {
+                json_response(res, {
+                    {"error",
+                     "expectedGraphRevision is required for a module capture and must be an unsigned integer"},
+                }, 400);
+                return;
+            }
+            const auto target_id =
+                pamguard::service::capture_target_key(
+                    session_id,
+                    module_id);
+            std::lock_guard lifecycle_lock(
+                module_graph_update_mutex);
+            if (!module_id.empty()) {
+                const auto current_graph_revision =
+                    module_runtime.revision();
+                const auto expected_graph_revision =
+                    body.at("expectedGraphRevision").
+                        get<std::uint64_t>();
+                if (expected_graph_revision !=
+                    current_graph_revision) {
+                    json_response(res, {
+                        {"error",
+                         "capture target graph revision is stale"},
+                        {"code", "graph_revision_conflict"},
+                        {"expectedGraphRevision",
+                         expected_graph_revision},
+                        {"currentGraphRevision",
+                         current_graph_revision},
+                    }, 409);
+                    return;
+                }
+            }
             std::lock_guard<std::mutex> lock(capture_state.mutex);
-            const auto found = capture_state.running.find(session_id);
+            const auto found = capture_state.running.find(target_id);
             if (found == capture_state.running.end()) {
-                json_response(res, {{"error", "no capture is registered for this session"}}, 404);
+                json_response(res, {{"error", "no capture is registered for this target"}}, 404);
                 return;
             }
             close_capture_process(found->second);
             capture_state.running.erase(found);
-            json_response(res, {{"stopped", true}, {"sessionId", session_id}});
+            json_response(res, {
+                {"stopped", true},
+                {"sessionId", session_id.empty()
+                    ? json(nullptr)
+                    : json(session_id)},
+                {"moduleId", module_id.empty()
+                    ? json(nullptr)
+                    : json(module_id)},
+            });
         }
         catch (const std::exception& error_ex) {
             json_response(res, {{"error", error_ex.what()}}, 400);
@@ -5143,17 +11644,1477 @@ int main(int argc, char** argv) {
 #endif
     });
 
+    server.Get("/module-types", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        try {
+            auto types = json::array();
+            const auto catalogue = module_registry.list();
+            for (const auto& type : catalogue) {
+                types.push_back(module_type_to_json(type));
+            }
+            json_response(res, {
+                {"moduleTypes", std::move(types)},
+                {"count", catalogue.size()},
+            });
+        }
+        catch (const std::exception& error) {
+            json_response(res, {{"error", error.what()}}, 500);
+        }
+    });
+
+    server.Get("/module-graph", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        std::lock_guard update_lock(module_graph_update_mutex);
+        if (legacy_model_compat) {
+            res.set_content(
+                pamguard::core::module_graph_to_json(
+                    module_graph.snapshot(),
+                    true),
+                "application/json; charset=utf-8");
+            return;
+        }
+        const auto active = project_authority.snapshot();
+        auto projection = active.projection.graph;
+        projection.revision = active.working_revision;
+        res.set_content(
+            pamguard::core::module_graph_to_json(projection, true),
+            "application/json; charset=utf-8");
+    });
+
+    server.Post("/module-graph/validate", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        try {
+            const auto document = pamguard::core::module_graph_from_json(req.body);
+            auto validation = module_graph.validate(document);
+            if (validation.valid()) {
+                try {
+                    pamguard::core::ModuleRuntime candidate_runtime;
+                    candidate_runtime.configure(document);
+                    candidate_runtime.start();
+                    candidate_runtime.stop();
+                }
+                catch (const std::exception& error) {
+                    validation.issues.push_back({
+                        "invalid_runtime_settings",
+                        error.what(),
+                        {},
+                        {},
+                    });
+                }
+            }
+            json_response(res, {
+                {"valid", validation.valid()},
+                {"issues", graph_issues_to_json(validation.issues)},
+            });
+        }
+        catch (const std::exception& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+        }
+    });
+
+    server.Get("/module-graph/compatible-sources", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!req.has_param("moduleId") || !req.has_param("portId")) {
+            json_response(res, {{"error", "moduleId and portId query parameters are required"}}, 400);
+            return;
+        }
+        std::lock_guard update_lock(module_graph_update_mutex);
+        const auto document = module_graph.snapshot();
+        const auto sources = module_graph.compatible_sources(
+            document,
+            {req.get_param_value("moduleId"), req.get_param_value("portId")});
+        auto body = json::array();
+        for (const auto& source : sources) {
+            body.push_back({
+                {"moduleId", source.endpoint.module_id},
+                {"portId", source.endpoint.port_id},
+                {"moduleName", source.module_name},
+                {"portName", source.port_name},
+                {"dataType", source.data_type},
+                {"capabilities", source.capabilities},
+            });
+        }
+        json_response(res, {
+            {"sources", std::move(body)},
+            {"count", sources.size()},
+        });
+    });
+
+    server.Put("/module-graph", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!legacy_model_compat) {
+            res.set_header("Allow", "GET");
+            json_response(
+                res,
+                {
+                    {
+                        "error",
+                        "The low-level graph is generated by the active "
+                        "project and cannot be written directly",
+                    },
+                    {"code", "project_authority_required"},
+                },
+                405);
+            return;
+        }
+
+        try {
+            const auto body = json::parse(req.body);
+            if (!body.contains("expectedRevision") ||
+                !body["expectedRevision"].is_number_unsigned()) {
+                json_response(res, {{"error", "expectedRevision is required and must be an unsigned integer"}}, 400);
+                return;
+            }
+            if (body.contains("stopRuntime") &&
+                !body.at("stopRuntime").is_boolean()) {
+                json_response(
+                    res,
+                    {{"error", "stopRuntime must be a boolean"}},
+                    400);
+                return;
+            }
+            const bool stop_runtime =
+                body.value("stopRuntime", false);
+            auto graph_body = body;
+            graph_body.erase("expectedRevision");
+            graph_body.erase("stopRuntime");
+            auto document = pamguard::core::module_graph_from_json(graph_body.dump());
+            std::lock_guard update_lock(module_graph_update_mutex);
+            const auto previous = module_graph.snapshot();
+            const auto expected_revision =
+                body["expectedRevision"].get<std::uint64_t>();
+            if (expected_revision != previous.revision) {
+                json_response(res, {
+                    {"applied", false},
+                    {"revision", previous.revision},
+                    {"issues", graph_issues_to_json({{
+                        "revision_conflict",
+                        "Expected graph revision does not match the current revision",
+                        {},
+                        {},
+                    }})},
+                }, 409);
+                return;
+            }
+            if (module_runtime.running() && !stop_runtime) {
+                json_response(res, {
+                    {"applied", false},
+                    {"revision", previous.revision},
+                    {"running", true},
+                    {"issues", graph_issues_to_json({{
+                        "runtime_running",
+                        "The module graph can only be changed while idle; stop the runtime first or retry this complete update with stopRuntime=true",
+                        {},
+                        {},
+                    }})},
+                }, 409);
+                return;
+            }
+            const auto validation =
+                module_graph.validate(document);
+            if (!validation.valid()) {
+                json_response(res, {
+                    {"applied", false},
+                    {"revision", previous.revision},
+                    {"issues", graph_issues_to_json(
+                        validation.issues)},
+                }, 422);
+                return;
+            }
+            // Registry validation checks topology and port contracts. A
+            // throwaway runtime build and lifecycle pass additionally validate
+            // executable settings before the authoritative graph can change.
+            try {
+                pamguard::core::ModuleRuntime candidate_runtime;
+                candidate_runtime.configure(document);
+                candidate_runtime.start();
+                candidate_runtime.stop();
+            }
+            catch (const std::exception& error) {
+                json_response(res, {
+                    {"applied", false},
+                    {"revision", previous.revision},
+                    {"issues", graph_issues_to_json({{
+                        "invalid_runtime_settings",
+                        error.what(),
+                        {},
+                        {},
+                    }})},
+                }, 422);
+                return;
+            }
+
+            const bool runtime_was_running =
+                module_runtime.running();
+            std::size_t captures_stopped = 0;
+            if (stop_runtime) {
+                captures_stopped =
+                    quiesce_module_captures(capture_state);
+            }
+            if (runtime_was_running) {
+                try {
+                    module_runtime.stop();
+                }
+                catch (const std::exception& error) {
+                    json_response(res, {
+                        {"error", "module graph update could not safely stop the runtime"},
+                        {"detail", error.what()},
+                        {"applied", false},
+                        {"revision", previous.revision},
+                        {"running", module_runtime.running()},
+                        {"capturesStopped", captures_stopped},
+                    }, 500);
+                    return;
+                }
+            }
+
+            const auto result = module_graph.apply(
+                std::move(document),
+                expected_revision);
+            if (!result.applied) {
+                const auto revision_conflict =
+                    std::any_of(
+                        result.issues.begin(),
+                        result.issues.end(),
+                        [](const auto& issue) { return issue.code == "revision_conflict"; });
+                json_response(res, {
+                    {"applied", false},
+                    {"revision", result.revision},
+                    {"running", module_runtime.running()},
+                    {"capturesStopped", captures_stopped},
+                    {"issues", graph_issues_to_json(result.issues)},
+                }, revision_conflict ? 409 : 422);
+                return;
+            }
+            const auto saved = module_graph.snapshot();
+            try {
+                // Commit durable state before switching the live runtime. If
+                // either step fails, restore the previous graph, runtime, and
+                // persisted document as one operator-visible transaction.
+                persist_module_graph(module_graph_file, saved);
+                module_runtime.configure(saved);
+            }
+            catch (const std::exception& update_error) {
+                std::string rollback_error;
+                try {
+                    const auto restored = module_graph.restore(previous);
+                    if (!restored.valid()) {
+                        throw std::runtime_error(
+                            "previous graph no longer validates");
+                    }
+                    module_runtime.configure(previous);
+                    persist_module_graph(module_graph_file, previous);
+                }
+                catch (const std::exception& error) {
+                    rollback_error = error.what();
+                }
+                json response = {
+                    {"error", "module graph update failed"},
+                    {"detail", update_error.what()},
+                    {"rolledBack", rollback_error.empty()},
+                    {"revision", module_graph.snapshot().revision},
+                    {"running", module_runtime.running()},
+                    {"capturesStopped", captures_stopped},
+                };
+                if (!rollback_error.empty()) {
+                    response["rollbackError"] = rollback_error;
+                }
+                json_response(res, std::move(response), 500);
+                return;
+            }
+            append_audit_event(audit_log_file, audit_mutex, {
+                {"event", "module_graph_update"},
+                {"revision", result.revision},
+                {"moduleCount", saved.modules.size()},
+                {"connectionCount", saved.connections.size()},
+                {"persisted", !module_graph_file.empty()},
+                {"stoppedRuntime", runtime_was_running},
+                {"capturesStopped", captures_stopped},
+            });
+            json_response(res, {
+                {"applied", true},
+                {"revision", result.revision},
+                {"persisted", !module_graph_file.empty()},
+                {"running", module_runtime.running()},
+                {"stoppedRuntime", runtime_was_running},
+                {"capturesStopped", captures_stopped},
+            });
+        }
+        catch (const std::exception& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+        }
+    });
+
+    server.Get("/data-blocks", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        std::lock_guard update_lock(module_graph_update_mutex);
+        const auto descriptors = module_runtime.data_blocks();
+        auto blocks = json::array();
+        for (const auto& descriptor : descriptors) {
+            auto block_json = data_block_to_json(descriptor);
+            const auto block = module_runtime.find_block(descriptor.id);
+            if (block) {
+                block_json["stats"] =
+                    data_block_stats_to_json(block->stats());
+                const auto history = block->recent_history();
+                block_json["oldestTimeMs"] = history.empty()
+                    ? json(nullptr)
+                    : json(history.front().metadata.time_unix_ms);
+                block_json["latestTimeMs"] = history.empty()
+                    ? json(nullptr)
+                    : json(history.back().metadata.time_unix_ms);
+                block_json["oldestStartSample"] = history.empty()
+                    ? json(nullptr)
+                    : json(history.front().metadata.start_sample);
+                block_json["latestStartSample"] = history.empty()
+                    ? json(nullptr)
+                    : json(history.back().metadata.start_sample);
+            }
+            blocks.push_back(std::move(block_json));
+        }
+        json_response(res, {
+            {"graphRevision", module_runtime.revision()},
+            {"running", module_runtime.running()},
+            {"dataBlocks", std::move(blocks)},
+            {"count", descriptors.size()},
+        });
+    });
+
+    server.Get("/module-runtime/status", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        std::lock_guard update_lock(module_graph_update_mutex);
+        const auto active = project_authority.snapshot();
+        const auto graph = module_graph.snapshot();
+        const auto descriptors = module_runtime.data_blocks();
+        std::unordered_map<std::string, pamguard::core::ModuleState>
+            runtime_states;
+        for (const auto& status : module_runtime.module_statuses()) {
+            runtime_states.emplace(status.instance_id, status.state);
+        }
+        auto modules = json::array();
+        for (const auto& module : graph.modules) {
+            auto outputs = json::array();
+            for (const auto& descriptor : descriptors) {
+                if (descriptor.producer_module_id != module.id) {
+                    continue;
+                }
+                auto output = data_block_to_json(descriptor);
+                if (const auto block =
+                        module_runtime.find_block(descriptor.id)) {
+                    output["stats"] =
+                        data_block_stats_to_json(block->stats());
+                    const auto history =
+                        block->recent_history();
+                    output["oldestTimeMs"] = history.empty()
+                        ? json(nullptr)
+                        : json(
+                            history.front()
+                                .metadata.time_unix_ms);
+                    output["latestTimeMs"] = history.empty()
+                        ? json(nullptr)
+                        : json(
+                            history.back()
+                                .metadata.time_unix_ms);
+                    output["oldestStartSample"] =
+                        history.empty()
+                        ? json(nullptr)
+                        : json(
+                            history.front()
+                                .metadata.start_sample);
+                    output["latestStartSample"] =
+                        history.empty()
+                        ? json(nullptr)
+                        : json(
+                            history.back()
+                                .metadata.start_sample);
+                }
+                outputs.push_back(std::move(output));
+            }
+            const auto found = runtime_states.find(module.id);
+            const std::string state = !module.enabled
+                ? "disabled"
+                : found != runtime_states.end()
+                    ? module_state_name(found->second)
+                    : "external";
+            modules.push_back({
+                {"moduleId", module.id},
+                {"typeId", module.type_id},
+                {"name", module.name},
+                {"enabled", module.enabled},
+                {"state", state},
+                {"outputs", std::move(outputs)},
+            });
+        }
+        json_response(res, {
+            {
+                "authorityMode",
+                legacy_model_compat
+                    ? "legacyCompatibility"
+                    : "project",
+            },
+            {
+                "projectId",
+                legacy_model_compat
+                    ? json(nullptr)
+                    : json(active.project.project_id),
+            },
+            {
+                "workingRevision",
+                legacy_model_compat
+                    ? json(nullptr)
+                    : json(active.working_revision),
+            },
+            {
+                "projectionStatus",
+                legacy_model_compat
+                    ? json(nullptr)
+                    : json(projection_status_name(
+                          active.projection)),
+            },
+            {
+                "prepared",
+                legacy_model_compat
+                    ? true
+                    : project_runtime_prepared,
+            },
+            {"graphRevision", graph.revision},
+            {"running", module_runtime.running()},
+            {"modules", std::move(modules)},
+            {"count", graph.modules.size()},
+        });
+    });
+
+    server.Post("/module-runtime/control", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        try {
+            const auto body = json::parse(req.body);
+            const auto action = body.at("action").get<std::string>();
+            std::lock_guard update_lock(module_graph_update_mutex);
+            std::size_t captures_stopped = 0;
+            if (action == "start") {
+                if (!legacy_model_compat) {
+                    const auto active =
+                        project_authority.snapshot();
+                    if (!active.projection.runnable()) {
+                        encoded_json_response(
+                            res,
+                            json({
+                                {
+                                    "error",
+                                    "The active project needs configuration "
+                                    "before its runtime can start",
+                                },
+                                {"code", "project_not_runnable"},
+                                {
+                                    "projectionStatus",
+                                    projection_status_name(
+                                        active.projection),
+                                },
+                                {"currentEtag", active.etag},
+                            }).dump(),
+                            422,
+                            active.etag);
+                        return;
+                    }
+                    if (!project_runtime_prepared ||
+                        module_runtime.revision() !=
+                            active.working_revision) {
+                        encoded_json_response(
+                            res,
+                            json({
+                                {
+                                    "error",
+                                    "The active project runtime is not "
+                                    "prepared at its working revision",
+                                },
+                                {
+                                    "code",
+                                    "project_runtime_unprepared",
+                                },
+                                {"currentEtag", active.etag},
+                            }).dump(),
+                            503,
+                            active.etag);
+                        return;
+                    }
+                }
+                module_runtime.start();
+            }
+            else if (action == "stop") {
+                captures_stopped =
+                    quiesce_module_captures(capture_state);
+                module_runtime.stop();
+            }
+            else if (action == "flush") {
+                module_runtime.flush();
+            }
+            else if (action == "reset") {
+                const bool restart =
+                    body.value("restart", module_runtime.running());
+                captures_stopped =
+                    quiesce_module_captures(capture_state);
+                module_runtime.stop();
+                module_runtime.reset();
+                if (restart) {
+                    module_runtime.start();
+                }
+            }
+            else {
+                throw std::invalid_argument(
+                    "action must be start, stop, flush, or reset");
+            }
+            append_audit_event(audit_log_file, audit_mutex, {
+                {"event", "module_runtime_control"},
+                {"action", action},
+                {"revision", module_runtime.revision()},
+                {"running", module_runtime.running()},
+                {"capturesStopped", captures_stopped},
+            });
+            json_response(res, {
+                {"action", action},
+                {"graphRevision", module_runtime.revision()},
+                {"running", module_runtime.running()},
+                {"capturesStopped", captures_stopped},
+            });
+        }
+        catch (const json::exception& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+        }
+        catch (const std::invalid_argument& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+        }
+        catch (const std::logic_error& error) {
+            json_response(res, {
+                {"error", "module runtime lifecycle precondition failed"},
+                {"detail", error.what()},
+                {"running", module_runtime.running()},
+            }, 409);
+        }
+        catch (const std::exception& error) {
+            json_response(res, {
+                {"error", "module runtime control failed"},
+                {"detail", error.what()},
+                {"running", module_runtime.running()},
+            }, 500);
+        }
+    });
+
+    server.Get("/workspaces", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
+        auto workspaces = json::array();
+        {
+            std::lock_guard lock(workspace_mutex);
+            for (const auto& [id, layout] :
+                 workspace_store.at("workspaces").items()) {
+                workspaces.push_back({
+                    {"id", id},
+                    {"name", layout.value("name", id)},
+                    {"updatedTimeMs",
+                     layout.value("updatedTimeMs", std::int64_t{0})},
+                    {"displayCount",
+                     layout.at("displays").size()},
+                });
+            }
+        }
+        const auto count = workspaces.size();
+        json_response(res, {
+            {"schemaVersion", 1},
+            {"workspaces", std::move(workspaces)},
+            {"count", count},
+            {"persistent", !workspace_file.empty()},
+        });
+    });
+
+    server.Get(R"(/workspaces/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
+        const auto id = req.matches[1].str();
+        if (!valid_workspace_id(id)) {
+            json_response(res, {{"error", "invalid workspace id"}}, 400);
+            return;
+        }
+        std::lock_guard lock(workspace_mutex);
+        const auto& workspaces = workspace_store.at("workspaces");
+        if (!workspaces.contains(id)) {
+            json_response(res, {{"error", "unknown workspace"}}, 404);
+            return;
+        }
+        auto body = workspaces.at(id);
+        body["id"] = id;
+        json_response(res, body);
+    });
+
+    server.Put(R"(/workspaces/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!legacy_model_compat) {
+            res.set_header("Allow", "GET");
+            json_response(
+                res,
+                {
+                    {
+                        "error",
+                        "Display hierarchy and layout are owned by the "
+                        "active project and cannot be written through "
+                        "/workspaces",
+                    },
+                    {"code", "project_authority_required"},
+                },
+                405);
+            return;
+        }
+
+        const auto id = req.matches[1].str();
+        if (!valid_workspace_id(id)) {
+            json_response(res, {{"error", "invalid workspace id"}}, 400);
+            return;
+        }
+        try {
+            auto layout = json::parse(req.body);
+            validate_workspace_layout(layout);
+            layout.erase("id");
+            layout["updatedTimeMs"] = current_unix_ms();
+            {
+                std::lock_guard lock(workspace_mutex);
+                auto next = workspace_store;
+                next["workspaces"][id] = layout;
+                persist_json_file(
+                    workspace_file,
+                    next,
+                    "workspace file");
+                workspace_store = std::move(next);
+            }
+            append_audit_event(audit_log_file, audit_mutex, {
+                {"event", "workspace_saved"},
+                {"workspaceId", id},
+                {"displayCount", layout.at("displays").size()},
+                {"persisted", !workspace_file.empty()},
+            });
+            json_response(res, {
+                {"saved", true},
+                {"id", id},
+                {"updatedTimeMs", layout.at("updatedTimeMs")},
+                {"persistent", !workspace_file.empty()},
+            });
+        }
+        catch (const std::exception& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+        }
+    });
+
+    server.Delete(R"(/workspaces/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!legacy_model_compat) {
+            res.set_header("Allow", "GET");
+            json_response(
+                res,
+                {
+                    {
+                        "error",
+                        "Display hierarchy and layout are owned by the "
+                        "active project and cannot be deleted through "
+                        "/workspaces",
+                    },
+                    {"code", "project_authority_required"},
+                },
+                405);
+            return;
+        }
+
+        const auto id = req.matches[1].str();
+        if (!valid_workspace_id(id)) {
+            json_response(res, {{"error", "invalid workspace id"}}, 400);
+            return;
+        }
+        {
+            std::lock_guard lock(workspace_mutex);
+            if (!workspace_store.at("workspaces").contains(id)) {
+                json_response(res, {{"error", "unknown workspace"}}, 404);
+                return;
+            }
+            auto next = workspace_store;
+            next["workspaces"].erase(id);
+            try {
+                persist_json_file(
+                    workspace_file,
+                    next,
+                    "workspace file");
+            }
+            catch (const std::exception& error) {
+                json_response(res, {{"error", error.what()}}, 500);
+                return;
+            }
+            workspace_store = std::move(next);
+        }
+        append_audit_event(audit_log_file, audit_mutex, {
+            {"event", "workspace_deleted"},
+            {"workspaceId", id},
+            {"persisted", !workspace_file.empty()},
+        });
+        json_response(res, {{"deleted", true}, {"id", id}});
+    });
+
+    server.Get(R"(/data-blocks/([^/]+)/history)", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        const auto block_id = req.matches[1].str();
+        const auto block = module_runtime.find_block(block_id);
+        if (!block) {
+            json_response(res, {{"error", "unknown data block"}}, 404);
+            return;
+        }
+        std::size_t limit = block->descriptor().history_capacity;
+        if (req.has_param("limit")) {
+            try {
+                limit = std::stoull(req.get_param_value("limit"));
+            }
+            catch (const std::exception&) {
+                json_response(
+                    res,
+                    {{"error", "limit must be an unsigned integer"}},
+                    400);
+                return;
+            }
+            limit = std::min<std::size_t>(limit, 4096);
+        }
+        auto history = block->recent_history();
+        const auto first = history.size() > limit
+            ? history.size() - limit
+            : 0;
+        auto units = json::array();
+        for (std::size_t index = first; index < history.size(); ++index) {
+            units.push_back(data_unit_to_json(history[index]));
+        }
+        json_response(res, {
+            {"blockId", block_id},
+            {"graphRevision", module_runtime.revision()},
+            {"units", std::move(units)},
+            {"count", history.size() - first},
+            {"stats", data_block_stats_to_json(block->stats())},
+        });
+    });
+
+    server.Get(R"(/data-blocks/([^/]+)/audio-f32le)", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        const auto block_id = req.matches[1].str();
+        const auto block = module_runtime.find_block(block_id);
+        if (!block ||
+            block->descriptor().data_type !=
+                pamguard::core::kRawAudioDataType) {
+            json_response(
+                res,
+                {{"error", "unknown or non-playable raw-audio block"}},
+                404);
+            return;
+        }
+        std::vector<std::size_t> channels;
+        bool framed = false;
+        try {
+            if (req.has_param("channels")) {
+                std::stringstream values(
+                    req.get_param_value("channels"));
+                std::string token;
+                while (std::getline(values, token, ',')) {
+                    if (token.empty()) {
+                        throw std::invalid_argument(
+                            "channels contains an empty value");
+                    }
+                    std::size_t parsed = 0;
+                    const auto channel = std::stoull(token, &parsed);
+                    if (parsed != token.size() || channel >= 32 ||
+                        (block->descriptor().channel_bitmap &
+                         (std::uint32_t{1} << channel)) == 0) {
+                        throw std::invalid_argument(
+                            "channels contains an unavailable source channel");
+                    }
+                    channels.push_back(channel);
+                }
+            }
+            else {
+                for (std::size_t channel = 0; channel < 32; ++channel) {
+                    if ((block->descriptor().channel_bitmap &
+                         (std::uint32_t{1} << channel)) != 0) {
+                        channels.push_back(channel);
+                    }
+                }
+            }
+            std::sort(channels.begin(), channels.end());
+            channels.erase(
+                std::unique(channels.begin(), channels.end()),
+                channels.end());
+            if (channels.empty() || channels.size() > 32) {
+                throw std::invalid_argument(
+                    "at least one playable channel is required");
+            }
+            if (req.has_param("format")) {
+                const auto format = req.get_param_value("format");
+                if (format == "framed") {
+                    framed = true;
+                }
+                else if (format != "raw") {
+                    throw std::invalid_argument(
+                        "format must be raw or framed");
+                }
+            }
+        }
+        catch (const std::exception& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+            return;
+        }
+
+        struct AudioStreamState {
+            struct Chunk {
+                std::string bytes;
+                std::size_t frame_count = 0;
+            };
+            std::mutex mutex;
+            std::condition_variable condition;
+            std::deque<Chunk> pending;
+            pamguard::core::Subscription subscription;
+            bool closed = false;
+            std::uint64_t dropped_frames = 0;
+        };
+        const auto state = std::make_shared<AudioStreamState>();
+        const auto graph_revision = module_runtime.revision();
+        state->subscription = block->subscribe(
+            [state, channels, framed](
+                const pamguard::core::DataUnit& unit) {
+                const auto* audio =
+                    std::any_cast<pamguard::core::AudioChunk>(
+                        &unit.payload);
+                if (audio == nullptr || audio->channel_count == 0) {
+                    return;
+                }
+                const auto frames = audio->frame_count();
+                std::string pcm;
+                pcm.resize(
+                    frames * channels.size() * sizeof(float));
+                std::size_t offset = 0;
+                for (std::size_t frame = 0; frame < frames; ++frame) {
+                    for (const auto channel : channels) {
+                        const auto value = channel < audio->channel_count
+                            ? static_cast<float>(
+                                audio->sample(frame, channel))
+                            : 0.0f;
+                        std::memcpy(
+                            pcm.data() + offset,
+                            &value,
+                            sizeof(value));
+                        offset += sizeof(value);
+                    }
+                }
+                {
+                    std::lock_guard lock(state->mutex);
+                    if (state->closed) {
+                        return;
+                    }
+                    if (state->pending.size() == 64) {
+                        state->dropped_frames +=
+                            state->pending.front().frame_count;
+                        state->pending.pop_front();
+                    }
+                    std::string bytes;
+                    if (framed) {
+                        constexpr std::size_t header_size = 40;
+                        bytes.resize(header_size + pcm.size());
+                        std::memcpy(bytes.data(), "PGA1", 4);
+                        const auto put = [&](std::size_t target_offset,
+                                             const auto& value) {
+                            std::memcpy(
+                                bytes.data() + target_offset,
+                                &value,
+                                sizeof(value));
+                        };
+                        const std::uint32_t encoded_header_size =
+                            header_size;
+                        const std::uint32_t encoded_channels =
+                            static_cast<std::uint32_t>(
+                                channels.size());
+                        const std::uint32_t encoded_frames =
+                            static_cast<std::uint32_t>(frames);
+                        const std::int64_t time_unix_ms =
+                            unit.metadata.time_unix_ms;
+                        const std::uint64_t start_sample =
+                            unit.metadata.start_sample;
+                        put(4, encoded_header_size);
+                        put(8, encoded_channels);
+                        put(12, encoded_frames);
+                        put(16, time_unix_ms);
+                        put(24, start_sample);
+                        put(32, state->dropped_frames);
+                        std::memcpy(
+                            bytes.data() + header_size,
+                            pcm.data(),
+                            pcm.size());
+                    }
+                    else {
+                        bytes = std::move(pcm);
+                    }
+                    state->pending.push_back(
+                        {std::move(bytes), frames});
+                }
+                state->condition.notify_one();
+            },
+            {pamguard::core::DeliveryMode::QueuedDropOldest, 32});
+        res.set_header("Cache-Control", "no-cache");
+        res.set_header("X-PAMGuard-Block-Id", block_id);
+        res.set_header(
+            "X-PAMGuard-Sample-Rate-Hz",
+            std::to_string(block->descriptor().sample_rate_hz));
+        res.set_header(
+            "X-PAMGuard-Channel-Count",
+            std::to_string(channels.size()));
+        res.set_header(
+            "X-PAMGuard-Channels",
+            req.has_param("channels")
+                ? req.get_param_value("channels")
+                : "all");
+        res.set_header(
+            "X-PAMGuard-Audio-Framing",
+            framed ? "pga1" : "raw");
+        res.set_chunked_content_provider(
+            framed
+                ? "application/vnd.pamguard.audio-f32le"
+                : "application/octet-stream",
+            [&, state, graph_revision](
+                std::size_t,
+                httplib::DataSink& sink) -> bool {
+                decltype(state->pending) chunks;
+                {
+                    std::unique_lock lock(state->mutex);
+                    state->condition.wait_for(
+                        lock,
+                        std::chrono::seconds(1),
+                        [&] {
+                            return state->closed ||
+                                !state->pending.empty();
+                        });
+                    chunks.swap(state->pending);
+                }
+                if (module_runtime.revision() != graph_revision ||
+                    state->closed) {
+                    sink.done();
+                    return false;
+                }
+                for (const auto& chunk : chunks) {
+                    if (!sink.write(
+                            chunk.bytes.data(),
+                            chunk.bytes.size())) {
+                        return false;
+                    }
+                }
+                return true;
+            },
+            [state](bool) {
+                {
+                    std::lock_guard lock(state->mutex);
+                    state->closed = true;
+                }
+                state->condition.notify_all();
+                state->subscription.cancel();
+            });
+    });
+
+    server.Get(R"(/data-blocks/([^/]+)/stream)", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        const auto block_id = req.matches[1].str();
+        const auto block = module_runtime.find_block(block_id);
+        if (!block) {
+            json_response(res, {{"error", "unknown data block"}}, 404);
+            return;
+        }
+        struct StreamSelection {
+            std::uint32_t channel_bitmap = 0;
+            std::uint32_t sequence_bitmap = 0;
+            std::size_t first_bin = 0;
+            std::size_t bin_count = 0;
+            std::int64_t cadence_ms = 0;
+            std::size_t history_count = 0;
+        };
+        StreamSelection selection;
+        try {
+            const auto parse_bitmap = [&](const char* name) {
+                std::uint32_t bitmap = 0;
+                if (!req.has_param(name)) {
+                    return bitmap;
+                }
+                std::stringstream values(req.get_param_value(name));
+                std::string token;
+                while (std::getline(values, token, ',')) {
+                    std::size_t parsed = 0;
+                    const auto index = std::stoull(token, &parsed);
+                    if (parsed != token.size() || index >= 32) {
+                        throw std::invalid_argument(
+                            std::string(name) +
+                            " must contain comma-separated indices from 0 to 31");
+                    }
+                    bitmap |= std::uint32_t{1} << index;
+                }
+                return bitmap;
+            };
+            selection.channel_bitmap = parse_bitmap("channels");
+            selection.sequence_bitmap = parse_bitmap("sequences");
+            if (req.has_param("firstBin")) {
+                selection.first_bin =
+                    std::stoull(req.get_param_value("firstBin"));
+            }
+            if (req.has_param("binCount")) {
+                selection.bin_count =
+                    std::stoull(req.get_param_value("binCount"));
+            }
+            if (req.has_param("cadenceMs")) {
+                selection.cadence_ms =
+                    std::stoll(req.get_param_value("cadenceMs"));
+                if (selection.cadence_ms < 0) {
+                    throw std::invalid_argument(
+                        "cadenceMs must be zero or greater");
+                }
+            }
+            if (req.has_param("history")) {
+                selection.history_count = std::min<std::size_t>(
+                    std::stoull(req.get_param_value("history")),
+                    4096);
+            }
+            if (req.has_param("format") &&
+                req.get_param_value("format") != "ndjson") {
+                throw std::invalid_argument(
+                    "Only format=ndjson is currently supported");
+            }
+        }
+        catch (const std::exception& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+            return;
+        }
+        const auto encode = [selection](
+                                const pamguard::core::DataUnit& unit)
+            -> std::optional<std::string> {
+            if (selection.channel_bitmap != 0 &&
+                unit.metadata.channel_bitmap != 0 &&
+                (selection.channel_bitmap &
+                 unit.metadata.channel_bitmap) == 0) {
+                return {};
+            }
+            if (selection.sequence_bitmap != 0 &&
+                unit.metadata.sequence_bitmap != 0 &&
+                (selection.sequence_bitmap &
+                 unit.metadata.sequence_bitmap) == 0) {
+                return {};
+            }
+            auto encoded = data_unit_to_json(unit);
+            if (selection.channel_bitmap != 0 &&
+                encoded["payload"].is_object() &&
+                encoded["payload"].contains("interleavedPcm") &&
+                encoded["payload"]["interleavedPcm"].is_array() &&
+                encoded["payload"].contains("channelCount")) {
+                const auto source_channel_count =
+                    encoded["payload"]["channelCount"]
+                        .get<std::size_t>();
+                std::vector<std::size_t> selected_channels;
+                for (std::size_t channel = 0;
+                     channel < source_channel_count &&
+                     channel < 32;
+                     ++channel) {
+                    if ((selection.channel_bitmap &
+                         (std::uint32_t{1} << channel)) != 0) {
+                        selected_channels.push_back(channel);
+                    }
+                }
+                if (selected_channels.empty()) {
+                    return {};
+                }
+                const auto& source =
+                    encoded["payload"]["interleavedPcm"];
+                const auto frame_count =
+                    source_channel_count == 0
+                    ? 0
+                    : source.size() / source_channel_count;
+                auto selected = json::array();
+                for (std::size_t frame = 0;
+                     frame < frame_count;
+                     ++frame) {
+                    for (const auto channel :
+                         selected_channels) {
+                        selected.push_back(
+                            source[
+                                frame * source_channel_count +
+                                channel]);
+                    }
+                }
+                encoded["payload"]["interleavedPcm"] =
+                    std::move(selected);
+                encoded["payload"]["channelCount"] =
+                    selected_channels.size();
+                encoded["payload"]["sourceChannels"] =
+                    selected_channels;
+                encoded["channelBitmap"] =
+                    unit.metadata.channel_bitmap &
+                    selection.channel_bitmap;
+            }
+            if ((selection.first_bin != 0 ||
+                 selection.bin_count != 0) &&
+                encoded["payload"].is_object() &&
+                encoded["payload"].contains("magnitudeSquared") &&
+                encoded["payload"]["magnitudeSquared"].is_array()) {
+                const auto& source =
+                    encoded["payload"]["magnitudeSquared"];
+                const auto first =
+                    std::min(selection.first_bin, source.size());
+                const auto count = selection.bin_count == 0
+                    ? source.size() - first
+                    : std::min(
+                        selection.bin_count,
+                        source.size() - first);
+                auto bins = json::array();
+                for (std::size_t index = first;
+                     index < first + count;
+                     ++index) {
+                    bins.push_back(source[index]);
+                }
+                encoded["payload"]["magnitudeSquared"] =
+                    std::move(bins);
+                encoded["payload"]["firstBin"] = first;
+            }
+            return encoded.dump();
+        };
+        struct StreamState {
+            std::mutex mutex;
+            std::condition_variable condition;
+            std::deque<std::string> pending;
+            pamguard::core::Subscription subscription;
+            bool closed = false;
+            std::int64_t last_time_ms = 0;
+            std::uint64_t dropped_units = 0;
+        };
+        const auto state = std::make_shared<StreamState>();
+        const auto graph_revision = module_runtime.revision();
+        if (selection.history_count > 0) {
+            const auto history = block->recent_history();
+            const auto first = history.size() > selection.history_count
+                ? history.size() - selection.history_count
+                : 0;
+            for (std::size_t index = first;
+                 index < history.size();
+                 ++index) {
+                if (const auto line = encode(history[index])) {
+                    state->pending.push_back(*line);
+                }
+            }
+        }
+        state->subscription = block->subscribe(
+            [state, selection, encode](
+                const pamguard::core::DataUnit& unit) {
+                {
+                    std::lock_guard lock(state->mutex);
+                    if (state->closed) {
+                        return;
+                    }
+                    if (selection.cadence_ms > 0 &&
+                        state->last_time_ms != 0 &&
+                        unit.metadata.time_unix_ms -
+                            state->last_time_ms <
+                            selection.cadence_ms) {
+                        return;
+                    }
+                    auto line = encode(unit);
+                    if (!line) {
+                        return;
+                    }
+                    state->last_time_ms =
+                        unit.metadata.time_unix_ms;
+                    if (state->pending.size() == 256) {
+                        state->pending.pop_front();
+                        ++state->dropped_units;
+                        auto marked = json::parse(*line);
+                        marked["discontinuity"] = true;
+                        marked["presentationDropped"] =
+                            state->dropped_units;
+                        *line = marked.dump();
+                    }
+                    state->pending.push_back(*line);
+                }
+                state->condition.notify_one();
+            },
+            {pamguard::core::DeliveryMode::QueuedDropOldest, 64});
+        res.set_header("Cache-Control", "no-cache");
+        res.set_header("X-PAMGuard-Block-Id", block_id);
+        res.set_header(
+            "X-PAMGuard-Graph-Revision",
+            std::to_string(graph_revision));
+        res.set_chunked_content_provider(
+            "application/x-ndjson",
+            [&, state, graph_revision](std::size_t, httplib::DataSink& sink) -> bool {
+                std::deque<std::string> lines;
+                {
+                    std::unique_lock lock(state->mutex);
+                    state->condition.wait_for(
+                        lock,
+                        std::chrono::seconds(1),
+                        [&] { return state->closed || !state->pending.empty(); });
+                    lines.swap(state->pending);
+                }
+                if (module_runtime.revision() != graph_revision || state->closed) {
+                    sink.done();
+                    return false;
+                }
+                if (lines.empty()) {
+                    return sink.write("\n", 1);
+                }
+                for (const auto& line : lines) {
+                    if (!sink.write(line.data(), line.size()) ||
+                        !sink.write("\n", 1)) {
+                        return false;
+                    }
+                }
+                return true;
+            },
+            [state](bool) {
+                {
+                    std::lock_guard lock(state->mutex);
+                    state->closed = true;
+                }
+                state->condition.notify_all();
+                state->subscription.cancel();
+            });
+    });
+
+    server.Post(R"(/module-runtime/acquisitions/([^/]+)/pcm-f32le)", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
+        try {
+            std::lock_guard update_lock(module_graph_update_mutex);
+            const auto module_id = req.matches[1].str();
+            const auto source_block = module_runtime.find_block(
+                pamguard::core::ModuleRuntime::block_id(module_id, "audio"));
+            if (!source_block ||
+                source_block->descriptor().data_type !=
+                    pamguard::core::kRawAudioDataType) {
+                json_response(res, {{"error", "unknown acquisition module"}}, 404);
+                return;
+            }
+            if (max_pcm_body_bytes > 0 && req.body.size() > max_pcm_body_bytes) {
+                json_response(res, {
+                    {"error", "PCM body exceeds maximum size"},
+                    {"maxPcmBodyBytes", max_pcm_body_bytes},
+                }, 413);
+                return;
+            }
+            const auto channel_count = channel_count_from_bitmap(
+                source_block->descriptor().channel_bitmap);
+            const auto sample_rate = static_cast<std::uint32_t>(
+                std::llround(source_block->descriptor().sample_rate_hz));
+            const auto bytes_per_frame = channel_count * sizeof(float);
+            if (req.body.empty() ||
+                bytes_per_frame == 0 ||
+                req.body.size() % bytes_per_frame != 0) {
+                throw std::invalid_argument(
+                    "PCM body must contain whole interleaved f32le frames");
+            }
+            const auto frame_count = req.body.size() / bytes_per_frame;
+            const auto start_sample = parse_uint64_param(req, "startSample", 0);
+            const auto time_ms = req.has_param("timeMs")
+                ? static_cast<std::int64_t>(
+                    std::stoll(req.get_param_value("timeMs")))
+                : static_cast<std::int64_t>(
+                    static_cast<double>(start_sample) * 1000.0 / sample_rate);
+            pamguard::core::AudioChunk chunk;
+            chunk.start_sample = start_sample;
+            chunk.time_unix_ms = time_ms;
+            chunk.sample_rate_hz = sample_rate;
+            chunk.channel_count = channel_count;
+            chunk.interleaved_pcm.resize(frame_count * channel_count);
+            const auto* bytes =
+                reinterpret_cast<const unsigned char*>(req.body.data());
+            for (std::size_t frame = 0; frame < frame_count; ++frame) {
+                for (std::size_t channel = 0; channel < channel_count; ++channel) {
+                    const auto offset =
+                        (frame * channel_count + channel) * sizeof(float);
+                    chunk.interleaved_pcm[
+                        frame * channel_count + channel] =
+                        read_float_le(bytes + offset);
+                }
+            }
+            module_runtime.ingest(module_id, std::move(chunk));
+            json_response(res, {
+                {"accepted", true},
+                {"moduleId", module_id},
+                {"inputFrames", frame_count},
+                {"startSample", start_sample},
+                {"graphRevision", module_runtime.revision()},
+            }, 202);
+        }
+        catch (const std::exception& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+        }
+    });
+
+    server.Post(R"(/module-runtime/operator-inputs/([^/]+)/events)", [&](const httplib::Request& req, httplib::Response& res) {
+        if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
+        try {
+            std::lock_guard update_lock(
+                module_graph_update_mutex);
+            const auto body = json::parse(req.body);
+            if (!body.is_object()) {
+                throw std::invalid_argument(
+                    "Operator event body must be an object");
+            }
+            pamguard::core::GraphOperatorEvent event;
+            event.category =
+                body.value("category", std::string{});
+            event.label =
+                body.value("label", std::string{});
+            event.notes =
+                body.value("notes", std::string{});
+            event.value = body.value("value", 0.0);
+            if (event.label.empty()) {
+                throw std::invalid_argument(
+                    "Operator event label is required");
+            }
+            if (event.category.size() > 128 ||
+                event.label.size() > 512 ||
+                event.notes.size() > 8192 ||
+                !std::isfinite(event.value)) {
+                throw std::invalid_argument(
+                    "Operator event fields exceed their limits");
+            }
+            const auto module_id = req.matches[1].str();
+            module_runtime.publish_operator_event(
+                module_id,
+                std::move(event),
+                body.value("timeMs", std::int64_t{0}),
+                body.value("startSample", std::int64_t{0}));
+            append_audit_event(
+                audit_log_file,
+                audit_mutex,
+                {
+                    {"event", "operator_input"},
+                    {"moduleId", module_id},
+                    {"label", body.at("label")},
+                });
+            json_response(res, {
+                {"accepted", true},
+                {"moduleId", module_id},
+                {"graphRevision", module_runtime.revision()},
+            });
+        }
+        catch (const std::exception& error) {
+            json_response(res, {{"error", error.what()}}, 400);
+        }
+    });
+
     server.Get("/health", [&](const httplib::Request&, httplib::Response& res) {
+        std::lock_guard lifecycle_lock(
+            module_graph_update_mutex);
+        const auto active =
+            project_authority.snapshot();
         json_response(res, {
             {"ok", true},
+            {
+                "authorityMode",
+                legacy_model_compat
+                    ? "legacyCompatibility"
+                    : "project",
+            },
+            {
+                "activeProjectId",
+                legacy_model_compat
+                    ? json(nullptr)
+                    : json(active.project.project_id),
+            },
+            {
+                "projectWorkingRevision",
+                legacy_model_compat
+                    ? json(nullptr)
+                    : json(active.working_revision),
+            },
+            {
+                "projectSavedRevision",
+                !legacy_model_compat &&
+                    active.saved_revision
+                    ? json(*active.saved_revision)
+                    : json(nullptr),
+            },
+            {
+                "projectDirty",
+                legacy_model_compat
+                    ? json(nullptr)
+                    : json(active.dirty),
+            },
+            {
+                "projectProjectionStatus",
+                legacy_model_compat
+                    ? json(nullptr)
+                    : json(projection_status_name(
+                          active.projection)),
+            },
+            {
+                "projectRuntimePrepared",
+                legacy_model_compat
+                    ? json(nullptr)
+                    : json(project_runtime_prepared),
+            },
+            {"projectRuntimeRunning", module_runtime.running()},
             {"sessions", manager.session_count()},
             {"maxSessions", max_sessions},
+            {"legacyCompatibilityEnabled", legacy_model_compat},
             {"resultSchemaVersion", kResultSchemaVersion},
             {"captureEnabled", capture_enabled},
-            {"jobQueueEnabled", !job_audio_dir.empty()},
-            {"audioArchiveEnabled", !audio_archive_dir.empty()},
+            {
+                "jobQueueEnabled",
+                legacy_model_compat && !job_audio_dir.empty(),
+            },
+            {
+                "audioArchiveEnabled",
+                legacy_model_compat && !audio_archive_dir.empty(),
+            },
             {"resultFeedDepth", result_feed_depth},
-            {"jobWorkers", job_audio_dir.empty() ? 0 : job_workers},
+            {
+                "jobWorkers",
+                legacy_model_compat && !job_audio_dir.empty()
+                    ? job_workers
+                    : 0,
+            },
             {"maxPcmBodyBytes", max_pcm_body_bytes},
             {"maxArchiveQueryRecords", max_archive_query_records},
             {"httpThreads", http_threads},
@@ -5161,25 +13122,320 @@ int main(int argc, char** argv) {
             {"corsOrigin", cors_origin},
             {"sessionMetadataRequired", require_session_metadata},
             {"auditLogEnabled", !audit_log_file.empty()},
-            {"sessionConfigPersistenceEnabled", !session_config_dir.empty()},
-            {"resultArchiveEnabled", !result_archive_dir.empty()},
-            {"archiveEventIndexEnabled", !result_archive_dir.empty()},
+            {
+                "sessionConfigPersistenceEnabled",
+                legacy_model_compat && !session_config_dir.empty(),
+            },
+            {
+                "resultArchiveEnabled",
+                legacy_model_compat && !result_archive_dir.empty(),
+            },
+            {
+                "archiveEventIndexEnabled",
+                legacy_model_compat && !result_archive_dir.empty(),
+            },
             {"ingestStatusEnabled", !ingest_status_file.empty()},
             {"webUiEnabled", !web_ui_file.empty()},
+            {"webAssetsEnabled", !web_asset_root.empty()},
             {"openApiEnabled", !openapi_file.empty()},
+            {
+                "moduleGraphPersistenceEnabled",
+                legacy_model_compat &&
+                    !module_graph_file.empty(),
+            },
+            {
+                "legacyModuleGraphFileIgnored",
+                !legacy_model_compat &&
+                    !module_graph_file.empty(),
+            },
+            {"moduleGraphRevision", module_graph.snapshot().revision},
+            {
+                "workspacePersistenceEnabled",
+                legacy_model_compat && !workspace_file.empty(),
+            },
+            {
+                "workspaceWritesEnabled",
+                legacy_model_compat,
+            },
         });
     });
 
     server.Get("/ready", [&](const httplib::Request&, httplib::Response& res) {
         const auto sessions = manager.session_count();
-        const bool capacity_available = max_sessions == 0 || sessions < max_sessions;
+        const bool capacity_available =
+            max_sessions == 0 || sessions < max_sessions;
+        if (legacy_model_compat) {
+            // Preserve the deprecated AnalysisSession deployment contract
+            // exactly inside its explicitly selected compatibility mode.
+            json_response(res, {
+                {"ok", capacity_available},
+                {"ready", capacity_available},
+                {"authorityMode", "legacyCompatibility"},
+                {"activeProjectId", nullptr},
+                {"projectProjectionStatus", nullptr},
+                {"projectRuntimePrepared", nullptr},
+                {"sessions", sessions},
+                {"maxSessions", max_sessions},
+                {"capacityAvailable", capacity_available},
+            }, capacity_available ? 200 : 503);
+            return;
+        }
+
+        std::lock_guard lifecycle_lock(
+            module_graph_update_mutex);
+        const auto active =
+            project_authority.snapshot();
+        (void)reconcile_acquisition_host_state(active);
+
+        json issues = json::array();
+        for (const auto& issue : active.projection.issues) {
+            const bool needs_configuration =
+                issue.issue_class ==
+                pamguard::project::ProjectionIssueClass::
+                    NeedsConfiguration;
+            json item = {
+                {"source", "projectProjection"},
+                {"code", issue.code},
+                {"message", issue.message},
+                {
+                    "action",
+                    needs_configuration
+                        ? "configure-controlled-unit"
+                        : "edit-project",
+                },
+            };
+            if (!issue.unit_id.empty()) {
+                item["unitId"] = issue.unit_id;
+            }
+            if (!issue.role_id.empty()) {
+                item["roleId"] = issue.role_id;
+            }
+            if (!issue.display_id.empty()) {
+                item["displayId"] = issue.display_id;
+            }
+            issues.push_back(std::move(item));
+        }
+
+        const auto runtime_revision = module_runtime.revision();
+        const bool runtime_prepared_at_revision =
+            project_runtime_prepared &&
+            runtime_revision == active.working_revision;
+        if (active.projection.runnable() &&
+            !runtime_prepared_at_revision) {
+            json issue = {
+                {"source", "projectRuntime"},
+                {"code", "project_runtime_preparation_failed"},
+                {
+                    "message",
+                    project_runtime_prepared
+                        ? "The prepared runtime revision does not match the "
+                          "active project working revision"
+                        : "The active project runtime is not prepared",
+                },
+                {"action", "reprepare-project-runtime"},
+                {
+                    "expectedWorkingRevision",
+                    active.working_revision,
+                },
+                {"runtimeRevision", runtime_revision},
+            };
+            issues.push_back(std::move(issue));
+        }
+
+        const auto recorder_unit_ids =
+            active_sound_recorder_unit_ids(active);
+        const bool storage_required =
+            !recorder_unit_ids.empty();
+        bool storage_ready = true;
+        json storage_available_bytes = nullptr;
+        json storage_capacity_bytes = nullptr;
+        if (storage_required) {
+            const auto current_storage =
+                sound_recorder_deployment_from_environment();
+            storage_ready = current_storage.ready();
+            std::string storage_error =
+                current_storage.readiness_error;
+            std::string storage_code =
+                "required_storage_unavailable";
+            if (storage_ready) {
+                std::error_code space_error;
+                const auto space =
+                    std::filesystem::space(
+                        *current_storage.root,
+                        space_error);
+                if (space_error) {
+                    storage_ready = false;
+                    storage_error =
+                        "PAMGUARD_RECORDING_ROOT capacity could not be "
+                        "inspected";
+                }
+                else {
+                    storage_available_bytes = space.available;
+                    storage_capacity_bytes = space.capacity;
+                    if (space.available == 0) {
+                        storage_ready = false;
+                        storage_code = "required_storage_full";
+                        storage_error =
+                            "PAMGUARD_RECORDING_ROOT has no available "
+                            "space";
+                    }
+                }
+            }
+            if (!storage_ready) {
+                for (const auto& unit_id : recorder_unit_ids) {
+                    issues.push_back({
+                        {"source", "storage"},
+                        {"code", storage_code},
+                        {"message", storage_error},
+                        {"unitId", unit_id},
+                        {"action", "restore-recording-root"},
+                    });
+                }
+            }
+        }
+
+        std::size_t required_capture_count = 0;
+        std::size_t healthy_capture_count = 0;
+        {
+            std::lock_guard capture_lock(
+                capture_state.mutex);
+            for (auto& [key, requirement] :
+                 capture_state.required_project_captures) {
+                ++required_capture_count;
+                auto capture =
+                    capture_state.running.find(key);
+                if (capture != capture_state.running.end() &&
+                    !capture_process_running(capture->second)) {
+                    requirement.child_failed = true;
+                    close_capture_process(capture->second);
+                    capture_state.running.erase(capture);
+                    capture = capture_state.running.end();
+                }
+                if (requirement.child_failed) {
+                    issues.push_back({
+                        {"source", "acquisitionCapture"},
+                        {"code", "required_capture_dead"},
+                        {
+                            "message",
+                            "The required Acquisition capture process "
+                            "exited unexpectedly",
+                        },
+                        {
+                            "unitId",
+                            requirement.target.
+                                acquisition_unit_id,
+                        },
+                        {"action", "restart-capture"},
+                        {
+                            "actionTarget",
+                            "/v1/projects/active/acquisitions/" +
+                                requirement.target.
+                                    acquisition_unit_id +
+                                "/capture:start",
+                        },
+                    });
+                    continue;
+                }
+                if (capture == capture_state.running.end()) {
+                    issues.push_back({
+                        {"source", "acquisitionCapture"},
+                        {"code", "required_capture_not_running"},
+                        {
+                            "message",
+                            "The required Acquisition capture process is "
+                            "not running",
+                        },
+                        {
+                            "unitId",
+                            requirement.target.
+                                acquisition_unit_id,
+                        },
+                        {"action", "restart-capture"},
+                        {
+                            "actionTarget",
+                            "/v1/projects/active/acquisitions/" +
+                                requirement.target.
+                                    acquisition_unit_id +
+                                "/capture:start",
+                        },
+                    });
+                    continue;
+                }
+                ++healthy_capture_count;
+            }
+        }
+
+        const bool ready = issues.empty();
         json_response(res, {
-            {"ok", capacity_available},
-            {"ready", capacity_available},
-            {"sessions", sessions},
-            {"maxSessions", max_sessions},
-            {"capacityAvailable", capacity_available},
-        }, capacity_available ? 200 : 503);
+            {"schemaVersion", 1},
+            {"ok", ready},
+            {"ready", ready},
+            {"authorityMode", "project"},
+            {"activeProjectId", active.project.project_id},
+            {"workingRevision", active.working_revision},
+            {
+                "savedRevision",
+                active.saved_revision
+                    ? json(*active.saved_revision)
+                    : json(nullptr),
+            },
+            {"dirty", active.dirty},
+            {
+                "projectProjectionStatus",
+                projection_status_name(active.projection),
+            },
+            {
+                "projectRuntimePrepared",
+                runtime_prepared_at_revision,
+            },
+            {"projectRuntimeRevision", runtime_revision},
+            {
+                "projectRuntimeRunning",
+                module_runtime.running(),
+            },
+            {
+                "acquisitionCapture",
+                {
+                    {
+                        "required",
+                        required_capture_count > 0,
+                    },
+                    {
+                        "requiredCount",
+                        required_capture_count,
+                    },
+                    {
+                        "healthyCount",
+                        healthy_capture_count,
+                    },
+                    {
+                        "ready",
+                        healthy_capture_count ==
+                            required_capture_count,
+                    },
+                },
+            },
+            {
+                "storage",
+                {
+                    {"required", storage_required},
+                    {"ready", storage_ready},
+                    {
+                        "recorderUnitCount",
+                        recorder_unit_ids.size(),
+                    },
+                    {
+                        "availableBytes",
+                        storage_available_bytes,
+                    },
+                    {
+                        "capacityBytes",
+                        storage_capacity_bytes,
+                    },
+                },
+            },
+            {"issues", std::move(issues)},
+        }, ready ? 200 : 503);
     });
 
     auto serve_web_ui = [&](const httplib::Request&, httplib::Response& res) {
@@ -5197,6 +13453,52 @@ int main(int argc, char** argv) {
     };
     server.Get("/", serve_web_ui);
     server.Get("/index.html", serve_web_ui);
+
+    server.Get(
+        R"(/assets/(.*))",
+        [&](const httplib::Request& req, httplib::Response& res) {
+            if (web_asset_root.empty()) {
+                json_response(
+                    res,
+                    {{"error", "web assets are not configured"}},
+                    404);
+                return;
+            }
+
+            const auto resolution = resolve_web_asset(
+                web_asset_root,
+                req.matches[1].str());
+            switch (resolution.status) {
+            case WebAssetStatus::Forbidden:
+                json_response(
+                    res,
+                    {{"error", "asset path is outside the allowed assets subtree"}},
+                    403);
+                return;
+            case WebAssetStatus::NotFound:
+                json_response(res, {{"error", "asset not found"}}, 404);
+                return;
+            case WebAssetStatus::Unsupported:
+                json_response(
+                    res,
+                    {{"error", "unsupported web asset type"}},
+                    415);
+                return;
+            case WebAssetStatus::Ok:
+                break;
+            }
+
+            try {
+                res.status = 200;
+                res.set_header("X-Content-Type-Options", "nosniff");
+                res.set_content(
+                    read_binary_file(resolution.path),
+                    std::string(resolution.content_type));
+            }
+            catch (const std::exception& error) {
+                json_response(res, {{"error", error.what()}}, 500);
+            }
+        });
 
     auto serve_openapi = [&](const httplib::Request&, httplib::Response& res) {
         if (openapi_file.empty()) {
@@ -5217,8 +13519,69 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        pamguard::project::ActiveProjectSnapshot active_project;
+        bool active_runtime_prepared = false;
+        bool active_runtime_running = false;
+        {
+            std::lock_guard lifecycle_lock(
+                module_graph_update_mutex);
+            active_project = project_authority.snapshot();
+            active_runtime_prepared =
+                project_runtime_prepared;
+            active_runtime_running =
+                module_runtime.running();
+        }
         std::ostringstream metrics;
-        metrics << "# HELP pamguard_sessions Active analysis sessions\n";
+        const auto active_project_label =
+            prometheus_label_escape(
+                active_project.project.project_id);
+        metrics << "# HELP pamguard_authority_mode_info Active configuration authority mode\n";
+        metrics << "# TYPE pamguard_authority_mode_info gauge\n";
+        metrics << "pamguard_authority_mode_info{mode=\""
+                << (legacy_model_compat
+                        ? "legacyCompatibility"
+                        : "project")
+                << "\"} 1\n";
+        metrics << "# HELP pamguard_active_project_info Active unified project identity\n";
+        metrics << "# TYPE pamguard_active_project_info gauge\n";
+        metrics << "pamguard_active_project_info{project_id=\""
+                << active_project_label << "\"} 1\n";
+        metrics << "# HELP pamguard_active_project_working_revision In-memory project working revision\n";
+        metrics << "# TYPE pamguard_active_project_working_revision gauge\n";
+        metrics << "pamguard_active_project_working_revision "
+                << active_project.working_revision << "\n";
+        metrics << "# HELP pamguard_active_project_authority_revision Project concurrency authority revision\n";
+        metrics << "# TYPE pamguard_active_project_authority_revision gauge\n";
+        metrics << "pamguard_active_project_authority_revision "
+                << active_project.authority_revision << "\n";
+        metrics << "# HELP pamguard_active_project_has_saved_baseline Whether the active project has a durable saved baseline\n";
+        metrics << "# TYPE pamguard_active_project_has_saved_baseline gauge\n";
+        metrics << "pamguard_active_project_has_saved_baseline "
+                << (active_project.saved_revision ? 1 : 0)
+                << "\n";
+        metrics << "# HELP pamguard_active_project_saved_revision Durable saved project revision, 0 before first save\n";
+        metrics << "# TYPE pamguard_active_project_saved_revision gauge\n";
+        metrics << "pamguard_active_project_saved_revision "
+                << active_project.saved_revision.value_or(0)
+                << "\n";
+        metrics << "# HELP pamguard_active_project_dirty Whether working content differs from the durable baseline\n";
+        metrics << "# TYPE pamguard_active_project_dirty gauge\n";
+        metrics << "pamguard_active_project_dirty "
+                << (active_project.dirty ? 1 : 0) << "\n";
+        metrics << "# HELP pamguard_active_project_runnable Whether project projection satisfies all start requirements\n";
+        metrics << "# TYPE pamguard_active_project_runnable gauge\n";
+        metrics << "pamguard_active_project_runnable "
+                << (active_project.projection.runnable() ? 1 : 0)
+                << "\n";
+        metrics << "# HELP pamguard_active_project_runtime_prepared Whether the projected runtime is prepared at the working revision\n";
+        metrics << "# TYPE pamguard_active_project_runtime_prepared gauge\n";
+        metrics << "pamguard_active_project_runtime_prepared "
+                << (active_runtime_prepared ? 1 : 0) << "\n";
+        metrics << "# HELP pamguard_active_project_runtime_running Whether the active project runtime is running\n";
+        metrics << "# TYPE pamguard_active_project_runtime_running gauge\n";
+        metrics << "pamguard_active_project_runtime_running "
+                << (active_runtime_running ? 1 : 0) << "\n";
+        metrics << "# HELP pamguard_sessions Legacy compatibility analysis sessions\n";
         metrics << "# TYPE pamguard_sessions gauge\n";
         metrics << "pamguard_sessions " << manager.session_count() << "\n";
         metrics << "# HELP pamguard_max_sessions Configured session capacity, 0 means unlimited\n";
@@ -5343,6 +13706,9 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
         const auto source_filter = req.has_param("sourceId") ? req.get_param_value("sourceId") : std::string();
         const auto owner_filter = req.has_param("ownerId") ? req.get_param_value("ownerId") : std::string();
         const auto tenant_filter = req.has_param("tenantId") ? req.get_param_value("tenantId") : std::string();
@@ -5376,6 +13742,9 @@ int main(int argc, char** argv) {
 
     server.Post("/sessions", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         try {
@@ -5458,6 +13827,9 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
         const auto session_id = req.matches[1].str();
         std::lock_guard lock(configs_mutex);
         const auto found = configs.find(session_id);
@@ -5473,6 +13845,9 @@ int main(int argc, char** argv) {
 
     server.Delete(R"(/sessions/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         const auto session_id = req.matches[1].str();
@@ -5509,6 +13884,9 @@ int main(int argc, char** argv) {
 
     server.Get(R"(/sessions/([^/]+)/archive)", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         try {
@@ -5555,6 +13933,9 @@ int main(int argc, char** argv) {
 
     server.Get(R"(/sessions/([^/]+)/archive/detections/summary)", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         try {
@@ -5611,6 +13992,9 @@ int main(int argc, char** argv) {
 
     server.Get(R"(/sessions/([^/]+)/archive/detections\.csv)", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         try {
@@ -5673,6 +14057,9 @@ int main(int argc, char** argv) {
 
     server.Get(R"(/sessions/([^/]+)/archive/detections)", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         try {
@@ -5756,6 +14143,9 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
         if (result_feed_depth == 0) {
             json_response(res, {{"error", "result feed is disabled (PAMGUARD_RESULT_FEED_DEPTH=0)"}}, 404);
             return;
@@ -5816,6 +14206,9 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
         const auto session_id = req.matches[1].str();
         {
             std::lock_guard lock(configs_mutex);
@@ -5849,6 +14242,9 @@ int main(int argc, char** argv) {
 
     server.Get(R"(/sessions/([^/]+)/audio/index)", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         if (audio_archive_dir.empty()) {
@@ -5889,6 +14285,9 @@ int main(int argc, char** argv) {
 
     server.Post("/jobs", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         if (job_audio_dir.empty()) {
@@ -5946,6 +14345,9 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
         json jobs = json::array();
         std::size_t queued = 0;
         std::size_t running = 0;
@@ -5968,6 +14370,9 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
         const auto job_id = req.matches[1].str();
         std::lock_guard lock(job_state.mutex);
         const auto found = job_state.jobs.find(job_id);
@@ -5980,6 +14385,9 @@ int main(int argc, char** argv) {
 
     server.Delete(R"(/jobs/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         const auto job_id = req.matches[1].str();
@@ -6008,6 +14416,9 @@ int main(int argc, char** argv) {
 
     server.Post(R"(/sessions/([^/]+)/pcm-f32le)", [&](const httplib::Request& req, httplib::Response& res) {
         if (!require_authorized(req, res, api_key)) {
+            return;
+        }
+        if (!require_legacy_analysis_compatibility(res)) {
             return;
         }
         try {
@@ -6210,6 +14621,9 @@ int main(int argc, char** argv) {
         if (!require_authorized(req, res, api_key)) {
             return;
         }
+        if (!require_legacy_analysis_compatibility(res)) {
+            return;
+        }
         try {
             const auto session_id = req.matches[1].str();
             pamguard::core::AnalysisConfig config;
@@ -6262,14 +14676,18 @@ int main(int argc, char** argv) {
     });
 
     std::cout << "PAMGuard C++ engine service listening on http://0.0.0.0:" << port << "\n";
-    if (!session_config_dir.empty()) {
+    if (legacy_model_compat && !session_config_dir.empty()) {
         std::cout << "Session config persistence enabled at " << session_config_dir.string() << "\n";
     }
-    if (!result_archive_dir.empty()) {
+    if (legacy_model_compat && !result_archive_dir.empty()) {
         std::cout << "Result archiving enabled at " << result_archive_dir.string() << "\n";
     }
     if (!web_ui_file.empty()) {
         std::cout << "Web UI serving enabled from " << web_ui_file.string() << "\n";
+    }
+    if (!web_asset_root.empty()) {
+        std::cout << "Web asset serving enabled at /assets/ from "
+                  << web_asset_root.string() << "\n";
     }
     if (!openapi_file.empty()) {
         std::cout << "OpenAPI serving enabled from " << openapi_file.string() << "\n";
@@ -6284,7 +14702,7 @@ int main(int argc, char** argv) {
         std::cout << "PCM request body limit enabled at " << max_pcm_body_bytes << " bytes\n";
     }
     std::vector<std::thread> job_worker_threads;
-    if (!job_audio_dir.empty()) {
+    if (legacy_model_compat && !job_audio_dir.empty()) {
         for (std::size_t worker = 0; worker < job_workers; ++worker) {
             job_worker_threads.emplace_back([&job_state, &job_audio_dir, &result_archive_dir, &archive_mutex,
                                              &audio_archive_dir, &audio_archive_mutex] {

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
+#include <string>
 
 #include "pamguard/dsp/JtFft.h"
 
@@ -473,6 +474,116 @@ std::vector<double> design_arbitrary_fir(double sample_rate_hz,
 }
 
 } // namespace
+
+void validate_filter_params(
+    const IirFilterParams& params,
+    double sample_rate_hz) {
+    const auto finite_non_negative = [](double value) {
+        return std::isfinite(value) && value >= 0.0;
+    };
+    if (!finite_non_negative(params.low_pass_freq_hz) ||
+        !finite_non_negative(params.high_pass_freq_hz)) {
+        throw std::invalid_argument(
+            "Filter corner frequencies must be finite and non-negative");
+    }
+    if (!finite_non_negative(params.pass_band_ripple_db) ||
+        !finite_non_negative(params.stop_band_ripple_db)) {
+        throw std::invalid_argument(
+            "Filter pass/stop ripple values must be finite and non-negative");
+    }
+    if (!std::isfinite(params.cheby_gamma)) {
+        throw std::invalid_argument("Filter chebyGamma must be finite");
+    }
+    if (sample_rate_hz < 0.0 || !std::isfinite(sample_rate_hz)) {
+        throw std::invalid_argument(
+            "Filter validation sample rate must be finite and non-negative");
+    }
+
+    if (params.type == IirFilterType::None) {
+        return;
+    }
+    if (params.order < 1 || params.order > 32) {
+        throw std::invalid_argument("Filter order must be between 1 and 32");
+    }
+    if ((params.type == IirFilterType::FirWindow ||
+         params.type == IirFilterType::FirArbitrary) &&
+        params.order > 16) {
+        throw std::invalid_argument(
+            "FIR filter order exponent must be between 1 and 16");
+    }
+    if (params.type == IirFilterType::Chebyshev &&
+        !(params.pass_band_ripple_db > 0.0)) {
+        throw std::invalid_argument(
+            "Chebyshev pass-band ripple must be positive");
+    }
+    if ((params.type == IirFilterType::FirWindow ||
+         params.type == IirFilterType::FirArbitrary) &&
+        !(params.cheby_gamma > 0.0)) {
+        throw std::invalid_argument(
+            "FIR chebyGamma must be positive");
+    }
+
+    const bool uses_low_corner =
+        params.type != IirFilterType::FirArbitrary &&
+        (params.band == IirFilterBand::LowPass ||
+         params.band == IirFilterBand::BandPass ||
+         params.band == IirFilterBand::BandStop);
+    const bool uses_high_corner =
+        params.type != IirFilterType::FirArbitrary &&
+        (params.band == IirFilterBand::HighPass ||
+         params.band == IirFilterBand::BandPass ||
+         params.band == IirFilterBand::BandStop);
+    if (uses_low_corner && !(params.low_pass_freq_hz > 0.0F)) {
+        throw std::invalid_argument(
+            "Active low-pass corner frequency must be positive");
+    }
+    if (uses_high_corner && !(params.high_pass_freq_hz > 0.0F)) {
+        throw std::invalid_argument(
+            "Active high-pass corner frequency must be positive");
+    }
+    if (uses_low_corner && uses_high_corner &&
+        params.high_pass_freq_hz > params.low_pass_freq_hz) {
+        throw std::invalid_argument(
+            "Filter high-pass corner must not exceed its low-pass corner");
+    }
+
+    const auto validate_nyquist = [&](double frequency, const char* name) {
+        if (sample_rate_hz > 0.0 && frequency > sample_rate_hz / 2.0) {
+            throw std::invalid_argument(
+                std::string("Filter ") + name +
+                " exceeds the filter-design Nyquist frequency");
+        }
+    };
+    if (uses_low_corner) {
+        validate_nyquist(params.low_pass_freq_hz, "low-pass corner");
+    }
+    if (uses_high_corner) {
+        validate_nyquist(params.high_pass_freq_hz, "high-pass corner");
+    }
+
+    if (params.type != IirFilterType::FirArbitrary) {
+        return;
+    }
+    if (params.arbitrary_frequencies_hz.size() < 2 ||
+        params.arbitrary_frequencies_hz.size() !=
+            params.arbitrary_gains_db.size()) {
+        throw std::invalid_argument(
+            "Arbitrary FIR needs equal frequency/gain arrays with at least two points");
+    }
+    for (std::size_t i = 0;
+         i < params.arbitrary_frequencies_hz.size();
+         ++i) {
+        const auto frequency = params.arbitrary_frequencies_hz[i];
+        const auto gain = params.arbitrary_gains_db[i];
+        if (!finite_non_negative(frequency) || !std::isfinite(gain) ||
+            (i > 0 &&
+             frequency < params.arbitrary_frequencies_hz[i - 1])) {
+            throw std::invalid_argument(
+                "Arbitrary FIR control points must be finite, non-negative, and frequency ordered");
+        }
+        validate_nyquist(frequency, "arbitrary control point");
+    }
+}
 
 FastIirFilter::FastIirFilter(double sample_rate_hz, const IirFilterParams& params) {
     if (params.type == IirFilterType::None || sample_rate_hz <= 0.0 || params.order <= 0) {

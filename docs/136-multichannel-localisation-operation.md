@@ -2,6 +2,11 @@
 
 Date: 2026-07-01
 
+Deployment update (2026-07-25): production ingest now targets one stable Sound
+Acquisition controlled-unit instance in the active project. Session routes
+below describe retained compatibility validation, not the production ingest
+identity model.
+
 ## Input model
 
 Each engine session represents one source/input.
@@ -70,22 +75,29 @@ Session status also reports:
 
 For live deployments:
 
-- Keep all channels from one physical array in the same session so sample frames remain aligned.
-- Use one ingest worker per source/session.
-- Use explicit array geometry for localisation-capable sessions.
-- Keep session routing sticky to the engine instance that owns the session.
+- Keep all channels from one physical array in the same Acquisition stream so
+  sample frames remain aligned.
+- Use one ingest writer per stable Acquisition unit/timeline.
+- Use explicit project Array Manager geometry for localisation-capable units.
+- Keep ingest routing sticky to the engine instance that owns the active
+  project runtime.
 - Monitor `sampleContinuity`, `sampleDiscontinuities`, `idleMs`, and `lastSampleDelta`.
 
 ## Current claim boundary
 
-It is safe to claim that the current web/API path carries multi-channel click delay and bearing foundation outputs.
+The current web/API path carries multichannel click delays, pair/LSQ/ML-grid
+bearings, ambiguity-preserving world/earth vectors, and PAMGuard-style
+sub-array-shape localiser selection. It also provides engine-derived
+click-train pair-bearing aggregation, whistle contour/region localisation, and
+a project-authoritative tracked-click HTTP case that uses five posed
+observations to recover a known target with navigation-beam/range/height
+filter evidence.
 
-It is not safe yet to claim full PAMGuard click localisation equivalence.
+That is still not a claim of complete PAMGuard localisation equivalence.
+Remaining boundaries are:
 
-Remaining work includes:
-
-- PAMGuard-style array-shape-based bearing localiser selection (current selection is a channel-count rule) and train-level bearing aggregation.
-- More array geometry models.
-- Whistle/moan localisation.
-- Real multi-channel Icecast/BUTT soak tests.
-- Controlled localisation fixtures with known source positions.
+- PAMGuard reference parity for the higher-level train-localiser behaviour;
+- live GPS/georeferencing and finer-than-chunk pose interpolation;
+- time-varying array deformation;
+- whistle-group target localisation; and
+- sustained real multichannel Icecast/BUTT ingest soaking.

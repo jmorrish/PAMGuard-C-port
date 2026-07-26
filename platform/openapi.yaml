@@ -2,11 +2,2117 @@ openapi: 3.1.0
 info:
   title: PAMGuard Enterprise Port API
   version: 0.1.0
-  description: Initial API contract sketch for source management, analysis sessions, and result access.
+  description: >-
+    API contract for the project-authoritative controlled-unit model,
+    generated runtime graph, and live data/audio streams. Deprecated
+    AnalysisSession, archive, offline-job, and legacy runtime-identity routes
+    are an isolated scientific-oracle surface available only when
+    PAMGUARD_LEGACY_MODEL_COMPAT=1.
 paths:
+  /v1/controlled-unit-types:
+    get:
+      summary: List Java-authoritative controlled-unit and display-provider types
+      description: Returns the immutable descriptor catalogue used to construct and validate project mutation requests, including strict Java-authoritative settings and runtime-expansion contracts for Filter, Decimator, Noise Monitor, Noise Band Monitor, LTSA, and the Whistle and Moan Detector.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Controlled-unit descriptor catalogue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ControlledUnitCatalogue"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Catalogue unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+  /v1/projects:
+    get:
+      summary: List saved PAMGuard projects
+      description: Includes available projects and entries that could only be classified as corrupt or unsupported.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Saved project summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedProjectList"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Project store unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+  /v1/projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      summary: Read one durable project file
+      description: Returns the exact saved envelope. This route never changes which project is active.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Durable project envelope
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectFileEnvelope"
+        "400":
+          description: projectId is not a lowercase UUIDv4
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Saved project does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "422":
+          description: Saved project is corrupt or uses an unsupported format or schema
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "500":
+          description: Project store error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+  /v1/projects/active:
+    get:
+      summary: Read the authoritative in-memory project
+      description: The response ETag is the strong concurrency token required by every active-project command and mutation, including validation-only mutation batches.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Active project snapshot
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveProjectSnapshot"
+        "401":
+          description: Unauthorized
+  /v1/projects/active/inspection:
+    get:
+      summary: Inspect the active project's generated runtime and ownership index
+      description: Shows deterministic runtime children, blocks, bindings, connections, displays, and the generated low-level graph without creating a second writable authority.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Generated projection inspection
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectInspection"
+        "401":
+          description: Unauthorized
+  /v1/projects/active/compatible-sources:
+    get:
+      summary: Find project-level sources compatible with a controlled-unit input
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: unitId
+          required: true
+          schema:
+            $ref: "#/components/schemas/ProjectUuid"
+        - in: query
+          name: inputRole
+          required: true
+          schema:
+            $ref: "#/components/schemas/ProjectRoleId"
+      responses:
+        "200":
+          description: Compatible public outputs
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCompatibleSources"
+        "400":
+          description: Missing or malformed query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Target public input does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "422":
+          description: Target unit, role, or descriptor is not usable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+  /v1/projects/active/click-detectors/{clickDetectorUnitId}/tracked-events:
+    parameters:
+      - $ref: "#/components/parameters/ClickDetectorUnitId"
+    get:
+      summary: List manual tracked-click events for one Click Detector
+      description: >-
+        Returns the retained-runtime equivalent of PAMGuard OfflineEventDataUnit membership.
+        Event relationships are scientific runtime data scoped to the active project working
+        revision; ClickLocParams remain portable controlled-unit settings.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Current manual tracked events and localisation prerequisites
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedClickEventList"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Click Detector controlled unit does not exist
+        "409":
+          description: Isolated legacy-model compatibility mode is active
+        "500":
+          description: Tracked-event state could not be read
+  /v1/projects/active/click-detectors/{clickDetectorUnitId}/tracked-events:assign:
+    parameters:
+      - $ref: "#/components/parameters/ClickDetectorUnitId"
+    post:
+      summary: Assign retained clicks to a manual tracked event
+      description: >-
+        A null eventId creates max(existing event ID)+1, matching TrackedClickLocaliser. An
+        existing eventId moves clicks from their former event first and deletes empty former
+        events. This is not the automatic simple click-train tracker.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignTrackedClicksRequest"
+      responses:
+        "200":
+          description: Clicks assigned to an existing event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedClickEvent"
+        "201":
+          description: New event created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedClickEvent"
+        "400":
+          description: Invalid retained-click locators or event ID
+        "404":
+          description: Click Detector, retained click, or target event does not exist
+        "409":
+          description: Click runtime is not prepared at the active working revision
+  /v1/projects/active/click-detectors/{clickDetectorUnitId}/tracked-clicks/{clickUid}:
+    parameters:
+      - $ref: "#/components/parameters/ClickDetectorUnitId"
+      - name: clickUid
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: uint64
+          minimum: 1
+    delete:
+      summary: Remove one click from its manual tracked event
+      description: Deletes the event as PAMGuard does when its last click is removed.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Click membership removed
+        "400":
+          description: Invalid click UID
+        "404":
+          description: Click Detector or click membership does not exist
+  /v1/projects/active/click-detectors/{clickDetectorUnitId}/tracked-events/{trackedEventId}:
+    parameters:
+      - $ref: "#/components/parameters/ClickDetectorUnitId"
+      - $ref: "#/components/parameters/TrackedEventId"
+    delete:
+      summary: Delete one manual tracked event
+      description: Removes the event and all of its click membership relationships.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Event deleted
+        "400":
+          description: Invalid event ID
+        "404":
+          description: Click Detector or tracked event does not exist
+  /v1/projects/active/click-detectors/{clickDetectorUnitId}/tracked-events/{trackedEventId}:reassign:
+    parameters:
+      - $ref: "#/components/parameters/ClickDetectorUnitId"
+      - $ref: "#/components/parameters/TrackedEventId"
+    post:
+      summary: Reassign an entire manual tracked event
+      description: Moves all source-event clicks to an existing target and deletes the source event.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReassignTrackedEventRequest"
+      responses:
+        "200":
+          description: Combined target event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedClickEvent"
+        "400":
+          description: Invalid or identical source and target IDs
+        "404":
+          description: Click Detector, source event, or target event does not exist
+  /v1/projects/active/click-detectors/{clickDetectorUnitId}/tracked-events/{trackedEventId}:localise:
+    parameters:
+      - $ref: "#/components/parameters/ClickDetectorUnitId"
+      - $ref: "#/components/parameters/TrackedEventId"
+    post:
+      summary: Assess and run selected PAMGuard group-localisation algorithms
+      description: >-
+        Uses the ClickLocParams persisted on the Click Detector. Until retained clicks carry
+        navigation-derived moving array origins/headings, bearing algorithms return an explicit
+        scientific-prerequisite conflict. MCMC is additionally Viewer-only and needs per-click
+        hydrophone/time-delay geometry. No automatic-train result is substituted.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        "200":
+          description: Least Squares executed, including raw fits and PAMGuard post-fit filtering
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedClickLocalisationRun"
+        "400":
+          description: Invalid event ID or request body
+        "404":
+          description: Click Detector or tracked event does not exist
+        "409":
+          description: Selected algorithms lack required bearings, origins, navigation track, geometry, or run mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedClickLocalisationRun"
+  /v1/projects/active/acquisitions:
+    get:
+      summary: List active project Acquisition instances
+      description: >-
+        Returns only stable project controlled-unit identities and operator-facing audio/capture
+        state. Generated runtime node identifiers are deliberately not part of this contract.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Active Acquisition instances
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveAcquisitionList"
+        "401":
+          description: Unauthorized
+        "409":
+          description: Isolated legacy-model compatibility mode is active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "500":
+          description: Acquisition state could not be reconciled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+  /v1/projects/active/acquisitions/{acquisitionUnitId}/host-binding:
+    parameters:
+      - $ref: "#/components/parameters/AcquisitionUnitId"
+    get:
+      summary: Read one Acquisition instance's host binding
+      description: >-
+        Host bindings are deployment state keyed by stable project and Acquisition unit identity.
+        Their command target advances to the current working revision while that Acquisition still
+        exists, so unrelated display/layout edits do not discard the selected host source. They are
+        separate from portable Java-authoritative Acquisition settings.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Current host binding
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionHostBinding"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Acquisition instance or host binding does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "409":
+          description: Active-project mode is unavailable or the binding target became stale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "500":
+          description: Acquisition state could not be read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+    put:
+      summary: Create or compare-and-swap an Acquisition host binding
+      description: >-
+        Device bindings must exactly match current host enumeration. URL bindings accept bounded,
+        non-credentialed HTTP(S) URLs. Executable paths, FFmpeg options, credentials, process IDs,
+        and generated runtime IDs cannot be supplied. expectedBindingRevision 0 is create-only;
+        a non-zero value must exactly match the current binding.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutAcquisitionHostBindingRequest"
+      responses:
+        "200":
+          description: Existing binding replaced
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PutAcquisitionHostBindingResponse"
+        "201":
+          description: Binding created
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PutAcquisitionHostBindingResponse"
+        "400":
+          description: Malformed source or non-conforming strict request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "401":
+          description: Unauthorized
+        "404":
+          description: The target is not an active pamguard.acquisition controlled unit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "409":
+          description: Working revision or binding revision is stale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "501":
+          description: Exact host-device binding is unavailable on this platform
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "502":
+          description: FFmpeg device enumeration failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "503":
+          description: Capture is disabled for host-device binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "500":
+          description: Binding operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+    delete:
+      summary: Delete an Acquisition host binding with compare-and-swap
+      description: Deleting a binding also stops any capture child for the exact instance target.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAcquisitionHostBindingRequest"
+      responses:
+        "200":
+          description: Delete result
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteAcquisitionHostBindingResponse"
+        "400":
+          description: Malformed or non-conforming strict request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "401":
+          description: Unauthorized
+        "404":
+          description: The target is not an active pamguard.acquisition controlled unit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "409":
+          description: Working revision or binding revision is stale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "500":
+          description: Binding operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+  /v1/projects/active/acquisitions/{acquisitionUnitId}/capture-status:
+    parameters:
+      - $ref: "#/components/parameters/AcquisitionUnitId"
+    get:
+      summary: Read capture status for one active Acquisition instance
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Capture status
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionCaptureStatus"
+        "401":
+          description: Unauthorized
+        "404":
+          description: The target is not an active pamguard.acquisition controlled unit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "500":
+          description: Capture state could not be reconciled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+  "/v1/projects/active/acquisitions/{acquisitionUnitId}/capture:start":
+    parameters:
+      - $ref: "#/components/parameters/AcquisitionUnitId"
+    post:
+      summary: Start the bound capture for one active Acquisition instance
+      description: >-
+        Resolves the generated acquisition node internally from the active project. URL capture is
+        available on Windows; exact audio-device capture requires Windows DirectShow. On non-Windows
+        hosts the current shell-backed, Windows-binary-mode ffmpeg_stream_ingest pipe is reported as
+        unavailable rather than invoked unsafely; supervised PCM ingest remains cross-platform. The
+        bridge rejects shell-expansion characters even in otherwise valid host sources.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpectedAcquisitionWorkingRevision"
+      responses:
+        "200":
+          description: Capture child started
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionCaptureStartResponse"
+        "400":
+          description: Malformed or non-conforming strict request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Acquisition instance or host binding does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "409":
+          description: Working revision is stale, runtime unavailable, bound device absent, or capture already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "422":
+          description: Bound source cannot safely be passed through the current ingest bridge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "501":
+          description: Bound host-device or URL ingest-bridge capture is unavailable on this platform
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "502":
+          description: Device enumeration or child-process start failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "503":
+          description: Capture is disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "500":
+          description: Capture start failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+  "/v1/projects/active/acquisitions/{acquisitionUnitId}/capture:stop":
+    parameters:
+      - $ref: "#/components/parameters/AcquisitionUnitId"
+    post:
+      summary: Stop capture for one active Acquisition instance
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpectedAcquisitionWorkingRevision"
+      responses:
+        "200":
+          description: Capture child stopped and reaped
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionCaptureStopResponse"
+        "400":
+          description: Malformed or non-conforming strict request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Acquisition instance or running capture does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "409":
+          description: Working revision is stale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "500":
+          description: Capture stop failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+  /v1/projects/active/acquisitions/{acquisitionUnitId}/pcm-f32le:
+    parameters:
+      - $ref: "#/components/parameters/AcquisitionUnitId"
+      - $ref: "#/components/parameters/ExpectedProjectIdQuery"
+      - $ref: "#/components/parameters/ExpectedAcquisitionWorkingRevisionQuery"
+      - in: query
+        name: startSample
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - in: query
+        name: timeMs
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: headingDegrees
+        description: Array heading at this chunk; heading, pitch, and roll must be supplied together.
+        schema:
+          type: number
+      - in: query
+        name: pitchDegrees
+        schema:
+          type: number
+      - in: query
+        name: rollDegrees
+        schema:
+          type: number
+      - in: query
+        name: originEastMetres
+        description: Local array-centroid east coordinate; all three origin coordinates must be supplied together.
+        schema:
+          type: number
+      - in: query
+        name: originNorthMetres
+        schema:
+          type: number
+      - in: query
+        name: originHeightMetres
+        schema:
+          type: number
+    post:
+      summary: Ingest supervised interleaved f32le PCM into one Acquisition instance
+      description: >-
+        The stable unit ID is resolved internally to the exact generated acquisition node in the
+        active project. Requests cannot select a legacy session or generated runtime module.
+        The expected project ID and working revision fence a worker from writing after an active
+        project switch or edit, even if another project contains the same controlled-unit UUID.
+        Optional finite pose triplets are sampled with the chunk and retained through raw-audio
+        processing for time-specific click and tracked-event localisation.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "202":
+          description: PCM accepted and synchronously published through the selected raw-audio block
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionPcmAccepted"
+        "400":
+          description: Invalid revision parameter, timeline value, or PCM frame shape
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "401":
+          description: Unauthorized
+        "404":
+          description: The target is not an active pamguard.acquisition controlled unit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "409":
+          description: Working revision is stale or its projected runtime is not running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "413":
+          description: PCM body exceeds the configured service maximum
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+        "500":
+          description: PCM ingest failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionOperatorError"
+  /v1/projects/active/sound-recorders/{soundRecorderUnitId}/status:
+    parameters:
+      - $ref: "#/components/parameters/SoundRecorderUnitId"
+    get:
+      summary: Read operator status for one active Sound Recorder
+      description: >-
+        Resolves the stable controlled-unit identity to its generated runtime node internally.
+        Host storage paths and generated runtime identities are never returned; an open recording
+        is represented only by its filename.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Sound Recorder deployment, runtime, transport, and current-file status
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderStatus"
+        "401":
+          description: Unauthorized
+        "404":
+          description: The target is not an active pamguard.sound-recorder controlled unit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderOperatorError"
+        "409":
+          description: Isolated legacy-model compatibility mode is active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderOperatorError"
+        "500":
+          description: Sound Recorder status could not be read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderOperatorError"
+  /v1/projects/active/sound-recorders/{soundRecorderUnitId}/transport:
+    parameters:
+      - $ref: "#/components/parameters/SoundRecorderUnitId"
+    put:
+      summary: Change transport for one active Sound Recorder
+      description: >-
+        The command is compare-and-swap protected by the active project working revision.
+        Only off and continuous are currently executable. PAMGuard cycle and restore-last are
+        reported explicitly as not implemented rather than approximated.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutSoundRecorderTransportRequest"
+      responses:
+        "200":
+          description: Transport applied, or already in the requested mode
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderStatus"
+        "400":
+          description: Malformed or non-conforming strict request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderOperatorError"
+        "401":
+          description: Unauthorized
+        "404":
+          description: The target is not an active pamguard.sound-recorder controlled unit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderOperatorError"
+        "409":
+          description: Working revision is stale or the exact runtime is not prepared and running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderOperatorError"
+        "501":
+          description: The requested PAMGuard transport mode has no implemented runtime semantics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderOperatorError"
+        "503":
+          description: Deployment-owned recording storage is not configured or writable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderOperatorError"
+        "500":
+          description: Sound Recorder transport operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoundRecorderOperatorError"
+  /v1/projects/active/mutations:
+    post:
+      summary: Validate or atomically apply typed project mutations
+      description: >-
+        The entire strict batch is evaluated against one active-project ETag. Unknown or duplicate
+        JSON fields are rejected. validateOnly returns a preview without changing the active ETag.
+        Applying a runtime-affecting batch requires the module runtime to be stopped. Configuration
+        templates expand inside the same candidate document and therefore have the same all-or-nothing
+        validation, ETag, and commit semantics as individual typed operations.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectMutationBatch"
+      responses:
+        "200":
+          description: Mutation preview or committed result
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMutationResult"
+        "400":
+          description: Malformed JSON or a non-conforming strict mutation body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "401":
+          description: Unauthorized
+        "409":
+          description: Runtime is running or a prepared candidate became stale
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "412":
+          $ref: "#/components/responses/ProjectPreconditionFailed"
+        "422":
+          description: Mutation is syntactically valid but violates project, descriptor, ownership, binding, or projection rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "428":
+          $ref: "#/components/responses/ProjectPreconditionRequired"
+        "500":
+          description: Runtime activation or rollback failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+  /v1/projects/active/new:
+    post:
+      summary: Replace the active project with a new blank project
+      description: Stops and replaces a running generated runtime only after the candidate has passed project and runtime preflight.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewProjectRequest"
+      responses:
+        "200":
+          description: New active project
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveProjectSnapshot"
+        "400":
+          description: Malformed or non-conforming strict command body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "401":
+          description: Unauthorized
+        "409":
+          description: Active project is dirty and discardDirty is false, or the prepared switch became stale
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "412":
+          $ref: "#/components/responses/ProjectPreconditionFailed"
+        "422":
+          description: Command violates project authority rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "428":
+          $ref: "#/components/responses/ProjectPreconditionRequired"
+        "500":
+          description: Project switch, runtime activation, or rollback failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+  /v1/projects/active/open:
+    post:
+      summary: Open a saved project as the active project
+      description: Stops and replaces a running generated runtime only after the saved candidate has passed project and runtime preflight.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenProjectRequest"
+      responses:
+        "200":
+          description: Opened active project
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveProjectSnapshot"
+        "400":
+          description: Malformed or non-conforming strict command body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Saved project does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "409":
+          description: Active project is dirty and discardDirty is false, or the prepared switch became stale
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "412":
+          $ref: "#/components/responses/ProjectPreconditionFailed"
+        "422":
+          description: Saved project is corrupt, unsupported, or cannot be projected under the active descriptor set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "428":
+          $ref: "#/components/responses/ProjectPreconditionRequired"
+        "500":
+          description: Project switch, runtime activation, or rollback failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+  /v1/projects/active/save:
+    post:
+      summary: Save the active project to its durable identity
+      description: The request body must be empty. Persistence completes before the returned authority revision and ETag are published.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectIfMatch"
+      responses:
+        "200":
+          description: Saved active project
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveProjectSnapshot"
+        "400":
+          description: Save request contained a body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "401":
+          description: Unauthorized
+        "409":
+          description: Durable file changed since it was opened or previously saved
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "412":
+          $ref: "#/components/responses/ProjectPreconditionFailed"
+        "422":
+          description: Active project cannot be saved under project authority rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "428":
+          $ref: "#/components/responses/ProjectPreconditionRequired"
+        "500":
+          description: >-
+            Project persistence failed. code project_save_failed means no successful atomic publish
+            was reported; correct the storage fault and retry with the returned current ETag.
+            code project_save_uncertain means the file may already have been atomically published,
+            but directory durability could not be proven. Do not retry blindly: keep the active
+            project unchanged, re-read /v1/projects/{projectId}, and reconcile its envelope with
+            the active snapshot before deciding whether to retry or open the durable version.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+              examples:
+                uncertainPublish:
+                  summary: Atomic publish occurred but durability is uncertain
+                  value:
+                    error: Project file was atomically published, but the project directory durability barrier failed. Reload the saved project before retrying.
+                    code: project_save_uncertain
+                    currentEtag: '"pgp1-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"'
+  /v1/projects/active/save-as:
+    post:
+      summary: Save the active content as a new durable project identity
+      description: Requires an idle runtime. A successful response activates the new project identity and supplies its durable Location.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveAsProjectRequest"
+      responses:
+        "201":
+          description: New durable project created and made active
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+            Location:
+              description: URI of the newly saved durable project.
+              schema:
+                type: string
+                pattern: "^/v1/projects/[0-9a-f-]{36}$"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveProjectSnapshot"
+        "400":
+          description: Malformed or non-conforming strict command body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "401":
+          description: Unauthorized
+        "409":
+          description: Runtime is running, target durable identity conflicts, or the prepared state became stale
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "412":
+          $ref: "#/components/responses/ProjectPreconditionFailed"
+        "422":
+          description: Active project cannot be saved under project authority rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+        "428":
+          $ref: "#/components/responses/ProjectPreconditionRequired"
+        "500":
+          description: >-
+            Project persistence or runtime reactivation failed. code project_save_failed means no
+            successful atomic publish was reported. code project_save_uncertain means the newly
+            identified project may already have been atomically published, but directory durability
+            could not be proven and the active project was not switched. Do not issue Save As again
+            blindly: refresh /v1/projects, inspect plausible new durable envelopes, and reconcile
+            their identity and content before retrying, opening one, or cleaning up a duplicate.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ProjectETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectError"
+              examples:
+                uncertainPublish:
+                  summary: Save As publish occurred but durability is uncertain
+                  value:
+                    error: Project file was atomically published, but the project directory durability barrier failed. Reload project storage before retrying.
+                    code: project_save_uncertain
+                    currentEtag: '"pgp1-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"'
+  /module-types:
+    get:
+      summary: List composable module types and typed ports
+      description: Returns the runtime module catalogue, settings schemas, defaults, instance limits, and input/output compatibility metadata.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Registered module types
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [moduleTypes, count]
+                properties:
+                  moduleTypes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModuleType"
+                  count:
+                    type: integer
+        "401":
+          description: Unauthorized
+  /module-graph:
+    get:
+      summary: Read the generated low-level module graph
+      description: Read-only compatibility view generated from the active project. Use the /v1/projects/active routes for all changes.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Current graph document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleGraph"
+        "401":
+          description: Unauthorized
+    put:
+      summary: Direct low-level graph writes are disabled
+      description: >-
+        The active project is the sole write authority, so project mode
+        returns project_authority_required. When
+        PAMGUARD_LEGACY_MODEL_COMPAT=1, this route writes only the isolated
+        compatibility graph and cannot change the active project.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "401":
+          description: Unauthorized
+        "405":
+          description: Project authority is required; Allow is GET
+          headers:
+            Allow:
+              schema:
+                type: string
+                const: GET
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectAuthorityRequiredError"
+  /module-graph/validate:
+    post:
+      summary: Validate and lifecycle-preflight a candidate graph without changing runtime state
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModuleGraph"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid, issues]
+                properties:
+                  valid:
+                    type: boolean
+                  issues:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GraphIssue"
+        "400":
+          description: Malformed graph document
+        "401":
+          description: Unauthorized
+  /module-graph/compatible-sources:
+    get:
+      summary: Discover compatible output ports for one graph input
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: moduleId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: portId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Type-, capability-, and cycle-compatible sources
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sources, count]
+                properties:
+                  sources:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CompatibleSource"
+                  count:
+                    type: integer
+        "400":
+          description: Missing target endpoint
+        "401":
+          description: Unauthorized
+  /data-blocks:
+    get:
+      summary: List the executable runtime's typed data blocks
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Current runtime data-block catalogue
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [graphRevision, running, dataBlocks, count]
+                properties:
+                  graphRevision:
+                    type: integer
+                  running:
+                    type: boolean
+                  dataBlocks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DataBlock"
+                  count:
+                    type: integer
+        "401":
+          description: Unauthorized
+  /module-runtime/status:
+    get:
+      summary: Inspect module lifecycle state and output-block health
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Current graph module states and per-output counters
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [graphRevision, running, modules, count]
+                properties:
+                  graphRevision:
+                    type: integer
+                  running:
+                    type: boolean
+                  modules:
+                    type: array
+                    items:
+                      type: object
+                      required: [moduleId, typeId, name, enabled, state, outputs]
+                      properties:
+                        moduleId:
+                          type: string
+                        typeId:
+                          type: string
+                        name:
+                          type: string
+                        enabled:
+                          type: boolean
+                        state:
+                          type: string
+                          enum: [created, prepared, running, stopped, error, disabled, external]
+                        outputs:
+                          type: array
+                          items:
+                            $ref: "#/components/schemas/DataBlock"
+                  count:
+                    type: integer
+        "401":
+          description: Unauthorized
+  /module-runtime/control:
+    post:
+      summary: Start, stop, flush, or reset the composable runtime
+      description: Cold activation is idle. Stop first quiesces module capture, then flushes buffered scientific units in dependency order and stops nodes in reverse dependency order. A partial stop failure is returned as an error and is not reported as clean idle.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [start, stop, flush, reset]
+                restart:
+                  type: boolean
+                  description: For reset, restore the previous running state by default.
+      responses:
+        "200":
+          description: Lifecycle action completed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [action, graphRevision, running, capturesStopped]
+                properties:
+                  action:
+                    type: string
+                  graphRevision:
+                    type: integer
+                  running:
+                    type: boolean
+                  capturesStopped:
+                    type: integer
+                    minimum: 0
+        "400":
+          description: Invalid action or lifecycle state
+        "401":
+          description: Unauthorized
+        "409":
+          description: Lifecycle precondition failed
+        "500":
+          description: Lifecycle operation failed or Stop could not reach clean idle
+  /data-blocks/{blockId}/stream:
+    get:
+      summary: Stream one selected typed data block as NDJSON
+      description: Presentation delivery is bounded and drop-oldest, so a slow display cannot block scientific processing. The stream ends when its graph revision is replaced.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: blockId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: channels
+          description: Comma-separated channel indices to retain when channel metadata is present.
+          schema:
+            type: string
+            example: "0,1"
+        - in: query
+          name: sequences
+          description: Comma-separated sequence indices to retain when sequence metadata is present.
+          schema:
+            type: string
+        - in: query
+          name: firstBin
+          description: First FFT magnitude bin to include.
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: binCount
+          description: Number of FFT magnitude bins to include; zero means all remaining bins.
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: cadenceMs
+          description: Minimum presentation interval between emitted units; zero preserves every unit.
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: history
+          description: Number of retained historical units to prepend, capped at 4096.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 4096
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [ndjson]
+      responses:
+        "200":
+          description: Newline-delimited DataUnit objects with blank-line heartbeats
+          headers:
+            X-PAMGuard-Block-Id:
+              schema:
+                type: string
+            X-PAMGuard-Graph-Revision:
+              schema:
+                type: integer
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/DataUnit"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Unknown data block
+  /data-blocks/{blockId}/history:
+    get:
+      summary: Read the bounded recent history of one typed data block
+      description: Returns the newest retained units, oldest first. The optional limit is capped at 4096.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: blockId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 4096
+      responses:
+        "200":
+          description: Retained data units and current block health counters
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [blockId, graphRevision, units, count, stats]
+                properties:
+                  blockId:
+                    type: string
+                  graphRevision:
+                    type: integer
+                  units:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DataUnit"
+                  count:
+                    type: integer
+                  stats:
+                    $ref: "#/components/schemas/DataBlockStats"
+        "400":
+          description: Invalid limit
+        "401":
+          description: Unauthorized
+        "404":
+          description: Unknown data block
+  /data-blocks/{blockId}/audio-f32le:
+    get:
+      summary: Stream selected raw-audio channels as binary float PCM
+      description: >-
+        Streams interleaved little-endian float32 PCM directly from a playable
+        raw-audio block. Presentation delivery is bounded and drop-oldest, so
+        playback cannot block scientific processing. Response headers declare
+        the sample rate, selected channel count, block identity, and framing.
+        The default raw format is unframed PCM. The framed format emits one or
+        more PGA1 packets: 40 little-endian header bytes (magic, header size,
+        channels, frames, Unix time ms, start sample, cumulative dropped
+        transport frames) followed by interleaved float32 samples.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: blockId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: channels
+          description: Comma-separated physical source channel indices; defaults to all available channels.
+          schema:
+            type: string
+            example: "0,1"
+        - in: query
+          name: format
+          description: Raw PCM compatibility stream or timestamped/drop-aware PGA1 packets.
+          schema:
+            type: string
+            enum: [raw, framed]
+            default: raw
+      responses:
+        "200":
+          description: Interleaved binary float32 PCM
+          headers:
+            X-PAMGuard-Block-Id:
+              schema:
+                type: string
+            X-PAMGuard-Sample-Rate-Hz:
+              schema:
+                type: number
+            X-PAMGuard-Channel-Count:
+              schema:
+                type: integer
+            X-PAMGuard-Channels:
+              schema:
+                type: string
+            X-PAMGuard-Audio-Framing:
+              schema:
+                type: string
+                enum: [raw, pga1]
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            application/vnd.pamguard.audio-f32le:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid or unavailable channel selection
+        "401":
+          description: Unauthorized
+        "404":
+          description: Unknown or non-playable data block
+  /workspaces:
+    get:
+      summary: List legacy operator workspaces
+      description: >-
+        Deprecated compatibility view. Project-owned display hierarchy and
+        layout are exposed by /v1/projects/active. Legacy persistence is
+        loaded and this route is available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Saved workspace summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schemaVersion, workspaces, count, persistent]
+                properties:
+                  schemaVersion:
+                    type: integer
+                  workspaces:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WorkspaceSummary"
+                  count:
+                    type: integer
+                  persistent:
+                    type: boolean
+        "401":
+          description: Unauthorized
+        "404":
+          description: Legacy compatibility mode is not enabled
+  /workspaces/{workspaceId}:
+    parameters:
+      - in: path
+        name: workspaceId
+        required: true
+        schema:
+          type: string
+          pattern: "^[A-Za-z0-9_.-]{1,128}$"
+    get:
+      summary: Load one legacy operator workspace
+      description: >-
+        Read-only compatibility view; it is not a writable source of
+        active-project presentation state. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Saved workspace layout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceLayout"
+        "400":
+          description: Invalid workspace ID
+        "401":
+          description: Unauthorized
+        "404":
+          description: Legacy compatibility mode or workspace unavailable
+    put:
+      summary: Direct workspace writes are disabled
+      description: >-
+        Display hierarchy and layout are owned by the active project, so
+        project mode returns project_authority_required. Explicit legacy
+        compatibility mode writes only its isolated oracle workspace store.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "401":
+          description: Unauthorized
+        "405":
+          description: Project authority is required; Allow is GET
+          headers:
+            Allow:
+              schema:
+                type: string
+                const: GET
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectAuthorityRequiredError"
+    delete:
+      summary: Direct workspace deletion is disabled
+      description: >-
+        Display hierarchy and layout are owned by the active project, so
+        project mode returns project_authority_required. Explicit legacy
+        compatibility mode deletes only from its isolated oracle workspace
+        store.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "401":
+          description: Unauthorized
+        "405":
+          description: Project authority is required; Allow is GET
+          headers:
+            Allow:
+              schema:
+                type: string
+                const: GET
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectAuthorityRequiredError"
+  /module-runtime/acquisitions/{moduleId}/pcm-f32le:
+    post:
+      summary: Push PCM into a generated acquisition node (compatibility)
+      description: >-
+        Low-level compatibility ingress exposing a generated runtime identifier. Project-mode
+        supervisors and operator clients must use
+        /v1/projects/active/acquisitions/{acquisitionUnitId}/pcm-f32le.
+        This route is available only when PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: moduleId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: startSample
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: timeMs
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "202":
+          description: PCM accepted and synchronously published through the runtime graph
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted, moduleId, inputFrames, startSample, graphRevision]
+                properties:
+                  accepted:
+                    type: boolean
+                  moduleId:
+                    type: string
+                  inputFrames:
+                    type: integer
+                  startSample:
+                    type: integer
+                  graphRevision:
+                    type: integer
+        "400":
+          description: Invalid PCM body or acquisition format
+        "401":
+          description: Unauthorized
+        "404":
+          description: Unknown acquisition module
+  /module-runtime/operator-inputs/{moduleId}/events:
+    post:
+      summary: Publish an event into a generated operator-input node (compatibility)
+      description: >-
+        Low-level compatibility route exposing a generated runtime identifier and
+        the non-authoritative GraphOperatorEvent shape. No project-authority
+        equivalent is exposed until the owning PAMGuard controlled unit is
+        implemented. This route is available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: moduleId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperatorEventInput"
+      responses:
+        "200":
+          description: Operator event accepted into the module's typed output block
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted, moduleId, graphRevision]
+                properties:
+                  accepted:
+                    type: boolean
+                  moduleId:
+                    type: string
+                  graphRevision:
+                    type: integer
+        "400":
+          description: Invalid event, stopped runtime, or wrong module type
+        "401":
+          description: Unauthorized
+        "404":
+          description: Compatibility mode is disabled or the generated operator-input module is unknown
+  /capture/devices:
+    get:
+      summary: List server-side sound-card capture devices
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Enumerated audio devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptureDeviceListResponse"
+        "401":
+          description: Unauthorized
+        "501":
+          description: Capture-device enumeration is unavailable on this platform
+        "502":
+          description: FFmpeg could not be started for device enumeration
+        "503":
+          description: Capture disabled
+  /capture/status:
+    get:
+      summary: Inspect legacy session/generated-node capture processes (compatibility)
+      description: Available only when PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Active captures and their graph-module or legacy-session targets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptureStatusResponse"
+        "401":
+          description: Unauthorized
+  /capture/start:
+    post:
+      summary: Start FFmpeg capture by legacy session or generated node (compatibility)
+      description: >-
+        Compatibility route exposing legacy session and generated runtime identities. Project-mode
+        clients must bind and start a stable Acquisition controlled-unit
+        instance instead. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                moduleId:
+                  type: string
+                sessionId:
+                  type: string
+                device:
+                  type: string
+                url:
+                  type: string
+                  pattern: "^https?://"
+                expectedGraphRevision:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: Required for a module target. The request is rejected if this is not the active graph revision.
+              oneOf:
+                - required: [moduleId, device, expectedGraphRevision]
+                - required: [moduleId, url, expectedGraphRevision]
+                - required: [sessionId, device]
+                - required: [sessionId, url]
+      responses:
+        "200":
+          description: Capture process started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptureStartResponse"
+        "400":
+          description: Invalid or ambiguous target/source
+        "401":
+          description: Unauthorized
+        "404":
+          description: Target acquisition module or session unavailable
+        "409":
+          description: Capture already running for the target, or expectedGraphRevision is stale
+        "502":
+          description: Device enumeration or ingest process start failed
+        "503":
+          description: Capture disabled
+  /capture/stop:
+    post:
+      summary: Stop capture by legacy session or generated node (compatibility)
+      description: >-
+        Available only when PAMGUARD_LEGACY_MODEL_COMPAT=1. Project-mode
+        clients must use the stable Acquisition controlled-unit capture route.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                moduleId:
+                  type: string
+                sessionId:
+                  type: string
+                expectedGraphRevision:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: Required for a module target. The request is rejected if this is not the active graph revision.
+              oneOf:
+                - required: [moduleId, expectedGraphRevision]
+                - required: [sessionId]
+      responses:
+        "200":
+          description: Capture process stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptureStopResponse"
+        "400":
+          description: Invalid or ambiguous target
+        "401":
+          description: Unauthorized
+        "404":
+          description: No capture for the target
+        "409":
+          description: expectedGraphRevision is stale
+        "501":
+          description: Capture is unavailable on this platform
+  /assets/{assetPath}:
+    get:
+      summary: Get a confined web UI asset
+      description: >-
+        Serves a regular file from the explicitly configured
+        PAMGUARD_WEB_ASSET_DIR, or from the validated assets directory beside
+        PAMGUARD_WEB_UI_FILE when no explicit directory is set. assetPath may
+        include nested slash-separated directories. Paths are URL-decoded,
+        structurally validated, canonicalized, confined after symlink
+        resolution, and restricted to an explicit MIME allowlist. This is not
+        a general filesystem or static-directory route.
+      parameters:
+        - in: path
+          name: assetPath
+          required: true
+          schema:
+            type: string
+          description: Relative path below the configured web assets root.
+      responses:
+        "200":
+          description: Web asset with an extension-specific Content-Type
+          headers:
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+        "403":
+          description: Traversal, encoded traversal, or symlink escape
+        "404":
+          description: Asset serving is disabled or the regular file is absent
+        "415":
+          description: File extension is not in the web asset MIME allowlist
   /health:
     get:
-      summary: Get low-level engine health
+      summary: Get engine and project-authority health
       responses:
         "200":
           description: Engine health
@@ -14,11 +2120,45 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [ok, authorityMode, activeProjectId, projectWorkingRevision, projectSavedRevision, projectDirty, projectProjectionStatus, projectRuntimePrepared, projectRuntimeRunning, sessions, maxSessions]
                 properties:
                   ok:
                     type: boolean
+                    const: true
+                  authorityMode:
+                    type: string
+                    enum: [project, legacyCompatibility]
+                  legacyCompatibilityEnabled:
+                    type: boolean
+                    description: >-
+                      True only for the isolated deprecated AnalysisSession
+                      scientific-oracle service mode.
+                  activeProjectId:
+                    $ref: "#/components/schemas/ProjectUuid"
+                  projectWorkingRevision:
+                    type: integer
+                    format: int64
+                    minimum: 0
+                  projectSavedRevision:
+                    type:
+                      - integer
+                      - "null"
+                    format: int64
+                    minimum: 0
+                  projectDirty:
+                    type: boolean
+                  projectProjectionStatus:
+                    type: string
+                    enum: [invalid, needsConfiguration, runnable]
+                  projectRuntimePrepared:
+                    type: boolean
+                  projectRuntimeRunning:
+                    type: boolean
                   sessions:
                     type: integer
+                    description: >-
+                      Deprecated compatibility AnalysisSession count; always
+                      zero in project authority mode.
                   maxSessions:
                     type: integer
                   resultSchemaVersion:
@@ -47,31 +2187,38 @@ paths:
                     type: boolean
                   webUiEnabled:
                     type: boolean
+                  webAssetsEnabled:
+                    type: boolean
                   openApiEnabled:
                     type: boolean
+                  moduleGraphPersistenceEnabled:
+                    type: boolean
+                    const: false
+                  legacyModuleGraphFileIgnored:
+                    type: boolean
+                  moduleGraphRevision:
+                    type: integer
+                  workspacePersistenceEnabled:
+                    type: boolean
+                  workspaceWritesEnabled:
+                    type: boolean
+                    const: false
   /ready:
     get:
-      summary: Capacity-aware readiness check
+      summary: Project- and capacity-aware readiness check
       responses:
         "200":
-          description: Service is ready to accept another session
+          description: Service has capacity and a runnable, prepared active project
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                  ready:
-                    type: boolean
-                  sessions:
-                    type: integer
-                  maxSessions:
-                    type: integer
-                  capacityAvailable:
-                    type: boolean
+                $ref: "#/components/schemas/ReadinessResponse"
         "503":
-          description: Service is alive but not ready for new sessions
+          description: Service lacks capacity or its active project is not runnable and prepared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
   /ingest/status:
     get:
       summary: Get optional multi-source ingest supervisor status
@@ -98,11 +2245,48 @@ paths:
           description: Ingest status file is not configured or not present
         "500":
           description: Ingest status file is present but cannot be read as JSON
+  /sessions/{sessionId}/results/stream:
+    get:
+      summary: Stream a legacy session result feed as NDJSON
+      description: >-
+        Legacy AnalysisSession scientific-oracle stream. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1. Blank lines are heartbeats and each
+        non-empty line is one versioned result document.
+      tags: [Compatibility]
+      deprecated: true
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sinceSeq
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Heartbeat-delimited NDJSON result stream
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+        "404":
+          description: Compatibility mode, result feed, or session unavailable
   /sessions/{sessionId}/results:
     get:
       summary: Poll a session's live result feed (shared-session subscribers)
+      tags: [Compatibility]
+      deprecated: true
       description: >-
-        Returns result bodies newer than sinceSeq from a bounded per-session ring
+        Available only when PAMGUARD_LEGACY_MODEL_COMPAT=1. Returns result
+        bodies newer than sinceSeq from a bounded per-session ring
         (PAMGUARD_RESULT_FEED_DEPTH, default 16), each stamped with a monotonically increasing
         seq; latestSeq tells the caller where to resume. Any number of viewers share one engine
         session this way. A viewer further behind than the ring depth loses the gap detectably
@@ -129,8 +2313,11 @@ paths:
   /sessions/{sessionId}/audio/index:
     get:
       summary: List a session's archived audio chunks
+      tags: [Compatibility]
+      deprecated: true
       description: >-
-        Enabled when PAMGUARD_AUDIO_ARCHIVE_DIR is set. Each record carries startSample,
+        Available only when PAMGUARD_LEGACY_MODEL_COMPAT=1 and enabled when
+        PAMGUARD_AUDIO_ARCHIVE_DIR is set. Each record carries startSample,
         frames, timeMs, byte offsets, and the acquisition facts; the contiguous flag is false
         when startSample discontinuities (dropouts/gaps) exist. Replay the audio via POST /jobs
         with audioSession.
@@ -151,8 +2338,11 @@ paths:
   /jobs:
     post:
       summary: Queue an offline WAV analysis job
+      tags: [Compatibility]
+      deprecated: true
       description: >-
-        Enabled when PAMGUARD_JOB_AUDIO_DIR is set. wavFile is relative to that directory and
+        Available only when PAMGUARD_LEGACY_MODEL_COMPAT=1 and enabled when
+        PAMGUARD_JOB_AUDIO_DIR is set. wavFile is relative to that directory and
         must resolve inside it. session is the same body /sessions accepts; sampleRateHz and
         channelCount come from the WAV unless pinned, and a pinned mismatch fails the job.
         Results are archived under sessionId "job-<jobId>" and served by the ordinary
@@ -191,6 +2381,11 @@ paths:
           description: Job id already exists
     get:
       summary: List offline jobs
+      description: >-
+        Legacy AnalysisSession job queue. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -200,6 +2395,11 @@ paths:
   /jobs/{jobId}:
     get:
       summary: Get one offline job's state, progress, and counters
+      description: >-
+        Legacy AnalysisSession job queue. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -216,6 +2416,11 @@ paths:
           description: Unknown job
     delete:
       summary: Cancel a queued job, request cancellation of a running one, or remove a finished record
+      description: >-
+        Legacy AnalysisSession job queue. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -233,6 +2438,11 @@ paths:
   /sessions:
     get:
       summary: List low-level C++ engine sessions
+      description: >-
+        Legacy AnalysisSession scientific-oracle surface. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -282,6 +2492,11 @@ paths:
                       $ref: "#/components/schemas/EngineSessionStatus"
     post:
       summary: Create a low-level C++ engine session
+      description: >-
+        Legacy AnalysisSession scientific-oracle surface. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -316,6 +2531,11 @@ paths:
   /sessions/{sessionId}:
     get:
       summary: Get low-level C++ engine session status
+      description: >-
+        Legacy AnalysisSession scientific-oracle surface. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -336,6 +2556,11 @@ paths:
           description: Session not found
     delete:
       summary: Delete a low-level C++ engine session
+      description: >-
+        Legacy AnalysisSession scientific-oracle surface. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -353,6 +2578,11 @@ paths:
   /sessions/{sessionId}/pcm-f32le:
     post:
       summary: Submit interleaved little-endian float32 PCM to an engine session
+      description: >-
+        Legacy AnalysisSession scientific-oracle ingress. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -435,6 +2665,11 @@ paths:
   /sessions/{sessionId}/archive:
     get:
       summary: Read archived chunk results for a low-level engine session
+      description: >-
+        Legacy AnalysisSession archive. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -494,6 +2729,11 @@ paths:
   /sessions/{sessionId}/archive/detections:
     get:
       summary: Read archived detector events for a low-level engine session
+      description: >-
+        Legacy AnalysisSession archive. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -640,6 +2880,11 @@ paths:
   /sessions/{sessionId}/archive/detections/summary:
     get:
       summary: Summarise archived detector events for a low-level engine session
+      description: >-
+        Legacy AnalysisSession archive. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -765,6 +3010,11 @@ paths:
   /sessions/{sessionId}/archive/detections.csv:
     get:
       summary: Export archived detector events as CSV
+      description: >-
+        Legacy AnalysisSession archive. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -842,6 +3092,11 @@ paths:
   /sessions/{sessionId}/flush:
     post:
       summary: Flush pending detector state for a finite stream or file
+      description: >-
+        Legacy AnalysisSession scientific-oracle surface. Available only when
+        PAMGUARD_LEGACY_MODEL_COMPAT=1.
+      tags: [Compatibility]
+      deprecated: true
       security:
         - ApiKeyAuth: []
         - BearerAuth: []
@@ -971,7 +3226,2963 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
+  headers:
+    ProjectETag:
+      description: Strong opaque active- or durable-project concurrency token. Preserve the surrounding quotes and send the value unchanged in If-Match.
+      schema:
+        type: string
+        pattern: '^"pgp1-[A-Za-z0-9_-]{43}"$'
+  parameters:
+    ProjectId:
+      in: path
+      name: projectId
+      required: true
+      description: Lowercase RFC 4122 UUIDv4 project identity.
+      schema:
+        $ref: "#/components/schemas/ProjectUuid"
+    ProjectIfMatch:
+      in: header
+      name: If-Match
+      required: true
+      description: Exact strong ETag from the most recent active-project response. Wildcards and weak validators are not accepted.
+      schema:
+        type: string
+        pattern: '^"pgp1-[A-Za-z0-9_-]{43}"$'
+    AcquisitionUnitId:
+      in: path
+      name: acquisitionUnitId
+      required: true
+      description: Stable ID of an active controlled unit whose exact type is pamguard.acquisition.
+      schema:
+        $ref: "#/components/schemas/ProjectUuid"
+    ExpectedProjectIdQuery:
+      in: query
+      name: expectedProjectId
+      required: true
+      description: >-
+        Exact stable project ID from the latest active-project/Acquisition read. The request is
+        rejected before ingest if another project is active.
+      schema:
+        $ref: "#/components/schemas/ProjectUuid"
+    SoundRecorderUnitId:
+      in: path
+      name: soundRecorderUnitId
+      required: true
+      description: Stable ID of an active controlled unit whose exact type is pamguard.sound-recorder.
+      schema:
+        $ref: "#/components/schemas/ProjectUuid"
+    ClickDetectorUnitId:
+      in: path
+      name: clickDetectorUnitId
+      required: true
+      description: Stable ID of an active controlled unit whose exact type is pamguard.click-detector.
+      schema:
+        $ref: "#/components/schemas/ProjectUuid"
+    TrackedEventId:
+      in: path
+      name: trackedEventId
+      required: true
+      description: Positive manual tracked-event identity within one retained Click Detector runtime.
+      schema:
+        type: integer
+        format: uint64
+        minimum: 1
+    ExpectedAcquisitionWorkingRevisionQuery:
+      in: query
+      name: expectedWorkingRevision
+      required: true
+      description: >-
+        Exact working revision from the latest active-project/Acquisition read. The request is
+        rejected before ingest if the project has changed.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+  responses:
+    ProjectPreconditionRequired:
+      description: A strong If-Match active-project ETag is required
+      headers:
+        ETag:
+          $ref: "#/components/headers/ProjectETag"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProjectError"
+    ProjectPreconditionFailed:
+      description: If-Match is stale or does not identify the current active-project state
+      headers:
+        ETag:
+          $ref: "#/components/headers/ProjectETag"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProjectError"
   schemas:
+    ProjectUuid:
+      type: string
+      format: uuid
+      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    ProjectEntityId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    ProjectRoleId:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: "^[a-z][A-Za-z0-9]*$"
+    ProjectContentHash:
+      type: string
+      description: sha256-prefixed lowercase digest of canonical project content.
+      pattern: "^sha256:[0-9a-f]{64}$"
+    ProjectError:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        currentEtag:
+          type: string
+          pattern: '^"pgp1-[A-Za-z0-9_-]{43}"$'
+      additionalProperties: false
+    ProjectAuthorityRequiredError:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          const: project_authority_required
+      additionalProperties: false
+    TrackedClickLocator:
+      type: object
+      required: [uid, startSample, channelBitmap]
+      properties:
+        uid:
+          type: integer
+          format: uint64
+          minimum: 1
+        startSample:
+          type: integer
+          format: int64
+        channelBitmap:
+          type: integer
+          format: uint32
+          minimum: 1
+          maximum: 4294967295
+      additionalProperties: false
+    TrackedClickObservation:
+      allOf:
+        - $ref: "#/components/schemas/TrackedClickLocator"
+        - type: object
+          required:
+            - timeMs
+            - bearingRadians
+            - originMetres
+            - headingRadians
+            - earthBearingAmbiguitiesRadians
+            - navigationReferenceId
+          properties:
+            timeMs:
+              type: integer
+              format: int64
+            bearingRadians:
+              type:
+                - number
+                - "null"
+            originMetres:
+              type:
+                - array
+                - "null"
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+              description: Local east, north, and height coordinates captured at click trigger onset.
+            headingRadians:
+              type:
+                - number
+                - "null"
+              description: Time-specific array heading clockwise from north.
+            earthBearingAmbiguitiesRadians:
+              type: array
+              items:
+                type: number
+            navigationReferenceId:
+              type:
+                - string
+                - "null"
+              description: Stable Acquisition/navigation-frame identity; never a generated runtime ID.
+      unevaluatedProperties: false
+    TrackedClickLocaliserSettings:
+      type: object
+      description: >-
+        Portable normalization of ClickLocParams. isSelected follows GeneralGroupLocaliser
+        ordering: Least Squares, 2D Simplex, 3D Simplex, MCMC.
+      required:
+        - isSelected
+        - maxRangeM
+        - maxHeightM
+        - minHeightM
+        - maxTimeMilliseconds
+        - limitPoints
+        - maxPoints
+      properties:
+        isSelected:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: boolean
+        maxRangeM:
+          type: number
+          exclusiveMinimum: 0
+        maxHeightM:
+          type: number
+        minHeightM:
+          type: number
+        maxTimeMilliseconds:
+          type: integer
+          format: uint64
+          minimum: 0
+        limitPoints:
+          type: boolean
+        maxPoints:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+    TrackedClickAlgorithmAvailability:
+      type: object
+      required:
+        - javaIndex
+        - id
+        - javaName
+        - selected
+        - available
+        - unavailableReason
+      properties:
+        javaIndex:
+          type: integer
+          minimum: 0
+          maximum: 3
+        id:
+          type: string
+          enum: [least-squares, simplex-2d, simplex-3d, mcmc]
+        javaName:
+          type: string
+        selected:
+          type: boolean
+        available:
+          type: boolean
+        unavailableReason:
+          type:
+            - string
+            - "null"
+      additionalProperties: false
+    TrackedClickLocalisationAssessment:
+      type: object
+      required: [status, available, code, message, algorithms]
+      properties:
+        status:
+          type: string
+          enum:
+            - available
+            - notEnoughClicks
+            - noAlgorithmSelected
+            - missingBearing
+            - movingArrayOriginUnavailable
+            - timeDelayOriginUnavailable
+            - runModeUnavailable
+            - selectedAlgorithmUnavailable
+        available:
+          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        algorithms:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/TrackedClickAlgorithmAvailability"
+      additionalProperties: false
+    TrackedTargetMotionFit:
+      type: object
+      required:
+        - status
+        - succeeded
+        - positionMetres
+        - rawChi2
+        - reducedChi2
+        - aic
+        - perpendicularErrorMetres
+        - parallelErrorMetres
+        - errorAngleRadians
+        - referenceObservationIndex
+        - selectedObservationIndices
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+            - invalid_point_limit
+            - non_finite_input
+            - no_observations
+            - degenerate_fit
+            - non_convergent_bearings
+        succeeded:
+          type: boolean
+        positionMetres:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type:
+              - number
+              - "null"
+        rawChi2:
+          type: [number, "null"]
+        reducedChi2:
+          type: [number, "null"]
+        aic:
+          type: [number, "null"]
+        perpendicularErrorMetres:
+          type: [number, "null"]
+        parallelErrorMetres:
+          type: [number, "null"]
+        errorAngleRadians:
+          type: [number, "null"]
+        referenceObservationIndex:
+          type: [integer, "null"]
+          minimum: 0
+        selectedObservationIndices:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+      additionalProperties: false
+    TrackedTargetMotionFilterInput:
+      type:
+        - object
+        - "null"
+      properties:
+        perpendicularDistanceMetres:
+          type: [number, "null"]
+        heightMetres:
+          type: [number, "null"]
+      required: [perpendicularDistanceMetres, heightMetres]
+      additionalProperties: false
+    TrackedTargetMotionFilterAssessment:
+      type:
+        - object
+        - "null"
+      properties:
+        passesRunawayGuard:
+          type: boolean
+        passesConfiguredLimits:
+          type: boolean
+        accepted:
+          type: boolean
+      required: [passesRunawayGuard, passesConfiguredLimits, accepted]
+      additionalProperties: false
+    TrackedClickAmbiguityLocalisationResult:
+      type: object
+      required:
+        - ambiguityIndex
+        - accepted
+        - fit
+        - beamSampleTimeMs
+        - beamDistanceMetres
+        - filterInput
+        - filterAssessment
+      properties:
+        ambiguityIndex:
+          type: integer
+          minimum: 0
+        accepted:
+          type: boolean
+        fit:
+          $ref: "#/components/schemas/TrackedTargetMotionFit"
+        beamSampleTimeMs:
+          type: [integer, "null"]
+          format: int64
+        beamDistanceMetres:
+          type: [number, "null"]
+          minimum: 0
+        filterInput:
+          $ref: "#/components/schemas/TrackedTargetMotionFilterInput"
+        filterAssessment:
+          $ref: "#/components/schemas/TrackedTargetMotionFilterAssessment"
+      additionalProperties: false
+    TrackedClickLocalisationRun:
+      type: object
+      required:
+        - status
+        - executed
+        - accepted
+        - code
+        - message
+        - assessment
+        - ambiguities
+      properties:
+        status:
+          type: string
+          enum: [assessmentUnavailable, navigationTrackUnavailable, executed]
+        executed:
+          type: boolean
+        accepted:
+          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        assessment:
+          $ref: "#/components/schemas/TrackedClickLocalisationAssessment"
+        ambiguities:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackedClickAmbiguityLocalisationResult"
+      additionalProperties: false
+    TrackedClickEvent:
+      type: object
+      required:
+        - eventId
+        - comment
+        - clickCount
+        - startTimeMs
+        - endTimeMs
+        - clicks
+        - localisation
+      properties:
+        eventId:
+          type: integer
+          format: uint64
+          minimum: 1
+        comment:
+          type: string
+          const: Manual Click Train Detection
+        clickCount:
+          type: integer
+          minimum: 1
+        startTimeMs:
+          type: integer
+          format: int64
+        endTimeMs:
+          type: integer
+          format: int64
+        clicks:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/TrackedClickObservation"
+        localisation:
+          $ref: "#/components/schemas/TrackedClickLocalisationAssessment"
+      additionalProperties: false
+    TrackedClickEventList:
+      type: object
+      required:
+        - schemaVersion
+        - projectId
+        - workingRevision
+        - clickDetectorUnitId
+        - sourceBlockId
+        - runtimeRunning
+        - persistence
+        - settings
+        - events
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: uint64
+          minimum: 1
+        clickDetectorUnitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        sourceBlockId:
+          type:
+            - string
+            - "null"
+        runtimeRunning:
+          type: boolean
+        persistence:
+          type: string
+          const: retained-runtime-data
+        settings:
+          $ref: "#/components/schemas/TrackedClickLocaliserSettings"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackedClickEvent"
+      additionalProperties: false
+    AssignTrackedClicksRequest:
+      type: object
+      required: [clicks, eventId]
+      properties:
+        clicks:
+          type: array
+          minItems: 1
+          maxItems: 4096
+          items:
+            $ref: "#/components/schemas/TrackedClickLocator"
+        eventId:
+          type:
+            - integer
+            - "null"
+          format: uint64
+          minimum: 1
+      additionalProperties: false
+    ReassignTrackedEventRequest:
+      type: object
+      required: [targetEventId]
+      properties:
+        targetEventId:
+          type: integer
+          format: uint64
+          minimum: 1
+      additionalProperties: false
+    AcquisitionOperatorError:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        requestedWorkingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        currentWorkingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        expectedBindingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        currentBindingRevision:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 1
+        maxPcmBodyBytes:
+          type: integer
+          format: int64
+          minimum: 1
+      additionalProperties: false
+    ActiveAcquisitionSummary:
+      type: object
+      required:
+        - unitId
+        - name
+        - typeId
+        - sampleRateHz
+        - channelCount
+        - hostBindingRevision
+        - configurationStatus
+        - captureRunning
+      properties:
+        unitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        name:
+          type: string
+        typeId:
+          type: string
+          const: pamguard.acquisition
+        sampleRateHz:
+          type:
+            - number
+            - "null"
+          exclusiveMinimum: 0
+        channelCount:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+        hostBindingRevision:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 1
+        configurationStatus:
+          type: string
+          enum: [needsConfiguration, configured]
+          description: Host-owned readiness; remains needsConfiguration until an exact device or non-secret URL binding is selected.
+        captureRunning:
+          type: boolean
+      additionalProperties: false
+    ActiveAcquisitionList:
+      type: object
+      required:
+        - schemaVersion
+        - projectId
+        - workingRevision
+        - runtimeRunning
+        - captureEnabled
+        - urlCaptureCapability
+        - audioDeviceCaptureCapability
+        - acquisitions
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        runtimeRunning:
+          type: boolean
+        captureEnabled:
+          type: boolean
+        urlCaptureCapability:
+          type: string
+          enum: [available, disabled, unavailable-current-ingest-bridge]
+        audioDeviceCaptureCapability:
+          type: string
+          enum: [windows-directshow, unavailable-on-this-platform, disabled]
+        acquisitions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActiveAcquisitionSummary"
+      additionalProperties: false
+    AcquisitionUrlHostBindingSource:
+      type: object
+      required: [kind, url]
+      properties:
+        kind:
+          type: string
+          const: url
+        url:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: "^https?://"
+          description: Bounded HTTP(S) URL with no user-info, credentials, controls, whitespace, or backslashes.
+      additionalProperties: false
+    AcquisitionDeviceHostBindingSource:
+      type: object
+      required: [kind, deviceName]
+      properties:
+        kind:
+          type: string
+          const: device
+        deviceName:
+          type: string
+          minLength: 1
+          description: Exact name from current server-side audio-device enumeration.
+      additionalProperties: false
+    AcquisitionHostBindingSource:
+      oneOf:
+        - $ref: "#/components/schemas/AcquisitionUrlHostBindingSource"
+        - $ref: "#/components/schemas/AcquisitionDeviceHostBindingSource"
+      discriminator:
+        propertyName: kind
+        mapping:
+          url: "#/components/schemas/AcquisitionUrlHostBindingSource"
+          device: "#/components/schemas/AcquisitionDeviceHostBindingSource"
+    AcquisitionHostBinding:
+      type: object
+      required:
+        - schemaVersion
+        - projectId
+        - acquisitionUnitId
+        - workingRevision
+        - bindingRevision
+        - source
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        acquisitionUnitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        bindingRevision:
+          type: integer
+          format: int64
+          minimum: 1
+        source:
+          $ref: "#/components/schemas/AcquisitionHostBindingSource"
+      additionalProperties: false
+    PutAcquisitionHostBindingRequest:
+      type: object
+      required: [expectedWorkingRevision, expectedBindingRevision, source]
+      properties:
+        expectedWorkingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        expectedBindingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Zero creates only when absent; a non-zero value must exactly match the current binding.
+        source:
+          $ref: "#/components/schemas/AcquisitionHostBindingSource"
+      additionalProperties: false
+    PutAcquisitionHostBindingResponse:
+      type: object
+      required: [hostBinding, captureStopped]
+      properties:
+        hostBinding:
+          $ref: "#/components/schemas/AcquisitionHostBinding"
+        captureStopped:
+          type: boolean
+      additionalProperties: false
+    DeleteAcquisitionHostBindingRequest:
+      type: object
+      required: [expectedWorkingRevision, expectedBindingRevision]
+      properties:
+        expectedWorkingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        expectedBindingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+      additionalProperties: false
+    DeleteAcquisitionHostBindingResponse:
+      type: object
+      required:
+        - deleted
+        - projectId
+        - acquisitionUnitId
+        - workingRevision
+        - captureStopped
+      properties:
+        deleted:
+          type: boolean
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        acquisitionUnitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        captureStopped:
+          type: boolean
+      additionalProperties: false
+    ExpectedAcquisitionWorkingRevision:
+      type: object
+      required: [expectedWorkingRevision]
+      properties:
+        expectedWorkingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+      additionalProperties: false
+    AcquisitionCaptureStatus:
+      type: object
+      required:
+        - schemaVersion
+        - projectId
+        - acquisitionUnitId
+        - workingRevision
+        - captureEnabled
+        - hostBindingRevision
+        - running
+        - processId
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        acquisitionUnitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        captureEnabled:
+          type: boolean
+        hostBindingRevision:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 1
+        running:
+          type: boolean
+        processId:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 1
+      additionalProperties: false
+    AcquisitionCaptureStartResponse:
+      type: object
+      required:
+        - started
+        - projectId
+        - acquisitionUnitId
+        - workingRevision
+        - bindingRevision
+        - kind
+        - sampleRateHz
+        - channelCount
+        - processId
+      properties:
+        started:
+          type: boolean
+          const: true
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        acquisitionUnitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        bindingRevision:
+          type: integer
+          format: int64
+          minimum: 1
+        kind:
+          type: string
+          enum: [url, device]
+        sampleRateHz:
+          type: integer
+          minimum: 1
+        channelCount:
+          type: integer
+          minimum: 1
+        processId:
+          type: integer
+          format: int64
+          minimum: 1
+      additionalProperties: false
+    AcquisitionCaptureStopResponse:
+      type: object
+      required: [stopped, projectId, acquisitionUnitId, workingRevision]
+      properties:
+        stopped:
+          type: boolean
+          const: true
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        acquisitionUnitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+      additionalProperties: false
+    AcquisitionPcmAccepted:
+      type: object
+      required:
+        - accepted
+        - projectId
+        - acquisitionUnitId
+        - workingRevision
+        - inputFrames
+        - startSample
+        - orientationAccepted
+        - navigationSampleAccepted
+      properties:
+        accepted:
+          type: boolean
+          const: true
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        acquisitionUnitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        inputFrames:
+          type: integer
+          format: int64
+          minimum: 1
+        startSample:
+          type: integer
+          format: int64
+          minimum: 0
+        orientationAccepted:
+          type: boolean
+        navigationSampleAccepted:
+          type: boolean
+      additionalProperties: false
+    SoundRecorderOperatorError:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        requestedWorkingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        currentWorkingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+      additionalProperties: false
+    PutSoundRecorderTransportRequest:
+      type: object
+      required: [expectedWorkingRevision, transport]
+      properties:
+        expectedWorkingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        transport:
+          type: string
+          enum: [off, continuous, cycle, restore-last]
+      additionalProperties: false
+    SoundRecorderStatus:
+      type: object
+      required:
+        - schemaVersion
+        - projectId
+        - soundRecorderUnitId
+        - workingRevision
+        - configurationReady
+        - deploymentReady
+        - runtimePrepared
+        - runtimeRunning
+        - transport
+        - fileOpen
+        - currentFileName
+        - framesInCurrentFile
+        - completedFileCount
+        - selectedChannelBitmap
+        - sampleRateHz
+        - channelCount
+        - bitDepth
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        soundRecorderUnitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        configurationReady:
+          type: boolean
+        deploymentReady:
+          type: boolean
+        deploymentError:
+          type: string
+          description: Sanitized readiness reason; never contains the configured host path.
+        runtimePrepared:
+          type: boolean
+        runtimeRunning:
+          type: boolean
+        transport:
+          type: string
+          enum: [off, continuous]
+        fileOpen:
+          type: boolean
+        currentFileName:
+          type:
+            - string
+            - "null"
+          description: Filename only; never an absolute or recorder-root-relative directory path.
+        framesInCurrentFile:
+          type: integer
+          format: int64
+          minimum: 0
+        completedFileCount:
+          type: integer
+          format: int64
+          minimum: 0
+        selectedChannelBitmap:
+          type: integer
+          format: int64
+          minimum: 0
+        sampleRateHz:
+          type: integer
+          minimum: 0
+        channelCount:
+          type: integer
+          minimum: 0
+        bitDepth:
+          type: integer
+          enum: [8, 16, 24, 32]
+        commandResult:
+          type: string
+          enum: [applied, already-in-requested-mode]
+      additionalProperties: false
+    ControlledUnitCatalogue:
+      type: object
+      required: [schemaVersion, descriptorSet, controlledUnitTypes, displayProviderTypes, globalSettingsTypes]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        descriptorSet:
+          $ref: "#/components/schemas/ControlledUnitDescriptorSet"
+        controlledUnitTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ControlledUnitTypeDescriptor"
+        displayProviderTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/DisplayProviderTypeDescriptor"
+        globalSettingsTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalSettingsTypeDescriptor"
+      additionalProperties: false
+    ControlledUnitDescriptorSet:
+      type: object
+      required: [id, version, authorityCommit]
+      properties:
+        id:
+          $ref: "#/components/schemas/ProjectEntityId"
+        version:
+          type: integer
+          minimum: 1
+        authorityCommit:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+      additionalProperties: false
+    DescriptorStatus:
+      type: object
+      required: [availability, parity]
+      properties:
+        availability:
+          type: string
+          enum: [available, unavailable]
+        parity:
+          type: string
+      additionalProperties: false
+    DescriptorInstanceRules:
+      type: object
+      required: [minimum, maximum, allowedModes, modeOverrides]
+      properties:
+        minimum:
+          type: integer
+          minimum: 0
+        maximum:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        allowedModes:
+          type: array
+          items:
+            type: string
+            enum: [normal, mixed, viewer]
+        modeOverrides:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/DescriptorInstanceRuleOverride"
+      additionalProperties: false
+    DescriptorInstanceRuleOverride:
+      type: object
+      required: [mode, minimum, maximum]
+      properties:
+        mode:
+          type: string
+          enum: [normal, mixed, viewer]
+        minimum:
+          type: integer
+          minimum: 0
+        maximum:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+      additionalProperties: false
+    PublicRoleDescriptor:
+      type: object
+      required: [id, name, direction, dataType, cardinality, capabilities, javaDataClass, defaultProvider]
+      properties:
+        id:
+          $ref: "#/components/schemas/ProjectRoleId"
+        name:
+          type: string
+        direction:
+          type: string
+          enum: [input, output]
+        dataType:
+          type: string
+        cardinality:
+          type: string
+          enum: ["0..1", "1", "0..N", "1..N"]
+        capabilities:
+          type: array
+          items:
+            type: string
+        javaDataClass:
+          type:
+            - string
+            - "null"
+        defaultProvider:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/DefaultControlledUnitProvider"
+      additionalProperties: false
+    DefaultControlledUnitProvider:
+      type: object
+      required: [controlledUnitTypeId, outputRole]
+      properties:
+        controlledUnitTypeId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        outputRole:
+          $ref: "#/components/schemas/ProjectRoleId"
+      additionalProperties: false
+    SettingsContract:
+      type: object
+      required: [version, schema, defaults, sections, defaultEvidence, changeRules, javaAuthority, status]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        schema:
+          type: object
+          description: JSON Schema for the complete settings object; built-in root objects reject additional properties.
+          additionalProperties: true
+        defaults:
+          type: object
+          additionalProperties: true
+        sections:
+          type: array
+          items:
+            type: object
+            required: [surface, labels]
+            properties:
+              surface:
+                type: string
+              labels:
+                type: array
+                items:
+                  type: string
+            additionalProperties: false
+        defaultEvidence:
+          type: array
+          items:
+            type: object
+            required: [pointer, authorityPath, condition, authority]
+            properties:
+              pointer:
+                type: string
+              authorityPath:
+                type: string
+              condition:
+                type:
+                  - string
+                  - "null"
+              authority:
+                type: string
+              value: {}
+              valueSource:
+                type: string
+        changeRules:
+          type: array
+          items:
+            type: object
+            required: [pointer, policy]
+            properties:
+              pointer:
+                type: string
+              policy:
+                type: string
+                enum: [live-safe, process-restart, stop-required]
+            additionalProperties: false
+        javaAuthority:
+          type: object
+          required: [classes, sourceReferences]
+          properties:
+            classes:
+              type: array
+              items:
+                type: string
+            sourceReferences:
+              type: array
+              items:
+                type: string
+          additionalProperties: false
+        status:
+          type: object
+          required: [parity]
+          properties:
+            parity:
+              type: string
+          additionalProperties: false
+      additionalProperties: false
+    RuntimeEndpointDescriptor:
+      type: object
+      required: [childRole, port]
+      properties:
+        childRole:
+          $ref: "#/components/schemas/ProjectEntityId"
+        port:
+          type: string
+      additionalProperties: false
+    RuntimeExpansionRecipe:
+      type: object
+      required: [id, version, children, publicMappings, internalEdges, contributedDisplayProviderTypeIds]
+      properties:
+        id:
+          $ref: "#/components/schemas/ProjectEntityId"
+        version:
+          type: integer
+          minimum: 1
+        children:
+          type: array
+          items:
+            type: object
+            required: [role, runtimeTypeId, hidden, settingsMapping, status]
+            properties:
+              role:
+                $ref: "#/components/schemas/ProjectEntityId"
+              runtimeTypeId:
+                type: string
+              hidden:
+                type: boolean
+              settingsMapping:
+                type: object
+                required: [sourcePointer, adapterId]
+                properties:
+                  sourcePointer:
+                    type: string
+                  adapterId:
+                    type: string
+                additionalProperties: false
+              status:
+                $ref: "#/components/schemas/DescriptorStatus"
+            additionalProperties: false
+        publicMappings:
+          type: array
+          items:
+            type: object
+            required: [publicRole, direction, runtimeEndpoint]
+            properties:
+              publicRole:
+                $ref: "#/components/schemas/ProjectRoleId"
+              direction:
+                type: string
+                enum: [input, output]
+              runtimeEndpoint:
+                $ref: "#/components/schemas/RuntimeEndpointDescriptor"
+            additionalProperties: false
+        internalEdges:
+          type: array
+          items:
+            type: object
+            required: [id, source, target]
+            properties:
+              id:
+                $ref: "#/components/schemas/ProjectEntityId"
+              source:
+                $ref: "#/components/schemas/RuntimeEndpointDescriptor"
+              target:
+                $ref: "#/components/schemas/RuntimeEndpointDescriptor"
+            additionalProperties: false
+        contributedDisplayProviderTypeIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectEntityId"
+      additionalProperties: false
+    ControlledUnitTypeDescriptor:
+      type: object
+      required: [typeId, descriptorVersion, palette, javaAuthority, status, instanceRules, inputs, outputs, settings, recipe, help]
+      properties:
+        typeId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        descriptorVersion:
+          type: integer
+          minimum: 1
+        palette:
+          type: object
+          required: [registeredName, aliases, menuGroup, tooltip]
+          properties:
+            registeredName:
+              type: string
+            aliases:
+              type: array
+              items:
+                type: string
+            menuGroup:
+              type: string
+            tooltip:
+              type: string
+          additionalProperties: false
+        javaAuthority:
+          type: object
+          required: [registeredName, menuGroup, className, relationship]
+          properties:
+            registeredName:
+              type: string
+            menuGroup:
+              type: string
+            className:
+              type: string
+            relationship:
+              type: string
+          additionalProperties: false
+        status:
+          $ref: "#/components/schemas/DescriptorStatus"
+        instanceRules:
+          $ref: "#/components/schemas/DescriptorInstanceRules"
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicRoleDescriptor"
+        outputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicRoleDescriptor"
+        settings:
+          $ref: "#/components/schemas/SettingsContract"
+        recipe:
+          $ref: "#/components/schemas/RuntimeExpansionRecipe"
+        help:
+          type: object
+          required: [point, sourceReferences]
+          properties:
+            point:
+              type:
+                - string
+                - "null"
+            sourceReferences:
+              type: array
+              items:
+                type: string
+          additionalProperties: false
+      additionalProperties: false
+    DisplayProviderTypeDescriptor:
+      type: object
+      required: [providerTypeId, descriptorVersion, name, ownerControlledUnitTypeId, javaAuthority, status, instanceRules, inputs, outputs, settings, lowLevelCompatibility, help]
+      properties:
+        providerTypeId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        descriptorVersion:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+        ownerControlledUnitTypeId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        javaAuthority:
+          type: object
+          required: [providerClass, componentClass]
+          properties:
+            providerClass:
+              type: string
+            componentClass:
+              type: string
+          additionalProperties: false
+        status:
+          $ref: "#/components/schemas/DescriptorStatus"
+        instanceRules:
+          type: object
+          required: [minimum, maximum, canCreateWithoutSource]
+          properties:
+            minimum:
+              type: integer
+              minimum: 0
+            maximum:
+              type:
+                - integer
+                - "null"
+              minimum: 0
+            canCreateWithoutSource:
+              type: boolean
+          additionalProperties: false
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicRoleDescriptor"
+        outputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicRoleDescriptor"
+        settings:
+          $ref: "#/components/schemas/SettingsContract"
+        lowLevelCompatibility:
+          type: object
+          required: [runtimeTypeId, publicMappings]
+          properties:
+            runtimeTypeId:
+              type: string
+            publicMappings:
+              type: array
+              items:
+                type: object
+                required: [publicRole, lowLevelPort]
+                properties:
+                  publicRole:
+                    $ref: "#/components/schemas/ProjectRoleId"
+                  lowLevelPort:
+                    type: string
+                additionalProperties: false
+          additionalProperties: false
+        help:
+          type: object
+          required: [point, sourceReferences]
+          properties:
+            point:
+              type:
+                - string
+                - "null"
+            sourceReferences:
+              type: array
+              items:
+                type: string
+          additionalProperties: false
+      additionalProperties: false
+    GlobalSettingsTypeDescriptor:
+      type: object
+      required: [typeId, name, adapterId, required, javaAuthority, status, settings, help]
+      properties:
+        typeId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        name:
+          type: string
+        adapterId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        required:
+          type: boolean
+        javaAuthority:
+          type: object
+          required: [registeredName, className, relationship]
+          properties:
+            registeredName:
+              type: string
+            className:
+              type: string
+            relationship:
+              type: string
+          additionalProperties: false
+        status:
+          $ref: "#/components/schemas/DescriptorStatus"
+        settings:
+          $ref: "#/components/schemas/SettingsContract"
+        help:
+          type: object
+          required: [point, sourceReferences]
+          properties:
+            point:
+              type:
+                - string
+                - "null"
+            sourceReferences:
+              type: array
+              items:
+                type: string
+          additionalProperties: false
+      additionalProperties: false
+    ProjectSourceReference:
+      type: object
+      required: [unitId, outputRole]
+      properties:
+        unitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        outputRole:
+          $ref: "#/components/schemas/ProjectRoleId"
+      additionalProperties: false
+    ProjectDisplayOwner:
+      type: object
+      required: [unitId, role]
+      properties:
+        unitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        role:
+          $ref: "#/components/schemas/ProjectRoleId"
+      additionalProperties: false
+    ProjectInputBinding:
+      type: object
+      required: [inputRole, sources]
+      properties:
+        inputRole:
+          $ref: "#/components/schemas/ProjectRoleId"
+        sources:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/ProjectSourceReference"
+      additionalProperties: false
+    ProjectControlledUnit:
+      type: object
+      required: [id, typeId, descriptorVersion, recipe, name, settingsVersion, settings, bindings]
+      properties:
+        id:
+          $ref: "#/components/schemas/ProjectUuid"
+        typeId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        descriptorVersion:
+          type: integer
+          minimum: 1
+        recipe:
+          type: object
+          required: [id, version]
+          properties:
+            id:
+              $ref: "#/components/schemas/ProjectEntityId"
+            version:
+              type: integer
+              minimum: 1
+          additionalProperties: false
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Java-trimmed PAMGuard item name; the engine enforces 50 UTF-16 code units.
+        settingsVersion:
+          type: integer
+          minimum: 1
+        settings:
+          type: object
+          description: Complete strict settings object governed by the selected catalogue descriptor and version.
+          additionalProperties: true
+        bindings:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/ProjectInputBinding"
+      additionalProperties: false
+    ProjectGlobalSettings:
+      type: object
+      required: [schemaVersion, components]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        components:
+          type: array
+          maxItems: 64
+          items:
+            type: object
+            required: [typeId, settingsVersion, settings]
+            properties:
+              typeId:
+                $ref: "#/components/schemas/ProjectEntityId"
+              settingsVersion:
+                type: integer
+                minimum: 1
+              settings:
+                type: object
+                additionalProperties: true
+            additionalProperties: false
+      additionalProperties: false
+    ProjectDisplay:
+      type: object
+      required: [id, providerTypeId, providerVersion, owner, source, settingsVersion, settings]
+      properties:
+        id:
+          $ref: "#/components/schemas/ProjectEntityId"
+        providerTypeId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        providerVersion:
+          type: integer
+          minimum: 1
+        owner:
+          $ref: "#/components/schemas/ProjectDisplayOwner"
+        source:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/ProjectSourceReference"
+        settingsVersion:
+          type: integer
+          minimum: 1
+        settings:
+          type: object
+          additionalProperties: true
+      additionalProperties: false
+    ProjectDisplayGridItem:
+      type: object
+      required: [displayId, column, row, width, height]
+      properties:
+        displayId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        column:
+          type: integer
+          minimum: 0
+          maximum: 23
+        row:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        width:
+          type: integer
+          minimum: 1
+          maximum: 24
+        height:
+          type: integer
+          minimum: 1
+          maximum: 1000
+      additionalProperties: false
+    ProjectDisplayTab:
+      type: object
+      required: [id, name, owner, displays, layout]
+      properties:
+        id:
+          $ref: "#/components/schemas/ProjectEntityId"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The engine measures this limit in Java UTF-16 code units.
+        owner:
+          $ref: "#/components/schemas/ProjectDisplayOwner"
+        displays:
+          type: array
+          maxItems: 128
+          items:
+            $ref: "#/components/schemas/ProjectDisplay"
+        layout:
+          type: object
+          required: [mode, columns, selectedDisplayId, items]
+          properties:
+            mode:
+              type: string
+              enum: [grid, tabs]
+            columns:
+              type: integer
+              minimum: 1
+              maximum: 24
+            selectedDisplayId:
+              oneOf:
+                - type: "null"
+                - $ref: "#/components/schemas/ProjectEntityId"
+            items:
+              type: array
+              maxItems: 128
+              description: Contains exactly one item for each display in the tab.
+              items:
+                $ref: "#/components/schemas/ProjectDisplayGridItem"
+          additionalProperties: false
+      additionalProperties: false
+    ProjectDataModelLayout:
+      type: object
+      required: [nodes, viewport]
+      properties:
+        nodes:
+          type: array
+          maxItems: 1024
+          items:
+            type: object
+            required: [unitId, x, y]
+            properties:
+              unitId:
+                $ref: "#/components/schemas/ProjectUuid"
+              x:
+                type: number
+                minimum: -1000000
+                maximum: 1000000
+              y:
+                type: number
+                minimum: -1000000
+                maximum: 1000000
+            additionalProperties: false
+        viewport:
+          type: object
+          required: [x, y, zoom]
+          properties:
+            x:
+              type: number
+              minimum: -1000000
+              maximum: 1000000
+            y:
+              type: number
+              minimum: -1000000
+              maximum: 1000000
+            zoom:
+              type: number
+              minimum: 0.1
+              maximum: 8
+          additionalProperties: false
+      additionalProperties: false
+    ProjectDocument:
+      type: object
+      required: [schemaVersion, projectId, metadata, mode, descriptorSet, controlledUnits, globalSettings, displayTabs, dataModelLayout]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        metadata:
+          type: object
+          required: [name, description]
+          properties:
+            name:
+              type: string
+              minLength: 1
+              maxLength: 128
+              description: Java-trimmed; the engine measures this limit in UTF-16 code units.
+            description:
+              type: string
+              maxLength: 4096
+              description: The engine measures this limit in Java UTF-16 code units.
+          additionalProperties: false
+        mode:
+          type: string
+          enum: [normal, mixed, viewer]
+        descriptorSet:
+          type: object
+          required: [id, version]
+          properties:
+            id:
+              $ref: "#/components/schemas/ProjectEntityId"
+            version:
+              type: integer
+              minimum: 1
+          additionalProperties: false
+        controlledUnits:
+          type: array
+          maxItems: 1024
+          items:
+            $ref: "#/components/schemas/ProjectControlledUnit"
+        globalSettings:
+          $ref: "#/components/schemas/ProjectGlobalSettings"
+        displayTabs:
+          type: array
+          maxItems: 128
+          description: At most 1024 displays are allowed across all tabs.
+          items:
+            $ref: "#/components/schemas/ProjectDisplayTab"
+        dataModelLayout:
+          $ref: "#/components/schemas/ProjectDataModelLayout"
+      additionalProperties: false
+    ProjectFileEnvelope:
+      type: object
+      required: [fileFormat, fileFormatVersion, canonicalizationVersion, authorityRevision, savedRevision, contentHash, savedAtUnixMs, project]
+      properties:
+        fileFormat:
+          type: string
+          const: pamguard-project
+        fileFormatVersion:
+          type: integer
+          const: 1
+        canonicalizationVersion:
+          type: integer
+          const: 1
+        authorityRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        savedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        contentHash:
+          $ref: "#/components/schemas/ProjectContentHash"
+        savedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        project:
+          $ref: "#/components/schemas/ProjectDocument"
+      additionalProperties: false
+    SavedProjectSummary:
+      type: object
+      required: [projectId, name, description, savedRevision, savedAtUnixMs, status, issue]
+      properties:
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        name:
+          type: string
+        description:
+          type: string
+        savedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        savedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        status:
+          type: string
+          enum: [available, corrupt, unsupported]
+        issue:
+          type:
+            - string
+            - "null"
+      additionalProperties: false
+    SavedProjectList:
+      type: object
+      required: [schemaVersion, projects]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        projects:
+          type: array
+          items:
+            $ref: "#/components/schemas/SavedProjectSummary"
+      additionalProperties: false
+    ProjectProjectionIssue:
+      type: object
+      required: [class, code, message, unitId, roleId, displayId]
+      properties:
+        class:
+          type: string
+          enum: [editor-invalid, needs-configuration]
+        code:
+          type: string
+        message:
+          type: string
+        unitId:
+          type:
+            - string
+            - "null"
+        roleId:
+          type:
+            - string
+            - "null"
+        displayId:
+          type:
+            - string
+            - "null"
+      additionalProperties: false
+    ProjectProjectionSummary:
+      type: object
+      required: [status, issues]
+      properties:
+        status:
+          type: string
+          enum: [invalid, needs-configuration, runnable]
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectProjectionIssue"
+      additionalProperties: false
+    ActiveProjectSnapshot:
+      type: object
+      required: [schemaVersion, project, workingRevision, savedRevision, authorityRevision, workingContentHash, savedContentHash, dirty, etag, projection]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        project:
+          $ref: "#/components/schemas/ProjectDocument"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        savedRevision:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 0
+        authorityRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        workingContentHash:
+          $ref: "#/components/schemas/ProjectContentHash"
+        savedContentHash:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/ProjectContentHash"
+        dirty:
+          type: boolean
+        etag:
+          type: string
+          pattern: '^"pgp1-[A-Za-z0-9_-]{43}"$'
+        projection:
+          $ref: "#/components/schemas/ProjectProjectionSummary"
+      additionalProperties: false
+    ProjectedPublicOutput:
+      type: object
+      required: [unitId, outputRole, runtimeNodeId, runtimePortId, blockId, dataType, capabilities]
+      properties:
+        unitId:
+          $ref: "#/components/schemas/ProjectUuid"
+        outputRole:
+          $ref: "#/components/schemas/ProjectRoleId"
+        runtimeNodeId:
+          type: string
+        runtimePortId:
+          type: string
+        blockId:
+          type: string
+        dataType:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
+    ProjectInspectionProjection:
+      type: object
+      required: [status, issues, runtimeChildren, dataBlocks, publicOutputs, publicInputs, connections, displayTabs, displays, graph]
+      properties:
+        status:
+          type: string
+          enum: [invalid, needs-configuration, runnable]
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectProjectionIssue"
+        runtimeChildren:
+          type: array
+          items:
+            type: object
+            required: [ownerUnitId, childRole, runtimeNodeId, runtimeTypeId]
+            properties:
+              ownerUnitId:
+                $ref: "#/components/schemas/ProjectUuid"
+              childRole:
+                $ref: "#/components/schemas/ProjectEntityId"
+              runtimeNodeId:
+                type: string
+              runtimeTypeId:
+                type: string
+            additionalProperties: false
+        dataBlocks:
+          type: array
+          items:
+            type: object
+            required: [ownerUnitId, childRole, runtimeNodeId, runtimePortId, blockId, dataType, capabilities]
+            properties:
+              ownerUnitId:
+                $ref: "#/components/schemas/ProjectUuid"
+              childRole:
+                $ref: "#/components/schemas/ProjectEntityId"
+              runtimeNodeId:
+                type: string
+              runtimePortId:
+                type: string
+              blockId:
+                type: string
+              dataType:
+                type: string
+              capabilities:
+                type: array
+                items:
+                  type: string
+            additionalProperties: false
+        publicOutputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectedPublicOutput"
+        publicInputs:
+          type: array
+          items:
+            type: object
+            required: [unitId, inputRole, runtimeNodeId, runtimePortId, dataType, cardinality, sources, connectionIds]
+            properties:
+              unitId:
+                $ref: "#/components/schemas/ProjectUuid"
+              inputRole:
+                $ref: "#/components/schemas/ProjectRoleId"
+              runtimeNodeId:
+                type: string
+              runtimePortId:
+                type: string
+              dataType:
+                type: string
+              cardinality:
+                type: string
+                enum: ["0..1", "1", "0..N", "1..N"]
+              sources:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectSourceReference"
+              connectionIds:
+                type: array
+                items:
+                  type: string
+            additionalProperties: false
+        connections:
+          type: array
+          items:
+            type: object
+            required: [id, kind, ownerUnitId, internalEdgeRole, targetInputRole, publicSource]
+            properties:
+              id:
+                type: string
+              kind:
+                type: string
+                enum: [internal, external]
+              ownerUnitId:
+                $ref: "#/components/schemas/ProjectUuid"
+              internalEdgeRole:
+                type:
+                  - string
+                  - "null"
+              targetInputRole:
+                type:
+                  - string
+                  - "null"
+              publicSource:
+                oneOf:
+                  - type: "null"
+                  - $ref: "#/components/schemas/ProjectSourceReference"
+            additionalProperties: false
+        displayTabs:
+          type: array
+          items:
+            type: object
+            required: [tabId, ownerUnitId, ownerRole]
+            properties:
+              tabId:
+                $ref: "#/components/schemas/ProjectEntityId"
+              ownerUnitId:
+                $ref: "#/components/schemas/ProjectUuid"
+              ownerRole:
+                $ref: "#/components/schemas/ProjectRoleId"
+            additionalProperties: false
+        displays:
+          type: array
+          items:
+            type: object
+            required: [tabId, displayId, ownerUnitId, ownerRole, providerTypeId, publicSource, sourceBlockId]
+            properties:
+              tabId:
+                $ref: "#/components/schemas/ProjectEntityId"
+              displayId:
+                $ref: "#/components/schemas/ProjectEntityId"
+              ownerUnitId:
+                $ref: "#/components/schemas/ProjectUuid"
+              ownerRole:
+                $ref: "#/components/schemas/ProjectRoleId"
+              providerTypeId:
+                $ref: "#/components/schemas/ProjectEntityId"
+              publicSource:
+                oneOf:
+                  - type: "null"
+                  - $ref: "#/components/schemas/ProjectSourceReference"
+              sourceBlockId:
+                type:
+                  - string
+                  - "null"
+            additionalProperties: false
+        graph:
+          $ref: "#/components/schemas/ModuleGraph"
+      additionalProperties: false
+    ProjectInspection:
+      type: object
+      required: [schemaVersion, projectId, workingRevision, authorityRevision, projection]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        workingRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        authorityRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        projection:
+          $ref: "#/components/schemas/ProjectInspectionProjection"
+      additionalProperties: false
+    ProjectCompatibleSources:
+      type: object
+      required: [schemaVersion, target, sources]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        target:
+          type: object
+          required: [unitId, inputRole]
+          properties:
+            unitId:
+              $ref: "#/components/schemas/ProjectUuid"
+            inputRole:
+              $ref: "#/components/schemas/ProjectRoleId"
+          additionalProperties: false
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectedPublicOutput"
+      additionalProperties: false
+    ProjectUnitReference:
+      description: Exactly one of id or clientRef is allowed.
+      oneOf:
+        - type: object
+          required: [id]
+          properties:
+            id:
+              $ref: "#/components/schemas/ProjectUuid"
+          additionalProperties: false
+        - type: object
+          required: [clientRef]
+          properties:
+            clientRef:
+              $ref: "#/components/schemas/ProjectEntityId"
+          additionalProperties: false
+    MutationSourceReference:
+      type: object
+      required: [unit, outputRole]
+      properties:
+        unit:
+          $ref: "#/components/schemas/ProjectUnitReference"
+        outputRole:
+          $ref: "#/components/schemas/ProjectRoleId"
+      additionalProperties: false
+    AddControlledUnitMutation:
+      type: object
+      required: [op, clientRef, typeId, name, dependencyPolicy]
+      properties:
+        op:
+          type: string
+          const: addControlledUnit
+        clientRef:
+          $ref: "#/components/schemas/ProjectEntityId"
+        typeId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        name:
+          type:
+            - string
+            - "null"
+          maxLength: 50
+          description: Optional explicit Java-style item name; null selects the descriptor default and a unique suffix.
+        dependencyPolicy:
+          type: string
+          enum: [reject, add-defaults]
+          description: >-
+            add-defaults creates and binds the declared provider only when no
+            compatible source exists. One compatible source is bound
+            automatically. If several compatible sources exist, the unit is
+            added with an empty required binding and the project reports
+            needs-configuration until the operator chooses a source; the
+            service never makes an arbitrary scientific source choice.
+      additionalProperties: false
+    AddConfigurationTemplateMutation:
+      type: object
+      description: >-
+        Atomically expands a registered configuration template into ordinary project-owned units,
+        bindings, displays, and layout. pamguard.click-monitoring creates FFT, User Display with a
+        Spectrogram, Click Detector with its static Click display, and Sound Output branches. It
+        creates Acquisition when none exists, reuses exactly one existing Acquisition, and rejects
+        an ambiguous project with multiple Acquisitions. Generated controlled-unit clientRefs are
+        the supplied clientRef plus :acquisition (only returned as created when new), :fft,
+        :userDisplay, :clickDetector, and :soundOutput.
+      required: [op, clientRef, templateId]
+      properties:
+        op:
+          type: string
+          const: addConfigurationTemplate
+        clientRef:
+          type: string
+          minLength: 1
+          maxLength: 114
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          description: Base client reference; limited to leave room for stable generated child references.
+        templateId:
+          type: string
+          const: pamguard.click-monitoring
+      additionalProperties: false
+    RenameControlledUnitMutation:
+      type: object
+      required: [op, unit, name]
+      properties:
+        op:
+          type: string
+          const: renameControlledUnit
+        unit:
+          $ref: "#/components/schemas/ProjectUnitReference"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+      additionalProperties: false
+    RemoveControlledUnitMutation:
+      type: object
+      required: [op, unit, dependantPolicy]
+      properties:
+        op:
+          type: string
+          const: removeControlledUnit
+        unit:
+          $ref: "#/components/schemas/ProjectUnitReference"
+        dependantPolicy:
+          type: string
+          enum: [reject, leave-unbound]
+      additionalProperties: false
+    ReorderControlledUnitsMutation:
+      type: object
+      required: [op, units]
+      properties:
+        op:
+          type: string
+          const: reorderControlledUnits
+        units:
+          type: array
+          maxItems: 1024
+          items:
+            $ref: "#/components/schemas/ProjectUnitReference"
+      additionalProperties: false
+    ReplaceSettingsMutation:
+      type: object
+      required: [op, unit, settingsVersion, settings]
+      properties:
+        op:
+          type: string
+          const: replaceSettings
+        unit:
+          $ref: "#/components/schemas/ProjectUnitReference"
+        settingsVersion:
+          type: integer
+          minimum: 1
+          maximum: 4294967295
+        settings:
+          type: object
+          additionalProperties: true
+      additionalProperties: false
+    ReplaceGlobalSettingsMutation:
+      type: object
+      required: [op, typeId, settingsVersion, settings]
+      properties:
+        op:
+          type: string
+          const: replaceGlobalSettings
+        typeId:
+          $ref: "#/components/schemas/ProjectEntityId"
+        settingsVersion:
+          type: integer
+          minimum: 1
+          maximum: 4294967295
+        settings:
+          type: object
+          description: Complete strict global settings object governed by the selected catalogue descriptor and version.
+          additionalProperties: true
+      additionalProperties: false
+    SetBindingMutation:
+      type: object
+      required: [op, unit, inputRole, sources]
+      properties:
+        op:
+          type: string
+          const: setBinding
+        unit:
+          $ref: "#/components/schemas/ProjectUnitReference"
+        inputRole:
+          $ref: "#/components/schemas/ProjectRoleId"
+        sources:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/MutationSourceReference"
+      additionalProperties: false
+    ReplaceDataModelLayoutMutation:
+      type: object
+      required: [op, layout]
+      properties:
+        op:
+          type: string
+          const: replaceDataModelLayout
+        layout:
+          $ref: "#/components/schemas/ProjectDataModelLayout"
+      additionalProperties: false
+    ReplaceDisplayHierarchyMutation:
+      type: object
+      required: [op, displayTabs]
+      properties:
+        op:
+          type: string
+          const: replaceDisplayHierarchy
+        displayTabs:
+          type: array
+          maxItems: 128
+          description: At most 1024 displays are accepted across the complete hierarchy.
+          items:
+            $ref: "#/components/schemas/ProjectDisplayTab"
+      additionalProperties: false
+    ProjectMutation:
+      oneOf:
+        - $ref: "#/components/schemas/AddControlledUnitMutation"
+        - $ref: "#/components/schemas/AddConfigurationTemplateMutation"
+        - $ref: "#/components/schemas/RenameControlledUnitMutation"
+        - $ref: "#/components/schemas/RemoveControlledUnitMutation"
+        - $ref: "#/components/schemas/ReorderControlledUnitsMutation"
+        - $ref: "#/components/schemas/ReplaceSettingsMutation"
+        - $ref: "#/components/schemas/ReplaceGlobalSettingsMutation"
+        - $ref: "#/components/schemas/SetBindingMutation"
+        - $ref: "#/components/schemas/ReplaceDataModelLayoutMutation"
+        - $ref: "#/components/schemas/ReplaceDisplayHierarchyMutation"
+      discriminator:
+        propertyName: op
+        mapping:
+          addControlledUnit: "#/components/schemas/AddControlledUnitMutation"
+          addConfigurationTemplate: "#/components/schemas/AddConfigurationTemplateMutation"
+          renameControlledUnit: "#/components/schemas/RenameControlledUnitMutation"
+          removeControlledUnit: "#/components/schemas/RemoveControlledUnitMutation"
+          reorderControlledUnits: "#/components/schemas/ReorderControlledUnitsMutation"
+          replaceSettings: "#/components/schemas/ReplaceSettingsMutation"
+          replaceGlobalSettings: "#/components/schemas/ReplaceGlobalSettingsMutation"
+          setBinding: "#/components/schemas/SetBindingMutation"
+          replaceDataModelLayout: "#/components/schemas/ReplaceDataModelLayoutMutation"
+          replaceDisplayHierarchy: "#/components/schemas/ReplaceDisplayHierarchyMutation"
+    ProjectMutationBatch:
+      type: object
+      description: Strict schemaVersion 1 body; concurrency is carried only by If-Match and expectedRevision is rejected.
+      required: [schemaVersion, validateOnly, operations]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        validateOnly:
+          type: boolean
+        operations:
+          type: array
+          maxItems: 1024
+          items:
+            $ref: "#/components/schemas/ProjectMutation"
+      additionalProperties: false
+    CreatedProjectEntity:
+      type: object
+      required: [clientRef, id]
+      properties:
+        clientRef:
+          $ref: "#/components/schemas/ProjectEntityId"
+        id:
+          $ref: "#/components/schemas/ProjectUuid"
+      additionalProperties: false
+    ProjectMutationResult:
+      type: object
+      required: [schemaVersion, changed, validatedOnly, createdEntities, active]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        changed:
+          type: boolean
+        validatedOnly:
+          type: boolean
+        createdEntities:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreatedProjectEntity"
+        active:
+          $ref: "#/components/schemas/ActiveProjectSnapshot"
+      additionalProperties: false
+    NewProjectRequest:
+      type: object
+      required: [schemaVersion, name, description, discardDirty]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Java-trimmed; the engine measures this limit in UTF-16 code units.
+        description:
+          type: string
+          maxLength: 4096
+          description: The engine measures this limit in Java UTF-16 code units.
+        discardDirty:
+          type: boolean
+      additionalProperties: false
+    OpenProjectRequest:
+      type: object
+      required: [schemaVersion, projectId, discardDirty]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        projectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        discardDirty:
+          type: boolean
+      additionalProperties: false
+    SaveAsProjectRequest:
+      type: object
+      required: [schemaVersion, name]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Java-trimmed; the engine measures this limit in UTF-16 code units.
+      additionalProperties: false
+    ReadinessResponse:
+      type: object
+      required: [ok, ready, authorityMode, activeProjectId, projectProjectionStatus, projectRuntimePrepared, sessions, maxSessions, capacityAvailable]
+      properties:
+        ok:
+          type: boolean
+        ready:
+          type: boolean
+        authorityMode:
+          type: string
+          const: project
+        activeProjectId:
+          $ref: "#/components/schemas/ProjectUuid"
+        projectProjectionStatus:
+          type: string
+          enum: [invalid, needsConfiguration, runnable]
+        projectRuntimePrepared:
+          type: boolean
+        sessions:
+          type: integer
+          minimum: 0
+        maxSessions:
+          type: integer
+          minimum: 0
+        capacityAvailable:
+          type: boolean
+      additionalProperties: false
+    CaptureDevice:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [audio, video]
+    CaptureDeviceListResponse:
+      type: object
+      required: [devices]
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/CaptureDevice"
+    CaptureProcessStatus:
+      type: object
+      required: [sessionId, moduleId, source, kind, sampleRateHz, channels, pid, running, graphRevision]
+      properties:
+        sessionId:
+          description: Raw legacy session ID, or null for a module capture.
+          type:
+            - string
+            - "null"
+        moduleId:
+          description: Raw acquisition module ID, or null for a legacy session capture.
+          type:
+            - string
+            - "null"
+        source:
+          type: string
+        kind:
+          type: string
+          enum: [dshow, url]
+        sampleRateHz:
+          type: integer
+          minimum: 1
+        channels:
+          type: integer
+          minimum: 1
+        pid:
+          type: integer
+          minimum: 1
+        running:
+          type: boolean
+          const: true
+        graphRevision:
+          description: Graph revision to which a module capture was bound; null for legacy session captures.
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 0
+    CaptureStatusResponse:
+      type: object
+      required: [captureEnabled, currentGraphRevision, captures]
+      properties:
+        captureEnabled:
+          type: boolean
+        currentGraphRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        captures:
+          description: Live captures only; exited child processes are closed and reaped before this snapshot is returned.
+          type: array
+          items:
+            $ref: "#/components/schemas/CaptureProcessStatus"
+    CaptureStartResponse:
+      type: object
+      required: [started, sessionId, moduleId, source, kind, sampleRateHz, channels, pid, graphRevision]
+      properties:
+        started:
+          type: boolean
+          const: true
+        sessionId:
+          type:
+            - string
+            - "null"
+        moduleId:
+          type:
+            - string
+            - "null"
+        source:
+          type: string
+        kind:
+          type: string
+          enum: [dshow, url]
+        sampleRateHz:
+          type: integer
+          minimum: 1
+        channels:
+          type: integer
+          minimum: 1
+        pid:
+          type: integer
+          minimum: 1
+        graphRevision:
+          description: Graph revision to which a module capture was bound; null for legacy session captures.
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 0
+    CaptureStopResponse:
+      type: object
+      required: [stopped, sessionId, moduleId]
+      properties:
+        stopped:
+          type: boolean
+          const: true
+        sessionId:
+          description: Raw legacy session ID, or null for a module capture.
+          type:
+            - string
+            - "null"
+        moduleId:
+          description: Raw acquisition module ID, or null for a legacy session capture.
+          type:
+            - string
+            - "null"
+    ModulePort:
+      type: object
+      required: [id, name, direction, dataType, required, acceptsMultiple, capabilities]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          maxLength: 256
+        direction:
+          type: string
+          enum: [input, output]
+        dataType:
+          type: string
+        required:
+          type: boolean
+        acceptsMultiple:
+          type: boolean
+        capabilities:
+          type: array
+          items:
+            type: string
+    ModuleType:
+      type: object
+      required: [id, name, category, description, minimumInstances, ports, dependencies, runModes, providedDisplayTypes, implementationStatus, parityStatus, settingsSchema, defaultSettings]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        minimumInstances:
+          type: integer
+          minimum: 0
+        maximumInstances:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        ports:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModulePort"
+        dependencies:
+          type: array
+          items:
+            type: object
+            required: [portId, dataType, capabilities]
+            properties:
+              portId:
+                type: string
+              dataType:
+                type: string
+              capabilities:
+                type: array
+                items:
+                  type: string
+        runModes:
+          type: array
+          items:
+            type: string
+        providedDisplayTypes:
+          type: array
+          items:
+            type: string
+        implementationStatus:
+          type: string
+        parityStatus:
+          type: string
+        settingsSchema:
+          type: object
+          additionalProperties: true
+        defaultSettings:
+          type: object
+          additionalProperties: true
+    ModuleInstance:
+      type: object
+      required: [id, typeId, name, enabled, settings]
+      properties:
+        id:
+          type: string
+        typeId:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        settings:
+          type: object
+          additionalProperties: true
+    ModuleEndpoint:
+      type: object
+      required: [moduleId, portId]
+      properties:
+        moduleId:
+          type: string
+        portId:
+          type: string
+    ModuleConnection:
+      type: object
+      required: [id, source, target]
+      properties:
+        id:
+          type: string
+        source:
+          $ref: "#/components/schemas/ModuleEndpoint"
+        target:
+          $ref: "#/components/schemas/ModuleEndpoint"
+    ModuleGraph:
+      type: object
+      required: [schemaVersion, revision, modules, connections]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        revision:
+          type: integer
+          minimum: 0
+        modules:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModuleInstance"
+        connections:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModuleConnection"
+        acquisition:
+          type: object
+          additionalProperties: true
+        clock:
+          type: object
+          additionalProperties: true
+        persistence:
+          type: object
+          additionalProperties: true
+    GraphIssue:
+      type: object
+      required: [code, message, moduleId, connectionId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        moduleId:
+          type:
+            - string
+            - "null"
+        connectionId:
+          type:
+            - string
+            - "null"
+    CompatibleSource:
+      type: object
+      required: [moduleId, portId, moduleName, portName, dataType, capabilities]
+      properties:
+        moduleId:
+          type: string
+        portId:
+          type: string
+        moduleName:
+          type: string
+        portName:
+          type: string
+        dataType:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+    DataBlock:
+      type: object
+      required: [id, name, producerModuleId, producerPortId, dataType, schemaVersion, sampleRateHz, channelBitmap, sequenceBitmap, fftLength, fftHop, calibrationDbOffsetByChannel, voltsPeakToPeak, capabilities, historyCapacity, clockDomainId, retentionPolicy, persistenceProviders, exportProviders, stats]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        producerModuleId:
+          type: string
+        producerPortId:
+          type: string
+        dataType:
+          type: string
+        schemaVersion:
+          type: integer
+        sampleRateHz:
+          type: number
+        channelBitmap:
+          type: integer
+        sequenceBitmap:
+          type: integer
+        minimumFrequencyHz:
+          type:
+            - number
+            - "null"
+        maximumFrequencyHz:
+          type:
+            - number
+            - "null"
+        fftLength:
+          description: FFT transform length inherited by FFT-domain consumers; null for non-FFT or legacy external blocks.
+          type:
+            - integer
+            - "null"
+          minimum: 1
+        fftHop:
+          description: FFT slice hop inherited by FFT-domain consumers; null for non-FFT or legacy external blocks.
+          type:
+            - integer
+            - "null"
+          minimum: 1
+        calibrationDbOffsetByChannel:
+          type: array
+          description: Per-channel additive offset from raw dB amplitude to the configured calibrated dB reference; empty means uncalibrated.
+          items:
+            type: number
+        voltsPeakToPeak:
+          description: Acquisition analogue full-scale voltage propagated through a raw-audio branch for Level Meter's Volts reference; null when the source does not declare it.
+          type:
+            - number
+            - "null"
+          exclusiveMinimum: 0
+        capabilities:
+          type: array
+          items:
+            type: string
+        historyCapacity:
+          type: integer
+        oldestTimeMs:
+          type:
+            - integer
+            - "null"
+          format: int64
+        latestTimeMs:
+          type:
+            - integer
+            - "null"
+          format: int64
+        oldestStartSample:
+          type:
+            - integer
+            - "null"
+          format: int64
+        latestStartSample:
+          type:
+            - integer
+            - "null"
+          format: int64
+        clockDomainId:
+          type: string
+        retentionPolicy:
+          type: string
+        persistenceProviders:
+          type: array
+          items:
+            type: string
+        exportProviders:
+          type: array
+          items:
+            type: string
+        stats:
+          $ref: "#/components/schemas/DataBlockStats"
+    DataBlockStats:
+      type: object
+      required: [published, delivered, dropped, observerErrors, subscriberCount, historySize, queuedUnits, maximumQueuedUnits]
+      properties:
+        published:
+          type: integer
+        delivered:
+          type: integer
+        dropped:
+          type: integer
+        observerErrors:
+          type: integer
+        subscriberCount:
+          type: integer
+        historySize:
+          type: integer
+        queuedUnits:
+          type: integer
+        maximumQueuedUnits:
+          type: integer
+    WorkspaceSummary:
+      type: object
+      required: [id, name, updatedTimeMs, displayCount]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          maxLength: 256
+        updatedTimeMs:
+          type: integer
+          format: int64
+        displayCount:
+          type: integer
+    WorkspaceLayout:
+      type: object
+      required: [schemaVersion, displays]
+      properties:
+        id:
+          type: string
+        schemaVersion:
+          type: integer
+          const: 1
+        name:
+          type: string
+          maxLength: 256
+        updatedTimeMs:
+          type: integer
+          format: int64
+        synchronizedTime:
+          type: boolean
+        arrangement:
+          type: string
+          enum: [grid, tabs]
+        audio:
+          type: object
+          additionalProperties: true
+        displays:
+          type: array
+          maxItems: 128
+          items:
+            type: object
+            required: [id, type]
+            properties:
+              id:
+                type: string
+                minLength: 1
+                maxLength: 128
+              type:
+                type: string
+                enum: [spectrogram, events, waveform, level, timeplot, status, datamap]
+              name:
+                type: string
+                maxLength: 256
+              sourceBlockId:
+                type: string
+                maxLength: 512
+            additionalProperties: true
+    OperatorEventInput:
+      type: object
+      required: [label]
+      properties:
+        category:
+          type: string
+          maxLength: 128
+          description: Optional; the module's configured default is used when omitted.
+        label:
+          type: string
+          minLength: 1
+          maxLength: 512
+        notes:
+          type: string
+          maxLength: 8192
+        value:
+          type: number
+        timeMs:
+          type: integer
+          format: int64
+          description: Unix milliseconds; zero or omission uses service time.
+        startSample:
+          type: integer
+          format: int64
+    DataUnit:
+      type: object
+      required: [typeId, schemaVersion, sourceBlockId, uid, sequence, timeMs, startSample, durationSamples, channelBitmap, sequenceBitmap, clockDomainId, discontinuity, payload]
+      properties:
+        typeId:
+          type: string
+        schemaVersion:
+          type: integer
+        sourceBlockId:
+          type: string
+        uid:
+          type: integer
+        sequence:
+          type: integer
+        timeMs:
+          type: integer
+          format: int64
+        startSample:
+          type: integer
+          format: int64
+        durationSamples:
+          type: integer
+        channelBitmap:
+          type: integer
+        sequenceBitmap:
+          type: integer
+        clockDomainId:
+          type: string
+        discontinuity:
+          type: boolean
+        payload:
+          oneOf:
+            - type: object
+              description: Raw-audio payload with sampleRateHz, channelCount, and interleavedPcm.
+              additionalProperties: true
+            - type: object
+              description: FFT payload with channel, fftSlice, and magnitudeSquared.
+              additionalProperties: true
+            - type: object
+              description: Detection, level, recording, alarm, operator-event, or storage-health payload.
+              additionalProperties: true
+            - type: "null"
     EngineSessionCreate:
       type: object
       required: [sessionId, sampleRateHz, channelCount]
@@ -1299,30 +6510,7 @@ components:
               type: number
               minimum: 0
         matchedTemplate:
-          type: object
-          description: PAMGuard matched-template click classifier.
-          properties:
-            enabled:
-              type: boolean
-              default: false
-            normalisationType:
-              type: integer
-            peakSearch:
-              type: boolean
-            peakSmoothing:
-              type: integer
-            lengthDb:
-              type: number
-            restrictedBins:
-              type: integer
-              minimum: 1
-            channelClassification:
-              type: integer
-            classifiers:
-              type: array
-              minItems: 1
-              items:
-                $ref: "#/components/schemas/MatchedTemplatePair"
+          $ref: "#/components/schemas/MatchedTemplateSessionConfig"
         click:
           type: object
           properties:
@@ -1494,6 +6682,9 @@ components:
                   description: Click train former. "ici" is the max-ICI/min-clicks tracker; "mht" is the ported PAMGuard MHT stack (kernel plus StandardMHTChi2 with IDI/amplitude/length variables).
                 maxIciSeconds:
                   type: number
+                minIciSeconds:
+                  type: number
+                  minimum: 0
                 minClicks:
                   type: integer
                 classifier:
@@ -1847,6 +7038,11 @@ components:
               clickStartSample:
                 type: integer
                 format: int64
+              classifierInstanceId:
+                type: string
+              clickType:
+                type: integer
+                description: MatchedTemplateParams.type configured for this classifier.
               classified:
                 type: boolean
               results:
@@ -2819,29 +8015,111 @@ components:
         refractoryTimeSeconds:
           type: number
           minimum: 0
+    MatchedTemplateSessionConfig:
+      description: >
+        Legacy-session wrapper around the same strict Java-authoritative
+        MatchedTemplateParams contract used by project modules. Disabled
+        classifiers accept only enabled=false; enabled classifiers require
+        every operational Java field.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [enabled]
+          properties:
+            enabled:
+              type: boolean
+              const: false
+        - type: object
+          additionalProperties: false
+          required:
+            - enabled
+            - clickType
+            - normalisationType
+            - peakSearch
+            - peakSmoothing
+            - lengthDb
+            - restrictedBins
+            - channelClassification
+            - classifiers
+          properties:
+            enabled:
+              type: boolean
+              const: true
+            clickType:
+              type: integer
+              anyOf:
+                - const: 0
+                - minimum: 100
+                  maximum: 255
+              description: >
+                Unsigned view of Java's byte type. Zero is the byte-wrapped
+                representation of the Java dialog's value 256.
+            normalisationType:
+              type: integer
+              enum: [0, 1, 2]
+            peakSearch:
+              type: boolean
+            peakSmoothing:
+              type: integer
+              minimum: 3
+              maximum: 1025
+              description: Must be odd, matching the Java dialog list.
+            lengthDb:
+              type: number
+              minimum: 0.1
+              maximum: 300
+            restrictedBins:
+              type: integer
+              minimum: 4
+              maximum: 131072
+              description: Must be a power of two, matching the Java dialog list.
+            channelClassification:
+              type: integer
+              enum: [0, 1]
+            classifiers:
+              type: array
+              minItems: 1
+              maxItems: 64
+              items:
+                $ref: "#/components/schemas/MatchedTemplatePair"
+
     MatchTemplateWaveform:
       type: object
-      required: [sampleRateHz, waveform]
+      additionalProperties: false
+      required: [name, sampleRateHz, waveform]
       properties:
         name:
           type: string
+          minLength: 1
+          maxLength: 256
         sampleRateHz:
           type: number
           exclusiveMinimum: 0
         waveform:
           type: array
           minItems: 1
+          maxItems: 1048576
           items:
             type: number
     MatchedTemplatePair:
       type: object
-      required: [match]
+      additionalProperties: false
+      required:
+        - thresholdToAccept
+        - normalisation
+        - matchTemplate
+        - rejectTemplate
       properties:
         thresholdToAccept:
           type: number
-        match:
+          minimum: -5000
+          maximum: 5000
+        normalisation:
+          type: integer
+          enum: [0, 1, 2]
+        matchTemplate:
           $ref: "#/components/schemas/MatchTemplateWaveform"
-        reject:
+        rejectTemplate:
           $ref: "#/components/schemas/MatchTemplateWaveform"
     IshmaelDetection:
       type: object
@@ -2977,10 +8255,62 @@ components:
           type: integer
         signalExcessDb:
           type: number
+        clickType:
+          type: integer
+          description: Classification attached before delay measurement; zero means unclassified.
+        classifiersPassed:
+          type: array
+          description: Sweep checkAllClassifiers matches attached to the accepted click before localisation.
+          items:
+            type: integer
+        delaysInSamples:
+          type: array
+          description: Per-pair delays selected with the classified click type's DelayMeasurementParams.
+          items:
+            type: number
+        matchedTemplateAnnotations:
+          type: array
+          description: >
+            Java MatchedClickAnnotation equivalents attached to this click;
+            one entry per matched-template classifier instance.
+          items:
+            $ref: "#/components/schemas/MatchedTemplateAnnotation"
+        bearingRadians:
+          type:
+            - number
+            - "null"
+          description: Legacy completeClick bearing; zero when Java getAngle() has no localisation, null only before that stage.
         relatedTrainIds:
           type: array
           items:
             type: integer
+    MatchedTemplateAnnotation:
+      type: object
+      required:
+        - classifierInstanceId
+        - clickType
+        - classified
+        - bestResults
+      properties:
+        classifierInstanceId:
+          type: string
+        clickType:
+          type: integer
+        classified:
+          type: boolean
+        bestResults:
+          type: array
+          items:
+            type: object
+            required: [threshold, matchCorrelation]
+            properties:
+              threshold:
+                type: number
+              matchCorrelation:
+                type: number
+              rejectCorrelation:
+                type: number
+                description: Omitted when the configured reject template yields a non-finite correlation.
     ClickFeatures:
       type: object
       properties:

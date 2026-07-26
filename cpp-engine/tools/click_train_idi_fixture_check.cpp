@@ -127,7 +127,11 @@ int main(int argc, char** argv) {
 
             pamguard::detectors::ClickTrainConfig config;
             config.sample_rate_hz = sample_rate_hz;
+            // This fixture pins PAMGuard's IDI summary arithmetic, not the
+            // separate ClickTrainIdParams matching gates.
+            config.min_ici_seconds = 0.0;
             config.max_ici_seconds = 0.5;
+            config.max_ici_change = 2.0;
             config.min_clicks = 3;
 
             pamguard::detectors::ClickTrainTracker tracker(config);

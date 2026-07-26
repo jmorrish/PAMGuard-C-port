@@ -1,144 +1,164 @@
-# Multi-Source Ingest Supervisor
+# Active-project ingest supervisor
 
-Date: 2026-07-01
+Updated: 2026-07-25
 
-This checkpoint adds an operations supervisor for running many `ffmpeg_stream_ingest` workers.
+`ops/ingest_supervisor.py` runs one FFmpeg worker per external audio source and
+feeds an existing Sound Acquisition controlled-unit instance in the active
+PAMGuard project.
 
-## Added
-
-- `ops/ingest_supervisor.py`
-- `platform/ingest-sources.example.json`
-
-The supervisor reads a JSON source list and launches one ingest bridge process per enabled source.
-
-## Model
-
-The deployment unit remains:
+The production path is:
 
 ```text
-one source/input -> one ffmpeg_stream_ingest process -> one engine session
+source
+  -> shell-free FFmpeg argv
+  -> POST /v1/projects/active/acquisitions/{acquisitionUnitId}/pcm-f32le
+  -> selected Acquisition raw-audio block
 ```
 
-This is the cleanest scaling boundary for PAMGuard-style stateful detectors because FFT state, click train tracking, whistle region state, and localisation timelines remain isolated per source/session.
+It does not create an `AnalysisSession`, inspect a generated runtime node ID, or
+write through `/sessions/**`.
 
-## Example
+## Before starting
 
-Edit `platform/ingest-sources.example.json`, enable the required sources, then run:
+1. Save or open the intended project in the engine.
+2. Record its stable `projectId`.
+3. Record each Sound Acquisition unit's stable `unitId` from
+   `GET /v1/projects/active/acquisitions`.
+4. Make sure each configured sample rate/channel count matches that Acquisition.
+5. Start the project runtime.
+
+The supervisor verifies all five facts and rejects a target whose built-in host
+capture is already running before FFmpeg starts. Every PCM request contains the
+configured `expectedProjectId` and discovered `expectedWorkingRevision`. A
+project switch or edit therefore fences the old worker instead of letting it
+write into a newly configured runtime.
+
+## Production manifest
+
+`platform/ingest-sources.example.json` is schema version 2 and defaults to
+`active-project` mode. Replace its example UUIDs and enable only the sources
+you intend to run.
+
+Required target fields are:
+
+- top-level or per-source `projectId` (lowercase UUIDv4);
+- per-source `acquisitionUnitId` (lowercase UUIDv4);
+- per-source `id`; and
+- per-source `source`.
+
+Session fields such as `sessionId`, `sessionConfig`, `ownerId`,
+`allowExistingSession`, and `resumeFromEngine` are rejected in this mode.
+`ingestExecutable` is also rejected because the old bridge cannot address the
+stable project-Acquisition endpoint.
+
+Run:
 
 ```powershell
-python .\ops\ingest_supervisor.py --config .\platform\ingest-sources.example.json
+python .\ops\ingest_supervisor.py `
+  --config .\platform\ingest-sources.example.json
 ```
 
-Dry run:
+Static validation and redacted command preview:
 
 ```powershell
-python .\ops\ingest_supervisor.py --config .\platform\ingest-sources.example.json --dry-run
+python .\ops\ingest_supervisor.py `
+  --config .\platform\ingest-sources.example.json `
+  --validate
+
+python .\ops\ingest_supervisor.py `
+  --config .\platform\ingest-sources.example.json `
+  --dry-run
 ```
 
-Validate enabled sources without launching workers:
+Validation does not mutate or start the engine. Each real worker re-reads the
+active Acquisition list immediately before launching FFmpeg.
 
-```powershell
-python .\ops\ingest_supervisor.py --config .\platform\ingest-sources.example.json --validate
-```
+## Timeline cursor
 
-## Config highlights
+After every accepted PCM chunk, a worker atomically records:
 
-- `engine`: service URL.
-- `ingestExecutable`: path to `ffmpeg_stream_ingest`.
-- `ffmpeg`: FFmpeg executable path or command name.
-- `apiKeyEnv`: environment variable name passed to `ffmpeg_stream_ingest --api-key-env`.
-- `statusFile`: optional JSON status file for monitoring.
-- `statusIntervalSeconds`: status write cadence.
-- `defaults`: shared bridge flags.
-- `sources`: source-specific overrides.
+- project ID;
+- Acquisition unit ID;
+- working revision; and
+- next start sample.
 
-Source fields:
+`cursorDirectory` must be writable and durable across worker restarts. A cursor
+is reused only for the exact project/unit/revision tuple. A project revision
+change resets to the configured `startSample` (zero by default), which matches
+the newly prepared runtime.
 
-- `enabled`
-- `id`
-- `session`
-- `source`
-- `sessionConfig`
-- `sampleRateHz`
-- `channels`
-- `chunkFrames`
-- `ffmpegInputOptions`
-- `audioFilter`
+Run only one worker replica for a given Acquisition unit. Multiple writers
+would race the same sample timeline. The supervisor rejects duplicate enabled
+targets within one manifest, and refuses to reset silently from a corrupt
+cursor.
 
-## Restart policy
+Graceful restarts resume from the durable cursor. This is not a server-backed
+exactly-once protocol: a hard host/process loss in the narrow interval after
+the engine accepts a chunk but before the cursor replacement completes may
+replay that final chunk. Server-side idempotency or a stable server-reported
+next-sample cursor is still required to close that crash window.
 
-The ingest bridge already restarts FFmpeg internally when `--restart` is enabled.
+## Process and restart model
 
-The supervisor adds a second layer: if the entire bridge process exits, the supervisor can restart that worker after `workerRestartDelaySeconds`.
+The supervisor starts FFmpeg with an argument vector, never a shell command.
+Source text and FFmpeg input options remain individual arguments. The internal
+worker can restart FFmpeg while preserving its sample cursor; the outer
+supervisor restarts the entire worker after process or API failures.
 
-## Status file
+API keys should use `apiKeyEnv`. Literal `apiKey` remains supported but is
+redacted from dry-run and launch logs. Source URL user-info and query strings
+are also removed from logs and status metadata; the actual worker argument
+still contains the configured source needed by FFmpeg.
 
-When `statusFile` is configured, the supervisor writes JSON like:
+## Status document
+
+Schema version 3 identifies the stable target:
 
 ```json
 {
-  "schemaVersion": 2,
-  "generatedUnixMs": 1782921600000,
+  "schemaVersion": 3,
   "health": "healthy",
   "workerCount": 1,
-  "statusCounts": {
-    "running": 1,
-    "waiting_restart": 0,
-    "not_started": 0,
-    "exited": 0,
-    "stopped": 0
-  },
-  "healthCounts": {
-    "healthy": 1,
-    "degraded": 0,
-    "pending": 0,
-    "stopped": 0
-  },
   "workers": [
     {
       "sourceId": "station-001",
+      "targetMode": "active-project",
+      "projectId": "11111111-1111-4111-8111-111111111111",
+      "acquisitionUnitId": "22222222-2222-4222-8222-222222222222",
+      "compatibilitySessionId": null,
       "status": "running",
       "health": "healthy",
       "pid": 1234,
-      "restarts": 0,
-      "uptimeMs": 1000,
-      "lastObservedUnixMs": 1782921600000,
-      "lastStartUnixMs": 1782921599000,
-      "lastExitUnixMs": null,
-      "lastExitCode": null,
-      "nextStartUnixMs": null
+      "restarts": 0
     }
   ]
 }
 ```
 
-The status file deliberately omits full launch commands and API keys.
+Full commands and API keys are never written to the status file. URL
+credentials/query strings are removed from the displayed `source`. The engine
+can project this document through `GET /ingest/status` when
+`PAMGUARD_INGEST_STATUS_FILE` points to the same file.
 
-Console command previews and launch logs redact literal `--api-key` values so dry-run/preflight output can be captured safely in deployment logs. Prefer `apiKeyEnv` so worker process arguments carry only the environment variable name, not the secret value.
+## Deprecated session compatibility
 
-The supervisor passes the manifest `id` to `ffmpeg_stream_ingest --source-id`, so engine session metadata preserves source identity even when `session` / `sessionId` differs from the source ID.
-
-## Service endpoint
-
-When the engine service is started with `PAMGUARD_INGEST_STATUS_FILE` pointing at the same status file, the authenticated endpoint `GET /ingest/status` exposes the supervisor status to API clients and the browser dashboard.
-
-The endpoint wraps the supervisor document so the status-file schema remains stable:
+`platform/ingest-sources.legacy-session-compat.example.json` is deliberately
+named and selects:
 
 ```json
-{
-  "configured": true,
-  "exists": true,
-  "status": {
-    "schemaVersion": 2,
-    "health": "healthy",
-    "workerCount": 1,
-    "workers": []
-  }
-}
+{"schemaVersion": 1, "mode": "legacy-session-compatibility"}
 ```
 
-If the environment variable is unset or the file is missing, the endpoint returns `404` with `configured`/`exists` flags instead of leaking launch commands or secrets.
+Only that mode accepts `sessionId`, `sessionConfig`, and `ingestExecutable`, and
+only that mode launches `ffmpeg_stream_ingest --session`. It exists for legacy
+test/archive workflows and is not the production default.
 
 ## Validation
 
-The supervisor has been syntax-checked with Python, dry-run tested against an enabled temporary source manifest, has CTest coverage for status health summary generation and manifest command expansion, and service smoke coverage for the optional `/ingest/status` projection.
+CTest covers:
+
+- strict manifest/command expansion and secret redaction;
+- project/unit discovery and audio-shape validation;
+- working-revision PCM requests with no session/runtime-node ID;
+- revision-fenced cursor persistence; and
+- schema-v3 status health summaries.

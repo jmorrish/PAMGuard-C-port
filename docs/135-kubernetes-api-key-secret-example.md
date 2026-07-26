@@ -16,4 +16,7 @@ Mounted secrets are safer than putting API keys in ConfigMaps or plain deploymen
 
 The service trims whitespace from the secret file, so standard Kubernetes secret file mounts with trailing newlines are accepted.
 
-Ingest workers can consume the same Secret as an environment variable named `PAMGUARD_API_KEY` and call `ffmpeg_stream_ingest --api-key-env PAMGUARD_API_KEY`, avoiding literal API keys in command-line arguments.
+The active-project ingest supervisor can consume the same Secret as an
+environment variable named `PAMGUARD_API_KEY`. A schema-v2 manifest selects
+`"apiKeyEnv": "PAMGUARD_API_KEY"`, so the value is not placed in process
+arguments or the supervisor status file.

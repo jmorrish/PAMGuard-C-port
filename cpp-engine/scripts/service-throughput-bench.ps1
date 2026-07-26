@@ -44,9 +44,11 @@ $oldMaxSessions = $env:PAMGUARD_MAX_SESSIONS
 $oldSessionDir = $env:PAMGUARD_SESSION_CONFIG_DIR
 $oldArchiveDir = $env:PAMGUARD_RESULT_ARCHIVE_DIR
 $oldAudioArchiveDir = $env:PAMGUARD_AUDIO_ARCHIVE_DIR
+$oldLegacyModelCompat = $env:PAMGUARD_LEGACY_MODEL_COMPAT
 $archiveRoot = $null
 $process = $null
 try {
+    $env:PAMGUARD_LEGACY_MODEL_COMPAT = "1"
     Remove-Item Env:\PAMGUARD_SESSION_CONFIG_DIR -ErrorAction SilentlyContinue
     Remove-Item Env:\PAMGUARD_RESULT_ARCHIVE_DIR -ErrorAction SilentlyContinue
     Remove-Item Env:\PAMGUARD_AUDIO_ARCHIVE_DIR -ErrorAction SilentlyContinue
@@ -193,4 +195,12 @@ finally {
     $env:PAMGUARD_SESSION_CONFIG_DIR = $oldSessionDir
     $env:PAMGUARD_RESULT_ARCHIVE_DIR = $oldArchiveDir
     $env:PAMGUARD_AUDIO_ARCHIVE_DIR = $oldAudioArchiveDir
+    if ($oldLegacyModelCompat) {
+        $env:PAMGUARD_LEGACY_MODEL_COMPAT =
+            $oldLegacyModelCompat
+    }
+    else {
+        Remove-Item Env:\PAMGUARD_LEGACY_MODEL_COMPAT `
+            -ErrorAction SilentlyContinue
+    }
 }

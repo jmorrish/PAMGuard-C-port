@@ -61,8 +61,10 @@ $writer.Flush()
 
 $oldJobDir = $env:PAMGUARD_JOB_AUDIO_DIR
 $oldArchive = $env:PAMGUARD_RESULT_ARCHIVE_DIR
+$oldLegacyModelCompat = $env:PAMGUARD_LEGACY_MODEL_COMPAT
 $process = $null
 try {
+    $env:PAMGUARD_LEGACY_MODEL_COMPAT = "1"
     $env:PAMGUARD_JOB_AUDIO_DIR = $audioDir
     $env:PAMGUARD_RESULT_ARCHIVE_DIR = $archiveDir
     $env:PAMGUARD_AUDIO_ARCHIVE_DIR = $audioArchiveDir
@@ -217,6 +219,14 @@ finally {
     }
     $env:PAMGUARD_JOB_AUDIO_DIR = $oldJobDir
     $env:PAMGUARD_RESULT_ARCHIVE_DIR = $oldArchive
+    if ($oldLegacyModelCompat) {
+        $env:PAMGUARD_LEGACY_MODEL_COMPAT =
+            $oldLegacyModelCompat
+    }
+    else {
+        Remove-Item Env:\PAMGUARD_LEGACY_MODEL_COMPAT `
+            -ErrorAction SilentlyContinue
+    }
     Remove-Item Env:\PAMGUARD_AUDIO_ARCHIVE_DIR -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }

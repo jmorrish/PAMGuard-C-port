@@ -1,0 +1,3677 @@
+/* PAMGuard-authoritative operator shell.
+   This file is intentionally dependency-free and scoped to .pamguard-app. */
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #07111f;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.pamguard-app {
+  --shell-navy-950: #07111f;
+  --shell-navy-900: #0b1728;
+  --shell-navy-850: #102035;
+  --shell-navy-800: #152941;
+  --shell-navy-700: #213b57;
+  --shell-line: #29445f;
+  --shell-line-soft: rgba(151, 181, 207, 0.18);
+  --shell-text: #edf6fb;
+  --shell-text-muted: #a7bdcd;
+  --shell-text-faint: #7893a8;
+  --shell-blue: #2389d7;
+  --shell-blue-strong: #0876c9;
+  --shell-blue-soft: rgba(35, 137, 215, 0.17);
+  --shell-teal: #0fa7a2;
+  --shell-teal-strong: #078782;
+  --shell-teal-soft: rgba(15, 167, 162, 0.16);
+  --shell-good: #21a56f;
+  --shell-warn: #c78212;
+  --shell-danger: #c84b4b;
+  --shell-danger-strong: #aa3333;
+  --shell-canvas: #eef4f7;
+  --shell-canvas-strong: #ffffff;
+  --shell-canvas-line: #c6d4dc;
+  --shell-canvas-text: #183247;
+  --shell-canvas-muted: #637c8d;
+  --shell-shadow:
+    0 14px 34px rgba(2, 12, 23, 0.28),
+    0 2px 8px rgba(2, 12, 23, 0.18);
+  --shell-radius: 7px;
+  --shell-radius-large: 10px;
+  --shell-focus: 0 0 0 3px rgba(53, 174, 239, 0.4);
+  --shell-mono:
+    "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono",
+    monospace;
+  --shell-ui:
+    Inter, "Segoe UI", Roboto, Helvetica, Arial, system-ui, sans-serif;
+  --shell-menubar-height: 42px;
+  --shell-projectbar-height: 34px;
+  --shell-tabbar-height: 38px;
+  --shell-statusbar-height: 28px;
+
+  display: grid;
+  grid-template-rows:
+    var(--shell-menubar-height)
+    var(--shell-projectbar-height)
+    minmax(0, 1fr)
+    var(--shell-statusbar-height);
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-width: 0;
+  min-height: 560px;
+  overflow: hidden;
+  color: var(--shell-text);
+  background: var(--shell-navy-950);
+  font: 13px/1.4 var(--shell-ui);
+  color-scheme: dark;
+  isolation: isolate;
+}
+
+.pamguard-app *,
+.pamguard-app *::before,
+.pamguard-app *::after {
+  box-sizing: border-box;
+}
+
+.unit-context-menu *,
+.unit-context-menu *::before,
+.unit-context-menu *::after,
+.toast-region *,
+.toast-region *::before,
+.toast-region *::after,
+dialog *,
+dialog *::before,
+dialog *::after {
+  box-sizing: border-box;
+}
+
+.pamguard-app button,
+.pamguard-app input,
+.pamguard-app select,
+.pamguard-app textarea {
+  font: inherit;
+}
+
+.pamguard-app button,
+.pamguard-app [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pamguard-app :where(
+  button,
+  [href],
+  input,
+  select,
+  textarea,
+  [tabindex]:not([tabindex="-1"])
+):focus-visible,
+dialog :where(
+  button,
+  [href],
+  input,
+  select,
+  textarea,
+  [tabindex]:not([tabindex="-1"])
+):focus-visible,
+.unit-context-menu :where(button, [href]):focus-visible,
+.toast :where(button, [href]):focus-visible {
+  outline: none;
+  box-shadow: var(--shell-focus, 0 0 0 3px rgba(53, 174, 239, 0.4));
+}
+
+.pamguard-app .icon-button,
+dialog .icon-button,
+.toast .icon-button {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.pamguard-app button:disabled,
+.pamguard-app input:disabled,
+.pamguard-app select:disabled,
+.pamguard-app textarea:disabled,
+dialog button:disabled,
+dialog input:disabled,
+dialog select:disabled,
+dialog textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Top-level application chrome */
+
+.pamguard-app .app-menubar {
+  position: relative;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--shell-line);
+  background: var(--shell-navy-900);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.pamguard-app .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: max-content;
+  margin-right: 10px;
+  color: var(--shell-text);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+}
+
+.pamguard-app .brand::before {
+  content: none;
+}
+
+.pamguard-app .brand-mark {
+  display: inline-grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 1px solid rgba(103, 217, 220, 0.45);
+  border-radius: 6px;
+  color: #b9f3f3;
+  background: linear-gradient(145deg, #0b8582, #075d68);
+  box-shadow: 0 0 12px rgba(15, 167, 162, 0.3);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.pamguard-app .brand small {
+  color: #67d9dc;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .brand em,
+.pamguard-app .brand strong {
+  color: #67d9dc;
+  font-style: normal;
+}
+
+.pamguard-app .application-menus {
+  align-self: stretch;
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.pamguard-app .menu {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.pamguard-app .menu > button {
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--shell-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pamguard-app .menu > button:hover,
+.pamguard-app .menu.open > button,
+.pamguard-app .menu[aria-expanded="true"] > button {
+  border-color: var(--shell-line-soft);
+  background: var(--shell-blue-soft);
+}
+
+.pamguard-app .menu-panel {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% - 2px);
+  left: 0;
+  display: none;
+  width: max-content;
+  min-width: 220px;
+  max-width: min(360px, calc(100vw - 20px));
+  padding: 5px;
+  border: 1px solid var(--shell-line);
+  border-radius: var(--shell-radius);
+  color: var(--shell-text);
+  background: var(--shell-navy-850);
+  box-shadow: var(--shell-shadow);
+}
+
+.pamguard-app .menu.open > .menu-panel,
+.pamguard-app .menu[aria-expanded="true"] > .menu-panel,
+.pamguard-app .menu-panel.open {
+  display: grid;
+  gap: 1px;
+}
+
+.pamguard-app .menu-panel button,
+.pamguard-app .menu-panel a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--shell-text);
+  background: transparent;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pamguard-app .menu-panel button:hover,
+.pamguard-app .menu-panel a:hover,
+.pamguard-app .menu-panel [aria-selected="true"] {
+  background: var(--shell-blue-soft);
+}
+
+.pamguard-app .menu-panel hr {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--shell-line-soft);
+}
+
+.pamguard-app .menu-panel kbd {
+  color: var(--shell-text-faint);
+  background: transparent;
+  font: 11px var(--shell-ui);
+}
+
+.pamguard-app .menu-panel-wide {
+  width: min(330px, calc(100vw - 20px));
+  max-height: min(65vh, 620px);
+  overflow-y: auto;
+}
+
+.pamguard-app .menu-panel-right {
+  right: 0;
+  left: auto;
+}
+
+.pamguard-app .menu-group-label {
+  display: block;
+  padding: 7px 9px 4px;
+  color: #75cdd0;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .menu-empty {
+  display: block;
+  max-width: 300px;
+  padding: 9px;
+  color: var(--shell-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.pamguard-app .runtime-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-left: 10px;
+}
+
+.pamguard-app .runtime-actions button {
+  min-width: 68px;
+  min-height: 28px;
+  padding: 4px 12px;
+  border: 1px solid var(--shell-line);
+  border-radius: 5px;
+  color: var(--shell-text);
+  background: var(--shell-navy-800);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.pamguard-app .runtime-actions button:hover {
+  border-color: #4aa6e5;
+  background: #173956;
+}
+
+.pamguard-app .runtime-actions .start,
+.pamguard-app .runtime-actions .runtime-start,
+.pamguard-app .runtime-actions [data-action="start"] {
+  border-color: var(--shell-teal-strong);
+  background: #0a625f;
+}
+
+.pamguard-app .runtime-actions .stop,
+.pamguard-app .runtime-actions #runtimeStop,
+.pamguard-app .runtime-actions [data-action="stop"] {
+  border-color: #bb4b4b;
+  background: #7c2f36;
+}
+
+.pamguard-app .project-bar {
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--shell-line-soft);
+  color: var(--shell-text-muted);
+  background: var(--shell-navy-850);
+  font-size: 12px;
+}
+
+.pamguard-app .project-identity,
+.pamguard-app .project-state {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.pamguard-app .project-state {
+  margin-left: auto;
+}
+
+.pamguard-app .project-label {
+  color: var(--shell-text-faint);
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .project-identity > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--shell-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .project-bar .project-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--shell-text);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .project-bar .project-id,
+.pamguard-app .project-bar .project-revision {
+  overflow: hidden;
+  color: var(--shell-text-faint);
+  font-family: var(--shell-mono);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .project-bar .dirty-indicator {
+  color: #ffd483;
+  font-weight: 650;
+}
+
+.pamguard-app .project-bar .dirty-indicator::before {
+  margin-right: 5px;
+  color: var(--shell-warn);
+  content: "●";
+}
+
+.pamguard-app .tab-strip {
+  z-index: 40;
+  display: flex;
+  align-items: end;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 10px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--shell-line);
+  background: var(--shell-navy-900);
+  scrollbar-width: thin;
+}
+
+.pamguard-app .tab-strip button,
+.pamguard-app .tab-strip [role="tab"] {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 30px;
+  max-width: 240px;
+  padding: 5px 13px 6px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  color: var(--shell-text-muted);
+  background: transparent;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pamguard-app .tab-strip button:hover,
+.pamguard-app .tab-strip [role="tab"]:hover {
+  color: var(--shell-text);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.pamguard-app .tab-strip button.active,
+.pamguard-app .tab-strip button[aria-selected="true"],
+.pamguard-app .tab-strip [role="tab"][aria-selected="true"] {
+  border-color: var(--shell-line);
+  color: var(--shell-text);
+  background: var(--shell-navy-800);
+}
+
+.pamguard-app .tab-strip button.active::after,
+.pamguard-app .tab-strip button[aria-selected="true"]::after,
+.pamguard-app .tab-strip [role="tab"][aria-selected="true"]::after {
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--shell-teal);
+  content: "";
+}
+
+.pamguard-app .shell-main {
+  position: relative;
+  display: grid;
+  grid-template-rows: var(--shell-tabbar-height) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--shell-navy-950);
+}
+
+.pamguard-app .tab-host {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pamguard-app .tab-host > .tab-panel,
+.pamguard-app .tab-host > #displayPanels {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pamguard-app #displayPanels,
+.pamguard-app #displayPanels > .tab-panel {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pamguard-app #displayPanels {
+  pointer-events: none;
+}
+
+.pamguard-app #displayPanels > .tab-panel.active {
+  pointer-events: auto;
+}
+
+.pamguard-app .tab-panel {
+  display: none;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pamguard-app .tab-panel.active,
+.pamguard-app .tab-panel[aria-hidden="false"] {
+  display: block;
+}
+
+/* Data Model and palette */
+
+.pamguard-app .data-model-shell {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--shell-canvas);
+}
+
+.pamguard-app .module-palette {
+  min-width: 0;
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+  border-right: 1px solid var(--shell-line);
+  color: var(--shell-text);
+  background: var(--shell-navy-850);
+  scrollbar-color: var(--shell-navy-700) transparent;
+  scrollbar-width: thin;
+}
+
+.pamguard-app .module-palette > header,
+.pamguard-app .module-palette > .palette-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 5px 6px;
+  color: var(--shell-text-muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .module-palette > .palette-head h2 {
+  margin: 2px 0 0;
+  color: var(--shell-text);
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pamguard-app .module-palette .eyebrow {
+  color: var(--shell-text-faint);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .module-palette .icon-button {
+  display: inline-grid;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--shell-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pamguard-app .module-palette .icon-button:hover {
+  border-color: var(--shell-line);
+  color: var(--shell-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pamguard-app .module-palette .search-field {
+  display: block;
+}
+
+.pamguard-app .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
+
+.pamguard-app .module-palette input[type="search"] {
+  width: 100%;
+  height: 30px;
+  margin-bottom: 7px;
+  padding: 4px 8px;
+  border: 1px solid var(--shell-line);
+  border-radius: 5px;
+  color: var(--shell-text);
+  background: var(--shell-navy-950);
+}
+
+.pamguard-app .module-palette input[type="search"]::placeholder {
+  color: var(--shell-text-faint);
+}
+
+.pamguard-app .palette-group {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 5px;
+  padding: 0 5px 6px;
+  border: 1px solid var(--shell-line-soft);
+  border-radius: 6px;
+  background: rgba(5, 15, 28, 0.22);
+}
+
+.pamguard-app .palette-group > summary,
+.pamguard-app .palette-group > header,
+.pamguard-app .palette-group > h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 29px;
+  padding: 5px 7px;
+  color: var(--shell-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pamguard-app .palette-group > h3 {
+  margin: 0 -5px 1px;
+  cursor: default;
+}
+
+.pamguard-app .palette-group > summary:hover {
+  color: var(--shell-text);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.pamguard-app .palette-group > summary::marker {
+  color: var(--shell-teal);
+}
+
+.pamguard-app .palette-group > .palette-items {
+  display: grid;
+  gap: 3px;
+  padding: 2px 5px 6px;
+}
+
+.pamguard-app .palette-item {
+  display: grid;
+  grid-template-columns: 3px 28px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--shell-text);
+  background: var(--shell-navy-800);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pamguard-app .palette-item::before {
+  align-self: stretch;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--shell-blue);
+  content: "";
+}
+
+.pamguard-app .palette-item:hover {
+  border-color: #3d6b8e;
+  background: #193451;
+  transform: translateY(-1px);
+}
+
+.pamguard-app .palette-item:active {
+  transform: translateY(0);
+}
+
+.pamguard-app .palette-item-icon {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 5px;
+  color: #8be2e4;
+  background: rgba(15, 167, 162, 0.12);
+  font-size: 16px;
+}
+
+.pamguard-app .palette-item > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.pamguard-app .palette-item > span:last-child strong,
+.pamguard-app .palette-item > span:last-child small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pamguard-app .palette-item > span:last-child strong {
+  color: var(--shell-text);
+  font-size: 11.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.pamguard-app .palette-item > span:last-child small {
+  color: var(--shell-text-muted);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.pamguard-app .palette-item .palette-item-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .palette-item .palette-item-status {
+  color: var(--shell-text-faint);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .palette-item:disabled,
+.pamguard-app .palette-item[aria-disabled="true"] {
+  cursor: not-allowed;
+  filter: grayscale(0.55);
+  opacity: 0.46;
+  transform: none;
+}
+
+.pamguard-app .module-palette:not(.open) {
+  display: none;
+}
+
+.pamguard-app .data-model-shell:has(.module-palette:not(.open)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Graph stage */
+
+.pamguard-app .model-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--shell-canvas-text);
+  background: var(--shell-canvas);
+  color-scheme: light;
+}
+
+.pamguard-app .model-toolbar {
+  position: absolute;
+  z-index: 30;
+  top: 9px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 28px);
+  min-height: 34px;
+  padding: 4px;
+  border: 1px solid rgba(70, 101, 123, 0.28);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 5px 16px rgba(33, 61, 80, 0.16),
+    0 1px 3px rgba(33, 61, 80, 0.12);
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+}
+
+.pamguard-app .model-toolbar button,
+.pamguard-app .model-toolbar select {
+  min-height: 25px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--shell-canvas-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pamguard-app .model-toolbar button:hover {
+  border-color: #b8cad5;
+  background: #e6f0f5;
+}
+
+.pamguard-app .model-toolbar .toolbar-divider {
+  width: 1px;
+  height: 19px;
+  margin: 0 3px;
+  background: #cfdae1;
+}
+
+.pamguard-app .model-toolbar output {
+  min-width: 43px;
+  color: var(--shell-canvas-muted);
+  font: 10.5px var(--shell-mono);
+  text-align: center;
+}
+
+.pamguard-app .data-model-canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  outline: none;
+  background-color: var(--shell-canvas);
+  background-image:
+    radial-gradient(circle, rgba(78, 112, 133, 0.29) 1px, transparent 1.2px);
+  background-position: 0 0;
+  background-size: 20px 20px;
+  touch-action: none;
+  cursor: grab;
+}
+
+.pamguard-app .data-model-canvas:active {
+  cursor: grabbing;
+}
+
+.pamguard-app .data-model-canvas:focus-visible {
+  box-shadow: inset var(--shell-focus);
+}
+
+.pamguard-app .data-model-canvas.is-connecting {
+  cursor: crosshair;
+}
+
+.pamguard-app .model-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5000px;
+  height: 3200px;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.pamguard-app .model-wires {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 5000px;
+  height: 3200px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pamguard-app .model-wires path {
+  fill: none;
+  stroke: #4d829d;
+  stroke-linecap: round;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.pamguard-app .model-wires path:hover,
+.pamguard-app .model-wires path.is-selected {
+  stroke: var(--shell-blue-strong);
+  stroke-width: 3;
+}
+
+.pamguard-app .model-wires path.is-invalid {
+  stroke: var(--shell-danger);
+  stroke-dasharray: 6 4;
+}
+
+.pamguard-app .model-wires path.is-pending {
+  stroke: var(--shell-teal);
+  stroke-dasharray: 4 4;
+}
+
+/* Controlled-unit bundle nodes */
+
+.pamguard-app .controlled-unit-node {
+  position: absolute;
+  z-index: 4;
+  width: 292px;
+  min-height: 86px;
+  overflow: visible;
+  border: 1px solid #9fb5c3;
+  border-radius: 8px;
+  color: var(--shell-canvas-text);
+  background: var(--shell-canvas-strong);
+  box-shadow:
+    0 5px 14px rgba(36, 67, 88, 0.14),
+    0 1px 3px rgba(36, 67, 88, 0.14);
+  cursor: default;
+  user-select: none;
+}
+
+.pamguard-app .controlled-unit-node:hover {
+  border-color: #6f9db9;
+  box-shadow:
+    0 8px 20px rgba(36, 67, 88, 0.18),
+    0 1px 3px rgba(36, 67, 88, 0.14);
+}
+
+.pamguard-app .controlled-unit-node.is-selected,
+.pamguard-app .controlled-unit-node[aria-selected="true"] {
+  border-color: var(--shell-blue);
+  box-shadow:
+    0 0 0 2px rgba(35, 137, 215, 0.24),
+    0 8px 20px rgba(36, 67, 88, 0.19);
+}
+
+.pamguard-app .controlled-unit-node .unit-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 38px;
+  align-items: center;
+  padding: 6px 7px 6px 10px;
+  border-bottom: 1px solid #d7e1e7;
+  border-radius: 7px 7px 0 0;
+  background: #e9f1f5;
+  cursor: move;
+}
+
+.pamguard-app .controlled-unit-node .unit-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 740;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .controlled-unit-node .unit-type {
+  display: block;
+  overflow: hidden;
+  color: var(--shell-canvas-muted);
+  font-size: 9.5px;
+  font-weight: 550;
+  letter-spacing: 0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .controlled-unit-node .unit-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.pamguard-app .controlled-unit-node .unit-actions button {
+  display: inline-grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #47677b;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pamguard-app .controlled-unit-node .unit-actions button:hover {
+  border-color: #b7c9d4;
+  color: #174d6c;
+  background: #ffffff;
+}
+
+.pamguard-app .controlled-unit-node .unit-body {
+  display: grid;
+  gap: 5px;
+  padding: 7px 0;
+}
+
+.pamguard-app .controlled-unit-node .unit-summary,
+.pamguard-app .controlled-unit-node .unit-warning {
+  margin: 0 9px;
+  color: var(--shell-canvas-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.pamguard-app .controlled-unit-node .unit-warning {
+  color: #895c13;
+}
+
+.pamguard-app .controlled-unit-node .unit-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin: 0 9px;
+  color: var(--shell-canvas-muted);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .controlled-unit-node .unit-status::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #8ba1af;
+  content: "";
+}
+
+.pamguard-app .controlled-unit-node.is-running,
+.pamguard-app .controlled-unit-node[data-status="running"] {
+  border-color: #54a98b;
+}
+
+.pamguard-app .controlled-unit-node.is-running .unit-header,
+.pamguard-app .controlled-unit-node[data-status="running"] .unit-header {
+  background: #e2f3ec;
+}
+
+.pamguard-app .controlled-unit-node.is-running .unit-status::before,
+.pamguard-app .controlled-unit-node[data-status="running"] .unit-status::before {
+  background: var(--shell-good);
+  box-shadow: 0 0 0 3px rgba(33, 165, 111, 0.14);
+}
+
+.pamguard-app .controlled-unit-node.needs-configuration,
+.pamguard-app .controlled-unit-node[data-status="needs-configuration"] {
+  border-color: #d59a39;
+}
+
+.pamguard-app .controlled-unit-node.needs-configuration .unit-header,
+.pamguard-app .controlled-unit-node[data-status="needs-configuration"] .unit-header {
+  background: #fff2d9;
+}
+
+.pamguard-app .controlled-unit-node.needs-configuration .unit-status::before,
+.pamguard-app .controlled-unit-node[data-status="needs-configuration"] .unit-status::before {
+  background: var(--shell-warn);
+}
+
+.pamguard-app .controlled-unit-node.has-warning,
+.pamguard-app .controlled-unit-node[data-status="warning"] {
+  border-color: #d59a39;
+}
+
+.pamguard-app .controlled-unit-node.has-error,
+.pamguard-app .controlled-unit-node.is-invalid,
+.pamguard-app .controlled-unit-node[data-status="error"],
+.pamguard-app .controlled-unit-node[data-status="invalid"] {
+  border-color: var(--shell-danger);
+}
+
+.pamguard-app .controlled-unit-node.has-error .unit-header,
+.pamguard-app .controlled-unit-node.is-invalid .unit-header,
+.pamguard-app .controlled-unit-node[data-status="error"] .unit-header,
+.pamguard-app .controlled-unit-node[data-status="invalid"] .unit-header {
+  background: #fbe7e7;
+}
+
+.pamguard-app .controlled-unit-node.has-error .unit-status::before,
+.pamguard-app .controlled-unit-node.is-invalid .unit-status::before,
+.pamguard-app .controlled-unit-node[data-status="error"] .unit-status::before,
+.pamguard-app .controlled-unit-node[data-status="invalid"] .unit-status::before {
+  background: var(--shell-danger);
+}
+
+.pamguard-app .controlled-unit-node.is-disabled,
+.pamguard-app .controlled-unit-node[aria-disabled="true"] {
+  filter: grayscale(0.7);
+  opacity: 0.62;
+}
+
+.pamguard-app .controlled-unit-node .unit-roles {
+  display: grid;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.pamguard-app .controlled-unit-node .input-roles,
+.pamguard-app .controlled-unit-node .output-roles {
+  display: grid;
+  gap: 2px;
+}
+
+.pamguard-app .controlled-unit-node .unit-role,
+.pamguard-app .controlled-unit-node .input-role,
+.pamguard-app .controlled-unit-node .output-role {
+  position: relative;
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  color: #476477;
+  font-size: 10px;
+}
+
+.pamguard-app .controlled-unit-node .input-role,
+.pamguard-app .controlled-unit-node .unit-role.input {
+  justify-content: flex-start;
+  padding-left: 15px;
+}
+
+.pamguard-app .controlled-unit-node .output-role,
+.pamguard-app .controlled-unit-node .unit-role.output {
+  justify-content: flex-end;
+  padding-right: 15px;
+  text-align: right;
+}
+
+.pamguard-app .controlled-unit-node .role-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .controlled-unit-node .role-type {
+  color: #8297a4;
+  font: 8.5px var(--shell-mono);
+}
+
+.pamguard-app .role-socket,
+.pamguard-app .input-socket,
+.pamguard-app .output-socket {
+  position: absolute;
+  z-index: 6;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #61869c;
+  box-shadow: 0 0 0 1px #527489;
+  transform: translateY(-50%);
+  cursor: crosshair;
+}
+
+.pamguard-app .input-role .role-socket,
+.pamguard-app .input-role .input-socket,
+.pamguard-app .unit-role.input .role-socket,
+.pamguard-app .input-socket {
+  left: -6px;
+  background: var(--shell-blue);
+}
+
+.pamguard-app .output-role .role-socket,
+.pamguard-app .output-role .output-socket,
+.pamguard-app .unit-role.output .role-socket,
+.pamguard-app .output-socket {
+  right: -6px;
+  background: var(--shell-teal);
+}
+
+.pamguard-app .role-socket:hover,
+.pamguard-app .role-socket.is-compatible,
+.pamguard-app .input-socket:hover,
+.pamguard-app .output-socket:hover {
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 0 0 5px rgba(35, 137, 215, 0.32);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.pamguard-app .role-socket.is-incompatible {
+  cursor: not-allowed;
+  filter: grayscale(1);
+  opacity: 0.42;
+}
+
+/* Actual project-shell controlled-unit DOM.
+   Geometry is locked to project-shell.js: 292px wide, first role centre at
+   y=116px, then one role every 30px. */
+
+.pamguard-app .controlled-unit-node.selected {
+  border-color: var(--shell-blue);
+  box-shadow:
+    0 0 0 3px rgba(35, 137, 215, 0.2),
+    0 9px 22px rgba(36, 67, 88, 0.2);
+}
+
+.pamguard-app .controlled-unit-node.dragging {
+  z-index: 12;
+  cursor: grabbing;
+  opacity: 0.94;
+}
+
+.pamguard-app .controlled-unit-node.node-runnable {
+  border-color: #75a99b;
+}
+
+.pamguard-app .controlled-unit-node.node-needs-configuration {
+  border-color: #d1993d;
+}
+
+.pamguard-app .controlled-unit-node .node-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+  height: 58px;
+  align-items: center;
+  padding: 7px 8px 7px 9px;
+  border-bottom: 1px solid #d4e0e6;
+  border-radius: 7px 7px 0 0;
+  background: #e8f0f4;
+  cursor: move;
+}
+
+.pamguard-app .controlled-unit-node.node-runnable .node-header {
+  background:
+    linear-gradient(90deg, rgba(33, 165, 111, 0.12), transparent 48%),
+    #e8f0f4;
+}
+
+.pamguard-app .controlled-unit-node.node-needs-configuration .node-header {
+  background:
+    linear-gradient(90deg, rgba(199, 130, 18, 0.18), transparent 55%),
+    #f6efe1;
+}
+
+.pamguard-app .controlled-unit-node .node-identity {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 7px;
+  min-width: 0;
+  align-items: center;
+}
+
+.pamguard-app .controlled-unit-node .node-glyph {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid #b9ccd6;
+  border-radius: 6px;
+  color: #176982;
+  background: rgba(255, 255, 255, 0.68);
+  font-size: 17px;
+  font-weight: 750;
+}
+
+.pamguard-app .controlled-unit-node .node-identity > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.pamguard-app .controlled-unit-node .node-identity strong,
+.pamguard-app .controlled-unit-node .node-identity small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .controlled-unit-node .node-identity strong {
+  color: #17384e;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.pamguard-app .controlled-unit-node .node-identity small {
+  color: #698191;
+  font-size: 9.5px;
+}
+
+.pamguard-app .controlled-unit-node .node-configure {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #b9cbd5;
+  border-radius: 5px;
+  color: #3f6277;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.pamguard-app .controlled-unit-node .node-configure:hover {
+  border-color: #71a6c4;
+  color: #135675;
+  background: #ffffff;
+}
+
+.pamguard-app .controlled-unit-node .node-status {
+  display: flex;
+  width: 100%;
+  height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 10px;
+  overflow: hidden;
+  border-bottom: 1px solid #e0e8ec;
+  color: #718896;
+  background: #f9fbfc;
+  font-size: 9px;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+}
+
+.pamguard-app .controlled-unit-node .node-status > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pamguard-app .controlled-unit-node .status-ok,
+.pamguard-app .controlled-unit-node .status-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #247957;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.pamguard-app .controlled-unit-node .status-ok::before,
+.pamguard-app .controlled-unit-node .status-warn::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--shell-good);
+  content: "";
+}
+
+.pamguard-app .controlled-unit-node .status-warn {
+  color: #8a5d14;
+}
+
+.pamguard-app .controlled-unit-node .status-warn::before {
+  background: var(--shell-warn);
+}
+
+.pamguard-app .controlled-unit-node .node-ports {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 14px 0 10px;
+  background: #ffffff;
+}
+
+.pamguard-app .controlled-unit-node .node-ports:not(:has(.port-row)) {
+  display: none;
+}
+
+.pamguard-app .controlled-unit-node .node-inputs,
+.pamguard-app .controlled-unit-node .node-outputs {
+  display: grid;
+  grid-row: 1;
+  grid-auto-rows: 30px;
+  min-width: 0;
+}
+
+.pamguard-app .controlled-unit-node .node-inputs {
+  grid-column: 1;
+}
+
+.pamguard-app .controlled-unit-node .node-outputs {
+  grid-column: 2;
+}
+
+.pamguard-app .controlled-unit-node .port-row {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 30px;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  color: #476477;
+  background: transparent;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.pamguard-app .controlled-unit-node button.port-row {
+  cursor: pointer;
+}
+
+.pamguard-app .controlled-unit-node button.port-row:hover {
+  color: #174f6e;
+  background: #edf5f8;
+}
+
+.pamguard-app .controlled-unit-node .port-output.is-connection-source {
+  color: #0b6570;
+  background: #dff5f1;
+}
+
+.pamguard-app .controlled-unit-node .port-input.is-compatible {
+  color: #0d6648;
+  background: #e1f6eb;
+  cursor: crosshair;
+}
+
+.pamguard-app .controlled-unit-node .port-input.is-compatible .port-socket {
+  background: #1a9b67;
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 0 0 5px rgba(26, 155, 103, 0.34);
+}
+
+.pamguard-app .controlled-unit-node .port-input.is-incompatible {
+  color: #8798a2;
+  background: #f1f4f5;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.pamguard-app .controlled-unit-node .port-input.is-incompatible .port-socket {
+  background: #9eabb2;
+  box-shadow: 0 0 0 1px #7e8d95;
+}
+
+.pamguard-app .controlled-unit-node .port-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .controlled-unit-node .port-input {
+  justify-content: flex-start;
+  padding: 3px 7px 3px 14px;
+  text-align: left;
+}
+
+.pamguard-app .controlled-unit-node .port-output {
+  justify-content: flex-end;
+  padding: 3px 14px 3px 7px;
+  text-align: right;
+}
+
+.pamguard-app .controlled-unit-node .port-socket {
+  position: absolute;
+  z-index: 7;
+  top: 50%;
+  display: block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #4f7489;
+  transform: translateY(-50%);
+}
+
+.pamguard-app .controlled-unit-node .port-input .port-socket {
+  left: -7px;
+  background: var(--shell-blue);
+}
+
+.pamguard-app .controlled-unit-node .port-output .port-socket {
+  right: -7px;
+  background: var(--shell-teal);
+}
+
+.pamguard-app .controlled-unit-node .port-row:hover .port-socket {
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 0 0 5px rgba(35, 137, 215, 0.25);
+}
+
+.pamguard-app .canvas-empty {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: min(460px, calc(100% - 48px));
+  padding: 28px;
+  border: 1px dashed #a8bdc9;
+  border-radius: var(--shell-radius-large);
+  color: var(--shell-canvas-muted);
+  background: rgba(255, 255, 255, 0.66);
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.pamguard-app .canvas-empty strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--shell-canvas-text);
+  font-size: 15px;
+}
+
+.pamguard-app .canvas-empty .empty-symbol {
+  margin-bottom: 7px;
+  color: var(--shell-blue-strong);
+  font-size: 30px;
+  line-height: 1;
+}
+
+.pamguard-app .canvas-empty h1,
+.pamguard-app .canvas-empty h2,
+.pamguard-app .canvas-empty h3 {
+  margin: 0 0 6px;
+  color: var(--shell-canvas-text);
+  font-size: 17px;
+}
+
+.pamguard-app .canvas-empty p {
+  max-width: 390px;
+  margin: 0 auto 14px;
+  line-height: 1.5;
+}
+
+.pamguard-app .canvas-empty button {
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid var(--shell-blue-strong);
+  border-radius: 5px;
+  color: #ffffff;
+  background: var(--shell-blue-strong);
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.pamguard-app .canvas-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+}
+
+.pamguard-app .canvas-empty button.secondary {
+  border-color: #7694a8;
+  color: var(--shell-canvas-text);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.unit-context-menu {
+  --shell-line: #29445f;
+  --shell-line-soft: rgba(151, 181, 207, 0.18);
+  --shell-text: #edf6fb;
+  --shell-text-muted: #a7bdcd;
+  --shell-blue-soft: rgba(35, 137, 215, 0.17);
+  --shell-navy-850: #102035;
+  --shell-shadow:
+    0 14px 34px rgba(2, 12, 23, 0.28),
+    0 2px 8px rgba(2, 12, 23, 0.18);
+  --shell-radius: 7px;
+
+  position: fixed;
+  z-index: 140;
+  display: grid;
+  gap: 1px;
+  width: 210px;
+  padding: 5px;
+  border: 1px solid var(--shell-line);
+  border-radius: var(--shell-radius);
+  color: var(--shell-text);
+  background: var(--shell-navy-850);
+  box-shadow: var(--shell-shadow);
+  font: 12px/1.4 "Segoe UI", Roboto, Helvetica, Arial, system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+.unit-context-menu button,
+.unit-context-menu a {
+  width: 100%;
+  min-height: 29px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.unit-context-menu button:hover,
+.unit-context-menu a:hover {
+  background: var(--shell-blue-soft);
+}
+
+.unit-context-menu button.danger {
+  color: #ffaaaa;
+}
+
+.unit-context-menu hr {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--shell-line-soft);
+}
+
+/* Footer and runtime state */
+
+.pamguard-app .statusbar {
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 10px;
+  overflow: hidden;
+  border-top: 1px solid var(--shell-line);
+  color: var(--shell-text-muted);
+  background: var(--shell-navy-900);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.pamguard-app .statusbar > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.pamguard-app .status-led {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  background: #61798c;
+}
+
+.pamguard-app .status-led-off {
+  background: #657d90;
+  box-shadow: 0 0 0 2px rgba(101, 125, 144, 0.13);
+}
+
+.pamguard-app .status-led-running {
+  border-color: #7de0b5;
+  background: #32c888;
+  box-shadow:
+    0 0 0 2px rgba(50, 200, 136, 0.17),
+    0 0 8px rgba(50, 200, 136, 0.65);
+}
+
+.pamguard-app .statusbar .status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pamguard-app .statusbar .clock,
+.pamguard-app .statusbar .revision {
+  color: var(--shell-text-faint);
+  font-family: var(--shell-mono);
+}
+
+.pamguard-app .status-pill {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--shell-line-soft);
+  border-radius: 999px;
+  color: var(--shell-text-muted);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .status-pill::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--shell-text-faint);
+  content: "";
+}
+
+.pamguard-app .status-pill.good,
+.pamguard-app .status-pill.running,
+.pamguard-app .status-pill.status-runnable {
+  border-color: rgba(33, 165, 111, 0.45);
+  color: #91e3bf;
+}
+
+.pamguard-app .status-pill.good::before,
+.pamguard-app .status-pill.running::before,
+.pamguard-app .status-pill.status-runnable::before {
+  background: #43cf94;
+}
+
+.pamguard-app .status-pill.warning,
+.pamguard-app .status-pill.dirty,
+.pamguard-app .status-pill.status-needsconfiguration {
+  border-color: rgba(199, 130, 18, 0.55);
+  color: #ffd58c;
+}
+
+.pamguard-app .status-pill.warning::before,
+.pamguard-app .status-pill.dirty::before,
+.pamguard-app .status-pill.status-needsconfiguration::before {
+  background: #e5a43a;
+}
+
+.pamguard-app .status-pill.error,
+.pamguard-app .status-pill.invalid,
+.pamguard-app .status-pill.status-invalid {
+  border-color: rgba(200, 75, 75, 0.55);
+  color: #ffaaaa;
+}
+
+.pamguard-app .status-pill.error::before,
+.pamguard-app .status-pill.invalid::before,
+.pamguard-app .status-pill.status-invalid::before {
+  background: #ef6c6c;
+}
+
+.pamguard-app .status-pill.status-connecting::before {
+  background: var(--shell-blue);
+}
+
+/* Dynamic display tabs */
+
+.pamguard-app .display-surface {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--shell-text);
+  background: var(--shell-navy-950);
+}
+
+.pamguard-app .display-surface > header {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px;
+  border-bottom: 1px solid var(--shell-line);
+  background: var(--shell-navy-850);
+}
+
+.pamguard-app .display-surface .display-content {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pamguard-app .display-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  place-content: center;
+  gap: 7px;
+  padding: 28px;
+  color: var(--shell-text-muted);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(35, 137, 215, 0.045) 25%,
+      transparent 25%,
+      transparent 50%,
+      rgba(35, 137, 215, 0.045) 50%,
+      rgba(35, 137, 215, 0.045) 75%,
+      transparent 75%
+    );
+  background-size: 24px 24px;
+  text-align: center;
+}
+
+.pamguard-app .display-placeholder strong {
+  color: var(--shell-text);
+  font-size: 14px;
+}
+
+.pamguard-app #displayPanels > .tab-panel.active {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--shell-navy-950);
+}
+
+.pamguard-app .display-tab-header {
+  grid-row: 1;
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--shell-line);
+  background: var(--shell-navy-850);
+}
+
+.pamguard-app .display-tab-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.pamguard-app .display-tab-header .eyebrow {
+  color: var(--shell-text-faint);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .display-tab-header h2 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--shell-text);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .display-tab-header > button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--shell-teal-strong);
+  border-radius: 5px;
+  color: #d9ffff;
+  background: #086865;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pamguard-app .display-local-tabs {
+  grid-row: 2;
+  display: flex;
+  min-width: 0;
+  gap: 3px;
+  padding: 5px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--shell-line);
+  background: var(--shell-navy-900);
+}
+
+.pamguard-app .display-local-tabs button {
+  min-height: 27px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--shell-text-muted);
+  background: transparent;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pamguard-app .display-local-tabs button[aria-pressed="true"] {
+  border-color: var(--shell-line);
+  color: var(--shell-text);
+  background: var(--shell-blue-soft);
+}
+
+.pamguard-app .display-grid {
+  grid-row: 3;
+  display: grid;
+  grid-template-columns:
+    repeat(var(--display-columns, 12), minmax(0, 1fr));
+  grid-auto-rows: minmax(44px, 1fr);
+  min-width: 0;
+  min-height: 0;
+  gap: 8px;
+  padding: 8px;
+  overflow: auto;
+  background: #06101c;
+}
+
+.pamguard-app .display-layout-grid {
+  display: grid;
+}
+
+.pamguard-app .display-tab-header + .display-grid {
+  grid-row: 2 / 4;
+}
+
+.pamguard-app .display-layout-tabs {
+  display: block;
+}
+
+.pamguard-app .display-layout-tabs > .display-surface {
+  height: 100%;
+}
+
+.pamguard-app .display-grid > .display-placeholder {
+  grid-column: 1 / -1;
+  min-height: 0;
+  border: 1px dashed var(--shell-line);
+  border-radius: 7px;
+}
+
+.pamguard-app .display-surface {
+  border: 1px solid var(--shell-line);
+  border-radius: 7px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
+}
+
+.pamguard-app .display-surface > header {
+  justify-content: space-between;
+}
+
+.pamguard-app .display-surface > header > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.pamguard-app .display-surface > header strong,
+.pamguard-app .display-surface > header small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .display-surface > header strong {
+  font-size: 11.5px;
+}
+
+.pamguard-app .display-surface > header small {
+  color: var(--shell-text-muted);
+  font-size: 9.5px;
+}
+
+.pamguard-app .display-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.pamguard-app .display-actions button {
+  min-height: 25px;
+  padding: 3px 7px;
+  border: 1px solid var(--shell-line);
+  border-radius: 4px;
+  color: var(--shell-text-muted);
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+}
+
+.pamguard-app .display-actions button:hover {
+  color: var(--shell-text);
+  background: var(--shell-blue-soft);
+}
+
+.pamguard-app .spectrogram-foundation {
+  position: relative;
+  min-width: 0;
+  min-height: 120px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(14, 55, 82, 0.28), transparent 45%),
+    #030b14;
+}
+
+.pamguard-app .project-spectrogram-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  background: #06111e;
+}
+
+.pamguard-app .click-display-foundation {
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+  overflow: auto;
+}
+
+.pamguard-app .project-click-display-canvas {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 360px;
+  min-height: 360px;
+  background: #06111e;
+  cursor: crosshair;
+}
+
+.pamguard-app .project-click-detail {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  padding: 7px;
+  border-top: 1px solid var(--shell-line);
+  background: #07131f;
+}
+
+.pamguard-app .project-click-detail[hidden] {
+  display: none;
+}
+
+.pamguard-app .project-click-detail-meta {
+  grid-column: 1 / -1;
+  color: var(--shell-text-muted);
+  font-family: var(--shell-mono);
+  font-size: 10px;
+}
+
+.pamguard-app .project-click-detail-panel {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  margin: 0;
+}
+
+.pamguard-app .project-click-detail-panel strong {
+  color: var(--shell-text);
+  font-size: 10.5px;
+}
+
+.pamguard-app .project-click-detail-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 8px;
+}
+
+.pamguard-app .project-click-wigner-meta,
+.pamguard-app .project-click-spectrum-meta {
+  overflow: hidden;
+  color: var(--shell-text-muted);
+  font-family: var(--shell-mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .project-click-waveform-canvas,
+.pamguard-app .project-click-spectrum-canvas,
+.pamguard-app .project-click-wigner-canvas {
+  display: block;
+  width: 100%;
+  height: 170px;
+  min-height: 140px;
+  border: 1px solid var(--shell-line);
+  background: #06111e;
+}
+
+@media (max-width: 1200px) {
+  .pamguard-app .project-click-detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .pamguard-app .project-click-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.pamguard-app .level-meter-display-foundation {
+  align-content: start;
+  min-height: 12rem;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.pamguard-app .project-level-meter {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.pamguard-app .project-level-meter-scale,
+.pamguard-app .project-level-meter-row {
+  align-items: center;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pamguard-app .project-level-meter-scale {
+  color: var(--shell-text-muted);
+  grid-template-columns: 4rem 1fr 4rem;
+  text-align: center;
+}
+
+.pamguard-app .project-level-meter-row {
+  grid-template-columns: 4rem minmax(10rem, 1fr) 6.5rem;
+}
+
+.pamguard-app .project-level-meter-channel,
+.pamguard-app .project-level-meter-row output {
+  color: var(--shell-text-muted);
+  font-family: var(--shell-mono);
+}
+
+.pamguard-app .project-level-meter-row output {
+  text-align: right;
+}
+
+.pamguard-app .project-level-meter-track {
+  background: rgb(255 255 255 / 8%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 999px;
+  height: 0.8rem;
+  overflow: hidden;
+}
+
+.pamguard-app .project-level-meter-fill {
+  background: linear-gradient(90deg, #35a7ff, #55e6c1);
+  height: 100%;
+  transition: width 80ms linear;
+}
+
+.pamguard-app .project-level-meter-fill.is-high {
+  background: linear-gradient(90deg, #ffb347, #ff5d73);
+}
+
+.pamguard-app .level-meter-empty {
+  color: var(--shell-text-muted);
+  margin: auto;
+}
+
+.pamguard-app .project-tracked-click-controls {
+  flex: 0 0 auto;
+}
+
+.pamguard-app .tracked-click-controls {
+  display: grid;
+  gap: 5px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--shell-line);
+  color: var(--shell-text-muted);
+  background: #091724;
+}
+
+.pamguard-app .tracked-click-heading,
+.pamguard-app .tracked-click-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pamguard-app .tracked-click-heading {
+  justify-content: space-between;
+}
+
+.pamguard-app .tracked-click-heading strong {
+  color: var(--shell-text);
+  font-size: 11px;
+}
+
+.pamguard-app .tracked-click-message {
+  overflow: hidden;
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pamguard-app .tracked-click-actions button,
+.pamguard-app .tracked-click-actions select,
+.pamguard-app .tracked-click-event-row,
+.pamguard-app .tracked-click-menu button {
+  min-height: 25px;
+  padding: 3px 7px;
+  border: 1px solid var(--shell-line);
+  border-radius: 4px;
+  color: var(--shell-text);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.pamguard-app .tracked-click-actions button,
+.pamguard-app .tracked-click-event-row,
+.pamguard-app .tracked-click-menu button {
+  cursor: pointer;
+}
+
+.pamguard-app .tracked-click-actions button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.pamguard-app .tracked-click-reassign > span {
+  font-size: 9.5px;
+}
+
+.pamguard-app .tracked-click-event-list {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.pamguard-app .tracked-click-event-row {
+  flex: 0 0 auto;
+  color: var(--shell-text-muted);
+  font-size: 9.5px;
+}
+
+.pamguard-app .tracked-click-menu {
+  position: absolute;
+  z-index: 20;
+  display: grid;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--shell-line-strong);
+  border-radius: 5px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  background: #0d1b27;
+}
+
+.pamguard-app .tracked-click-menu button {
+  border-color: transparent;
+  border-radius: 2px;
+  text-align: left;
+}
+
+.pamguard-app .tracked-click-menu button:hover {
+  border-color: var(--shell-blue);
+  background: var(--shell-blue-soft);
+}
+
+.pamguard-app .spectrogram-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.62;
+  background-image:
+    linear-gradient(rgba(88, 151, 179, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(88, 151, 179, 0.13) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      #071429 0%,
+      #0b4262 28%,
+      #177b83 52%,
+      #cf8d2a 78%,
+      #f4d067 100%);
+  background-size:
+    100% 32px,
+    48px 100%,
+    100% 100%;
+  background-blend-mode: screen, screen, normal;
+}
+
+.pamguard-app .display-runtime-message {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 8px;
+  max-width: min(440px, calc(100% - 32px));
+  padding: 4px 7px;
+  border: 1px solid rgba(133, 188, 210, 0.36);
+  border-radius: 5px;
+  color: #d6eaf2;
+  background: rgba(3, 12, 22, 0.76);
+  font: 9.5px var(--shell-mono);
+  text-align: left;
+  backdrop-filter: blur(4px);
+}
+
+.pamguard-app .display-surface > footer {
+  min-height: 25px;
+  padding: 4px 8px;
+  overflow: hidden;
+  border-top: 1px solid var(--shell-line);
+  color: var(--shell-text-faint);
+  background: var(--shell-navy-900);
+  font: 9.5px var(--shell-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dialogs and settings */
+
+dialog {
+  --shell-dialog-bg: #102035;
+  --shell-dialog-line: #34516d;
+  --shell-dialog-text: #edf6fb;
+  --shell-dialog-muted: #a7bdcd;
+  --shell-focus: 0 0 0 3px rgba(53, 174, 239, 0.4);
+
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(86vh, 900px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 10px;
+  color: var(--shell-dialog-text);
+  background: var(--shell-dialog-bg);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.58),
+    0 2px 12px rgba(0, 0, 0, 0.38);
+  font: 13px/1.4 "Segoe UI", Roboto, Helvetica, Arial, system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+dialog[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+dialog > form {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  max-height: min(86vh, 900px);
+  min-height: 0;
+  margin: 0;
+}
+
+dialog::backdrop {
+  background: rgba(3, 10, 19, 0.74);
+  backdrop-filter: blur(2px);
+}
+
+dialog .dialog-header {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--shell-dialog-line);
+  background: #0b192b;
+}
+
+dialog .dialog-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+dialog .dialog-subtitle {
+  color: var(--shell-dialog-muted);
+  font-size: 11px;
+  font-weight: 450;
+}
+
+dialog .dialog-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--shell-dialog-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+dialog .dialog-close:hover {
+  border-color: var(--shell-dialog-line);
+  color: var(--shell-dialog-text);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+dialog .dialog-body {
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+  scrollbar-color: #34516d transparent;
+  scrollbar-width: thin;
+}
+
+dialog .dialog-footer {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--shell-dialog-line);
+  background: #0b192b;
+}
+
+dialog .dialog-actions {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--shell-dialog-line);
+  background: #0b192b;
+}
+
+dialog .dialog-note {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  color: var(--shell-dialog-muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+dialog .dialog-footer button,
+dialog .dialog-actions button {
+  min-width: 76px;
+  min-height: 30px;
+  padding: 4px 12px;
+  border: 1px solid #3c5c78;
+  border-radius: 5px;
+  color: var(--shell-dialog-text);
+  background: #17314d;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+dialog .dialog-footer button:hover,
+dialog .dialog-actions button:hover {
+  border-color: #56a8df;
+  background: #1b4163;
+}
+
+dialog .dialog-footer button[type="submit"],
+dialog .dialog-actions .primary {
+  border-color: #0a938e;
+  background: #087b77;
+}
+
+dialog .dialog-message,
+dialog .dialog-error {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid #3b5b76;
+  border-radius: 5px;
+  color: var(--shell-dialog-muted);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+dialog .dialog-error {
+  border-color: rgba(226, 94, 94, 0.58);
+  color: #ffb6b6;
+  background: rgba(200, 75, 75, 0.12);
+}
+
+dialog .dialog-stack {
+  display: grid;
+  gap: 11px;
+}
+
+dialog .dialog-field {
+  display: grid;
+  grid-template-columns: minmax(145px, 0.7fr) minmax(210px, 1.3fr);
+  gap: 10px 14px;
+  align-items: center;
+  color: var(--shell-dialog-muted);
+}
+
+dialog .dialog-field > span {
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+dialog .dialog-field input,
+dialog .dialog-field select,
+dialog .dialog-field textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 31px;
+  padding: 5px 7px;
+  border: 1px solid #3b5871;
+  border-radius: 5px;
+  color: var(--shell-dialog-text);
+  background: #081524;
+}
+
+dialog .dialog-intro {
+  margin: 0;
+  color: var(--shell-dialog-text);
+  line-height: 1.5;
+}
+
+dialog .dialog-callout {
+  padding: 8px 10px;
+  border: 1px solid rgba(65, 132, 169, 0.55);
+  border-radius: 6px;
+  color: #b9dce9;
+  background: rgba(35, 137, 215, 0.1);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+dialog .dialog-callout-danger {
+  border-color: rgba(218, 102, 102, 0.58);
+  color: #ffc0c0;
+  background: rgba(200, 75, 75, 0.12);
+}
+
+dialog .check-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--shell-dialog-muted);
+  line-height: 1.45;
+}
+
+dialog .check-field input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+  accent-color: #0fa7a2;
+}
+
+dialog .settings-sections {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+  min-height: 300px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+dialog .settings-sections > nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-right: 1px solid var(--shell-dialog-line);
+  background: #0c1a2b;
+}
+
+dialog .settings-sections > nav button {
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--shell-dialog-muted);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+dialog .settings-sections > nav button:hover,
+dialog .settings-sections > nav button.active,
+dialog .settings-sections > nav button[aria-selected="true"] {
+  border-color: rgba(76, 126, 165, 0.45);
+  color: var(--shell-dialog-text);
+  background: rgba(35, 137, 215, 0.15);
+}
+
+dialog .settings-section {
+  display: none;
+  min-width: 0;
+  padding: 14px;
+  overflow: auto;
+}
+
+dialog .settings-section.active,
+dialog .settings-section[aria-hidden="false"] {
+  display: block;
+}
+
+dialog .settings-sections.settings-stack {
+  display: block;
+  min-height: 0;
+  overflow: visible;
+}
+
+dialog .settings-sections.settings-stack > .settings-section {
+  display: block;
+}
+
+dialog .settings-sections.settings-stack > .settings-section + .settings-section {
+  border-top: 1px solid var(--shell-dialog-line);
+}
+
+dialog .settings-section h2,
+dialog .settings-section h3 {
+  margin: 0 0 10px;
+  color: var(--shell-dialog-text);
+  font-size: 13px;
+}
+
+dialog .settings-section .section-description {
+  margin: -5px 0 12px;
+  color: var(--shell-dialog-muted);
+  font-size: 11px;
+}
+
+dialog .settings-section .section-help,
+dialog .section-help {
+  margin: -4px 0 11px;
+  color: var(--shell-dialog-muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+dialog .settings-field {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.8fr) minmax(190px, 1.2fr);
+  gap: 9px 14px;
+  align-items: center;
+  min-height: 38px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(151, 181, 207, 0.11);
+}
+
+dialog .settings-field:last-child {
+  border-bottom: 0;
+}
+
+dialog .settings-field > label {
+  margin: 0;
+  color: var(--shell-dialog-muted);
+  font-size: 11.5px;
+}
+
+dialog .settings-field > .settings-label {
+  margin: 0;
+  color: var(--shell-dialog-muted);
+  font-size: 11.5px;
+  font-weight: 620;
+}
+
+dialog .settings-field .field-help,
+dialog .settings-field small {
+  grid-column: 2;
+  margin-top: -6px;
+  color: #7894aa;
+  font-size: 10px;
+}
+
+dialog .settings-field input,
+dialog .settings-field select,
+dialog .settings-field textarea {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 7px;
+  border: 1px solid #3b5871;
+  border-radius: 5px;
+  color: var(--shell-dialog-text);
+  background: #081524;
+}
+
+dialog .settings-field textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+dialog .settings-field input[type="checkbox"],
+dialog .settings-field input[type="radio"] {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+  accent-color: var(--shell-teal, #0fa7a2);
+}
+
+dialog .settings-field input:invalid,
+dialog .settings-field select:invalid,
+dialog .settings-field textarea:invalid,
+dialog .settings-field.has-error input,
+dialog .settings-field.has-error select,
+dialog .settings-field.has-error textarea {
+  border-color: #da6666;
+  box-shadow: 0 0 0 2px rgba(218, 102, 102, 0.15);
+}
+
+dialog .settings-field.settings-field-checkbox {
+  grid-template-columns: 18px minmax(0, 1fr);
+  justify-items: start;
+}
+
+dialog .settings-field.settings-field-checkbox > input {
+  grid-column: 1;
+}
+
+dialog .settings-field.settings-field-checkbox > .settings-label {
+  grid-column: 2;
+}
+
+dialog .settings-object {
+  min-width: 0;
+  margin: 8px 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+}
+
+dialog .settings-object > legend {
+  padding: 0 6px;
+  color: #8ed2d5;
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+dialog .authoritative-sections {
+  margin: 0 0 10px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  color: var(--shell-dialog-muted);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+dialog .authoritative-sections summary {
+  padding: 7px 9px;
+  color: #a8dfe1;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+dialog .authoritative-sections ul {
+  columns: 2;
+  margin: 0;
+  padding: 0 28px 9px;
+  font-size: 10px;
+}
+
+dialog .settings-tab-list {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 3px;
+  overflow-x: auto;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  background: #081524;
+}
+
+dialog .settings-tab {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--shell-dialog-muted);
+  background: transparent;
+  font-size: 10.5px;
+  font-weight: 680;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+dialog .settings-tab:hover,
+dialog .settings-tab[aria-selected="true"] {
+  border-color: rgba(76, 126, 165, 0.55);
+  color: var(--shell-dialog-text);
+  background: rgba(35, 137, 215, 0.17);
+}
+
+dialog .settings-tab-panel {
+  min-width: 0;
+}
+
+dialog .settings-tab-panel[hidden] {
+  display: none;
+}
+
+dialog .settings-unit {
+  justify-self: end;
+  margin-left: -8px;
+  color: #7894aa;
+  font-size: 10px;
+}
+
+dialog .settings-field:has(> .settings-unit) {
+  grid-template-columns:
+    minmax(155px, 0.8fr)
+    minmax(170px, 1.2fr)
+    max-content;
+}
+
+dialog .settings-field:has(> .settings-unit) small {
+  grid-column: 2 / 4;
+}
+
+dialog .settings-choice-group,
+dialog .noise-method {
+  min-width: 0;
+  margin: 8px 0 12px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+dialog .settings-choice-group > legend,
+dialog .noise-method > legend {
+  padding: 0 6px;
+  color: #8ed2d5;
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+dialog .settings-choice-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+dialog .settings-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid rgba(151, 181, 207, 0.18);
+  border-radius: 5px;
+  color: var(--shell-dialog-muted);
+  background: rgba(7, 22, 37, 0.68);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+dialog .settings-choice input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--shell-teal, #0fa7a2);
+}
+
+dialog [data-spectrogram-editor] {
+  min-width: min(680px, 78vw);
+}
+
+dialog .spectrogram-source-summary {
+  margin: 8px 0 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 5px;
+  color: var(--shell-dialog-muted);
+  background: rgba(4, 15, 27, 0.28);
+  font: 11px/1.45 var(--shell-mono);
+}
+
+dialog .spectrogram-source-summary[data-state="bound"] {
+  border-color: #3d7d70;
+  color: #cae8df;
+}
+
+dialog .spectrogram-source-summary[data-state="unbound"] {
+  border-color: rgba(214, 152, 73, 0.58);
+  color: #efd5af;
+}
+
+dialog .spectrogram-panel-count {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+dialog .spectrogram-panel-count > button {
+  min-height: 32px;
+  margin-bottom: 8px;
+  padding: 5px 11px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 4px;
+  color: var(--shell-dialog-text);
+  background: #18304a;
+  cursor: pointer;
+}
+
+dialog .spectrogram-panel-channel-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 7px 10px;
+}
+
+dialog .spectrogram-panel-channel-list .settings-field {
+  margin: 0;
+}
+
+dialog .spectrogram-range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+dialog .spectrogram-time-choice {
+  display: grid;
+  grid-template-columns: auto minmax(110px, auto) minmax(80px, 1fr) auto;
+}
+
+dialog .spectrogram-time-choice input[type="number"] {
+  width: 100%;
+  min-width: 72px;
+}
+
+@media (max-width: 720px) {
+  dialog [data-spectrogram-editor] {
+    min-width: 0;
+  }
+
+  dialog .spectrogram-panel-count,
+  dialog .spectrogram-range {
+    grid-template-columns: 1fr;
+  }
+}
+
+dialog .derived-settings {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(120px, 1fr);
+  gap: 5px 14px;
+  margin: 12px 0 0;
+  padding: 10px;
+  border: 1px solid rgba(15, 167, 162, 0.25);
+  border-radius: 6px;
+  background: rgba(15, 167, 162, 0.055);
+}
+
+dialog .derived-settings dt {
+  color: var(--shell-dialog-muted);
+  font-size: 10.5px;
+}
+
+dialog .derived-settings dd {
+  margin: 0;
+  color: #b9e8e8;
+  font-family: var(--shell-mono);
+  font-size: 10.5px;
+}
+
+dialog .conditional-settings[hidden] {
+  display: none;
+}
+
+dialog .noise-method .conditional-settings {
+  margin-top: 4px;
+}
+
+dialog .acquisition-channel-grid {
+  display: grid;
+  gap: 3px;
+  margin: 12px 0 2px;
+  padding: 7px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+dialog .acquisition-channel-row {
+  display: grid;
+  grid-template-columns:
+    minmax(105px, 0.8fr)
+    minmax(120px, 1fr)
+    minmax(175px, 1.35fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  padding: 3px 5px;
+  border-radius: 4px;
+}
+
+dialog .acquisition-channel-row:not(.acquisition-channel-head):nth-child(even) {
+  background: rgba(151, 181, 207, 0.045);
+}
+
+dialog .acquisition-channel-row strong {
+  color: var(--shell-dialog-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+dialog .acquisition-channel-row input,
+dialog .acquisition-channel-row select {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 5px 7px;
+  border: 1px solid #3b5871;
+  border-radius: 5px;
+  color: var(--shell-dialog-text);
+  background: #081524;
+}
+
+dialog .acquisition-channel-head {
+  min-height: 24px;
+  color: #8ed2d5;
+  font-size: 9.5px;
+  font-weight: 760;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+dialog .acquisition-calibration-offsets {
+  margin: 4px 0 10px;
+  padding: 4px 10px;
+  border: 1px solid rgba(151, 181, 207, 0.14);
+  border-radius: 6px;
+}
+
+dialog .sound-output-source-summary {
+  margin: 8px 0 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 5px;
+  color: var(--shell-dialog-muted);
+  background: rgba(4, 15, 27, 0.28);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+dialog .sound-output-source-summary[data-state="runtime"] {
+  border-color: #3d7d70;
+  color: #cae8df;
+}
+
+dialog .sound-output-channel-actions,
+dialog .sound-output-device-row,
+dialog .sound-output-monitor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+dialog .sound-output-channel-actions {
+  margin: 0 0 10px;
+}
+
+dialog .sound-output-channel-actions button,
+dialog .sound-output-device-row button,
+dialog .sound-output-monitor-actions button {
+  min-height: 30px;
+  padding: 5px 11px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 4px;
+  color: var(--shell-dialog-text);
+  background: #18304a;
+  cursor: pointer;
+}
+
+dialog .sound-output-browser-settings {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  background: rgba(4, 15, 27, 0.22);
+}
+
+dialog .sound-output-browser-settings h4 {
+  margin: 0 0 5px;
+  color: var(--shell-dialog-text);
+  font-size: 13px;
+}
+
+dialog .sound-output-device-row select {
+  min-width: min(320px, 100%);
+  min-height: 32px;
+  flex: 1 1 220px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 4px;
+  color: var(--shell-dialog-text);
+  background: #0c1c2e;
+}
+
+dialog .sound-output-monitor-actions {
+  margin-top: 11px;
+}
+
+dialog .sound-output-monitor-actions button:first-child {
+  border-color: #2c8c77;
+  background: #176851;
+}
+
+dialog .sound-output-monitor-status {
+  min-height: 34px;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-left: 3px solid #698397;
+  color: var(--shell-dialog-muted);
+  background: rgba(4, 15, 27, 0.35);
+  font: 11px/1.5 var(--shell-mono);
+}
+
+dialog .sound-output-monitor-status[data-phase="live"] {
+  border-left-color: var(--shell-good);
+  color: #d5eee5;
+}
+
+dialog .sound-output-monitor-status[data-phase="starting"] {
+  border-left-color: var(--shell-blue);
+}
+
+dialog .sound-output-monitor-status[data-phase="error"] {
+  border-left-color: var(--shell-danger);
+  color: #ffd6d2;
+}
+
+/* Generated-runtime inspection */
+
+.pamguard-app .inspection-shell,
+dialog .inspection-shell {
+  display: grid;
+  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--shell-line, #34516d);
+  border-radius: 7px;
+}
+
+.pamguard-app .inspection-nav,
+dialog .inspection-nav {
+  min-width: 0;
+  padding: 7px;
+  overflow: auto;
+  border-right: 1px solid var(--shell-line, #34516d);
+  background: var(--shell-navy-900, #0b192b);
+}
+
+.pamguard-app .inspection-nav button,
+dialog .inspection-nav button {
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 7px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--shell-text-muted, #a7bdcd);
+  background: transparent;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pamguard-app .inspection-nav button:hover,
+.pamguard-app .inspection-nav button.active,
+dialog .inspection-nav button:hover,
+dialog .inspection-nav button.active {
+  color: var(--shell-text, #edf6fb);
+  background: var(--shell-blue-soft, rgba(35, 137, 215, 0.17));
+}
+
+.pamguard-app .inspection-panel,
+dialog .inspection-panel {
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  overflow: auto;
+}
+
+.pamguard-app .inspection-group,
+dialog .inspection-group {
+  margin-bottom: 9px;
+  border: 1px solid var(--shell-line-soft, rgba(151, 181, 207, 0.18));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pamguard-app .inspection-group > header,
+dialog .inspection-group > header {
+  padding: 6px 8px;
+  color: var(--shell-text-muted, #a7bdcd);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.pamguard-app .inspection-row,
+dialog .inspection-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(0, 1.3fr);
+  gap: 10px;
+  padding: 5px 8px;
+  border-top: 1px solid var(--shell-line-soft, rgba(151, 181, 207, 0.12));
+}
+
+.pamguard-app .inspection-row dt,
+dialog .inspection-row dt {
+  color: var(--shell-text-muted, #a7bdcd);
+}
+
+.pamguard-app .inspection-row dd,
+dialog .inspection-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--shell-text, #edf6fb);
+  font-family: var(--shell-mono, monospace);
+  font-size: 10.5px;
+}
+
+.pamguard-app .inspection-code,
+dialog .inspection-code {
+  margin: 0;
+  padding: 9px;
+  overflow: auto;
+  border: 1px solid var(--shell-line-soft, rgba(151, 181, 207, 0.18));
+  border-radius: 5px;
+  color: #bfe7ed;
+  background: #06101c;
+  font: 10.5px/1.5 var(--shell-mono, monospace);
+  tab-size: 2;
+}
+
+dialog .inspection-body {
+  display: grid;
+  align-content: start;
+  gap: 11px;
+}
+
+dialog .inspection-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+dialog .inspection-summary > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+dialog .inspection-summary span {
+  color: var(--shell-dialog-muted);
+  font-size: 9.5px;
+  font-weight: 720;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+dialog .inspection-summary code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #bfe7ed;
+  font: 10.5px/1.45 "Cascadia Mono", Consolas, monospace;
+}
+
+dialog .inspection-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+dialog .inspection-section > h3,
+dialog .inspection-section > .section-help {
+  grid-column: 1 / -1;
+}
+
+dialog .inspection-section > h3 {
+  margin: 0;
+  color: var(--shell-dialog-text);
+  font-size: 12px;
+}
+
+dialog .inspection-card {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+dialog .inspection-card strong {
+  overflow: hidden;
+  color: #a8dfe1;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+dialog .inspection-card code {
+  overflow-wrap: anywhere;
+  color: var(--shell-dialog-muted);
+  font: 9.5px/1.45 "Cascadia Mono", Consolas, monospace;
+}
+
+dialog .diagnostics-output {
+  max-height: 52vh;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  color: #bfe7ed;
+  background: #06101c;
+  font: 10px/1.45 "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+/* Conflicts, notifications, and utilities */
+
+.pamguard-app .conflict-banner {
+  position: absolute;
+  z-index: 110;
+  top: calc(
+    var(--shell-menubar-height) +
+    var(--shell-projectbar-height) +
+    8px
+  );
+  right: 12px;
+  left: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 46px;
+  padding: 8px 10px;
+  border: 1px solid #d58a2d;
+  border-radius: 7px;
+  color: #5d3b0b;
+  background: #fff0cf;
+  box-shadow: 0 8px 22px rgba(72, 48, 13, 0.2);
+}
+
+.pamguard-app .conflict-banner::before {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  color: #ffffff;
+  background: var(--shell-warn);
+  font-weight: 800;
+  content: "!";
+}
+
+.pamguard-app .conflict-banner strong {
+  display: block;
+  color: #472c08;
+}
+
+.pamguard-app .conflict-banner button {
+  min-height: 29px;
+  padding: 4px 9px;
+  border: 1px solid #b67118;
+  border-radius: 5px;
+  color: #4f3109;
+  background: #ffe1a5;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.toast-region {
+  --shell-line: #29445f;
+  --shell-text: #edf6fb;
+  --shell-text-muted: #a7bdcd;
+  --shell-navy-850: #102035;
+  --shell-blue: #2389d7;
+  --shell-good: #21a56f;
+  --shell-warn: #c78212;
+  --shell-danger: #c84b4b;
+  --shell-shadow:
+    0 14px 34px rgba(2, 12, 23, 0.28),
+    0 2px 8px rgba(2, 12, 23, 0.18);
+
+  position: fixed;
+  z-index: 220;
+  right: 14px;
+  bottom: 42px;
+  display: flex;
+  width: min(380px, calc(100vw - 28px));
+  flex-direction: column;
+  gap: 7px;
+  pointer-events: none;
+  font: 12px/1.4 "Segoe UI", Roboto, Helvetica, Arial, system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+.toast {
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  min-height: 44px;
+  padding: 8px 9px;
+  border: 1px solid var(--shell-line);
+  border-radius: 7px;
+  color: var(--shell-text);
+  background: var(--shell-navy-850);
+  box-shadow: var(--shell-shadow);
+  pointer-events: auto;
+  animation: pamguard-toast-in 150ms ease-out;
+}
+
+.toast > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--shell-text);
+  line-height: 1.4;
+}
+
+.toast::before {
+  align-self: stretch;
+  border-radius: 3px;
+  background: var(--shell-blue);
+  content: "";
+}
+
+.toast.success::before,
+.toast.toast-success::before {
+  background: var(--shell-good);
+}
+
+.toast.warning::before,
+.toast.toast-warning::before {
+  background: var(--shell-warn);
+}
+
+.toast.error::before,
+.toast.toast-error::before {
+  background: var(--shell-danger);
+}
+
+.toast p {
+  margin: 0;
+  color: var(--shell-text-muted);
+}
+
+.toast strong {
+  display: block;
+  color: var(--shell-text);
+}
+
+.toast button {
+  width: 25px;
+  height: 25px;
+  border: 0;
+  color: var(--shell-text-muted);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+@keyframes pamguard-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pamguard-app .hidden,
+dialog .hidden {
+  display: none !important;
+}
+
+.pamguard-app .spacer,
+dialog .spacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.pamguard-app .secondary,
+dialog .secondary {
+  color: var(--shell-text-muted, #a7bdcd);
+  background: transparent;
+}
+
+.pamguard-app .danger,
+dialog .danger {
+  color: #ffaaaa;
+}
+
+.pamguard-app button.danger,
+dialog button.danger {
+  border-color: rgba(216, 85, 85, 0.62);
+  color: #fff0f0;
+  background: #7d3036;
+}
+
+.pamguard-app button.danger:hover,
+dialog button.danger:hover {
+  border-color: #ee7777;
+  background: var(--shell-danger-strong, #aa3333);
+}
+
+/* Dense but usable at laptop widths. */
+
+@media (max-width: 1100px) {
+  .pamguard-app {
+    --shell-menubar-height: 40px;
+    --shell-projectbar-height: 32px;
+    --shell-tabbar-height: 36px;
+    --shell-statusbar-height: 27px;
+  }
+
+  .pamguard-app .data-model-shell {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .pamguard-app .project-bar .project-id {
+    display: none;
+  }
+
+  .pamguard-app .toolbar-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .pamguard-app {
+    min-width: 680px;
+  }
+
+  .pamguard-app .app-menubar {
+    padding-inline: 7px;
+  }
+
+  .pamguard-app .brand {
+    margin-right: 4px;
+  }
+
+  .pamguard-app .brand small {
+    display: none;
+  }
+
+  .pamguard-app .menu > button {
+    padding-inline: 6px;
+  }
+
+  .pamguard-app .runtime-actions {
+    gap: 4px;
+    padding-left: 5px;
+  }
+
+  .pamguard-app .runtime-actions button {
+    min-width: 58px;
+    padding-inline: 8px;
+  }
+
+  .pamguard-app .data-model-shell {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .pamguard-app .module-palette {
+    display: block;
+    overflow-y: auto;
+    border-right: 1px solid var(--shell-line);
+    border-bottom: 0;
+  }
+
+  .pamguard-app .palette-group {
+    margin-bottom: 5px;
+  }
+
+  .pamguard-app .model-toolbar {
+    top: 7px;
+  }
+
+  dialog .settings-sections {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+
+  dialog .settings-field {
+    grid-template-columns: 140px minmax(180px, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  dialog .dialog-field,
+  dialog .settings-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  dialog .settings-field .field-help,
+  dialog .settings-field small {
+    grid-column: 1;
+  }
+
+  dialog .inspection-summary,
+  dialog .inspection-section {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  dialog .authoritative-sections ul {
+    columns: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pamguard-app *,
+  .pamguard-app *::before,
+  .pamguard-app *::after,
+  .unit-context-menu *,
+  .toast,
+  dialog,
+  dialog::backdrop {
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .pamguard-app .model-world {
+    will-change: auto;
+  }
+}

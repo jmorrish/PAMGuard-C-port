@@ -8,6 +8,7 @@ project(pamguard_cpp_engine
 enable_testing()
 
 find_package(Python3 COMPONENTS Interpreter)
+find_program(PAMGUARD_NODE NAMES node)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,8 +16,56 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(pamguard_engine
     src/core/AnalysisSession.cpp
+    src/core/BuiltInModules.cpp
+    src/core/ClipGeneratorSettings.cpp
+    src/core/DataModel.cpp
+    src/core/DetectorNodes.cpp
+    src/core/FftDetectorNodes.cpp
+    src/core/FilterDecimatorSettings.cpp
     src/core/GroupedSource.cpp
+    src/core/IshmaelSettings.cpp
+    src/core/LevelMeterSettings.cpp
+    src/core/LocalisationNodes.cpp
+    src/core/MatchedTemplateSettings.cpp
+    src/core/MhtClickTrainSettings.cpp
+    src/core/ModuleGraph.cpp
+    src/core/ModuleGraphJson.cpp
+    src/core/ModuleRuntime.cpp
+    src/core/NoiseLtsaSettings.cpp
+    src/core/OperatorNodes.cpp
     src/core/SessionManager.cpp
+    src/core/SignalNodes.cpp
+    src/core/SignalRoutingSettings.cpp
+    src/core/SoundRecorderSettings.cpp
+    src/core/WhistleMoanSettings.cpp
+    src/project/AlarmEffortControlledUnits.cpp
+    src/project/AuralListeningControlledUnit.cpp
+    src/project/BuiltInControlledUnits.cpp
+    src/project/IshmaelControlledUnits.cpp
+    src/project/CanonicalJson.cpp
+    src/project/ClickDetectorControlledUnit.cpp
+    src/project/ClipGeneratorControlledUnit.cpp
+    src/project/ControlledUnitJson.cpp
+    src/project/ControlledUnitRegistry.cpp
+    src/project/FilterDecimatorControlledUnits.cpp
+    src/project/GlobalSettingsAdapters.cpp
+    src/project/LevelMeterControlledUnit.cpp
+    src/project/MatchedTemplateControlledUnit.cpp
+    src/project/MhtClickTrainControlledUnit.cpp
+    src/project/NoiseLtsaControlledUnits.cpp
+    src/project/ProjectAuthority.cpp
+    src/project/ProjectAuthorityJson.cpp
+    src/project/ProjectIdentity.cpp
+    src/project/ProjectJson.cpp
+    src/project/ProjectMigration.cpp
+    src/project/ProjectProjection.cpp
+    src/project/ProjectStore.cpp
+    src/project/Sha256.cpp
+    src/project/SignalRoutingControlledUnits.cpp
+    src/project/SoundRecorderControlledUnit.cpp
+    src/project/SoundOutputControlledUnit.cpp
+    src/project/UserInputControlledUnit.cpp
+    src/project/WhistleMoanControlledUnit.cpp
     src/detectors/BasicClickClassifier.cpp
     src/detectors/SweepClickClassifier.cpp
     src/detectors/ClickDetectorEngine.cpp
@@ -39,9 +88,11 @@ add_library(pamguard_engine
     src/detectors/SpectrogramNoiseReducer.cpp
     src/detectors/SpectrumBackground.cpp
     src/detectors/WhistlePeakDetector.cpp
+    src/dsp/ClickRemoval.cpp
     src/dsp/IirFilter.cpp
     src/dsp/RealFft.cpp
     src/dsp/SpectrogramEngine.cpp
+    src/dsp/WavInterpolator.cpp
     src/dsp/WindowFunction.cpp
     src/io/WavReader.cpp
     src/localisation/ArrayShape.cpp
@@ -54,13 +105,18 @@ add_library(pamguard_engine
     src/localisation/MlGridBearingLocaliser.cpp
     src/localisation/PairBearingLocaliser.cpp
     src/localisation/StreamerOrientation.cpp
+    src/localisation/TrackedTargetMotion.cpp
     src/localisation/WhistleDelayEstimator.cpp
     src/localisation/WorldVectors.cpp
+    src/service/CaptureService.cpp
+    src/service/TrackedClickEvents.cpp
 )
 
 target_include_directories(pamguard_engine
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
 )
 
 target_compile_features(pamguard_engine PUBLIC cxx_std_20)
@@ -269,11 +325,362 @@ add_executable(click_train_localisation_summary_check
 
 target_link_libraries(click_train_localisation_summary_check PRIVATE pamguard_engine)
 
+add_executable(click_localiser_platform_pose_check
+    tools/click_localiser_platform_pose_check.cpp
+)
+
+target_link_libraries(click_localiser_platform_pose_check PRIVATE pamguard_engine)
+
 add_executable(session_manager_check
     tools/session_manager_check.cpp
 )
 
 target_link_libraries(session_manager_check PRIVATE pamguard_engine)
+
+add_executable(module_graph_check
+    tools/module_graph_check.cpp
+)
+
+target_include_directories(module_graph_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(module_graph_check PRIVATE pamguard_engine)
+
+add_executable(controlled_unit_manifest_check
+    tools/controlled_unit_manifest_check.cpp
+)
+
+target_include_directories(controlled_unit_manifest_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(controlled_unit_manifest_check PRIVATE pamguard_engine)
+
+add_executable(project_document_check
+    tools/project_document_check.cpp
+)
+
+target_link_libraries(project_document_check PRIVATE pamguard_engine)
+
+add_executable(project_store_check
+    tools/project_store_check.cpp
+)
+
+target_link_libraries(project_store_check PRIVATE pamguard_engine)
+
+add_executable(project_identity_check
+    tools/project_identity_check.cpp
+)
+
+target_link_libraries(project_identity_check PRIVATE pamguard_engine)
+
+add_executable(controlled_unit_registry_check
+    tools/controlled_unit_registry_check.cpp
+)
+
+target_include_directories(controlled_unit_registry_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(controlled_unit_registry_check PRIVATE pamguard_engine)
+
+add_executable(controlled_unit_json_check
+    tools/controlled_unit_json_check.cpp
+)
+
+target_include_directories(controlled_unit_json_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(controlled_unit_json_check PRIVATE pamguard_engine)
+
+add_executable(filter_decimator_settings_check
+    tools/filter_decimator_settings_check.cpp
+)
+
+target_include_directories(filter_decimator_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(filter_decimator_settings_check PRIVATE pamguard_engine)
+
+add_executable(whistle_moan_settings_check
+    tools/whistle_moan_settings_check.cpp
+)
+
+target_include_directories(whistle_moan_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(whistle_moan_settings_check PRIVATE pamguard_engine)
+
+add_executable(mht_click_train_settings_check
+    tools/mht_click_train_settings_check.cpp
+)
+
+target_include_directories(mht_click_train_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(mht_click_train_settings_check PRIVATE pamguard_engine)
+
+add_executable(matched_template_settings_check
+    tools/matched_template_settings_check.cpp
+)
+
+target_include_directories(matched_template_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(matched_template_settings_check PRIVATE pamguard_engine)
+
+add_executable(noise_ltsa_controlled_units_check
+    tools/noise_ltsa_controlled_units_check.cpp
+)
+
+target_include_directories(noise_ltsa_controlled_units_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(noise_ltsa_controlled_units_check PRIVATE pamguard_engine)
+
+add_executable(level_meter_settings_check
+    tools/level_meter_settings_check.cpp
+)
+
+target_include_directories(level_meter_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(level_meter_settings_check PRIVATE pamguard_engine)
+
+add_executable(array_manager_settings_check
+    tools/array_manager_settings_check.cpp
+)
+
+target_include_directories(array_manager_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(array_manager_settings_check PRIVATE pamguard_engine)
+
+add_executable(sound_output_settings_check
+    tools/sound_output_settings_check.cpp
+)
+
+target_include_directories(sound_output_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(sound_output_settings_check PRIVATE pamguard_engine)
+
+add_executable(sound_recorder_settings_check
+    tools/sound_recorder_settings_check.cpp
+)
+
+target_include_directories(sound_recorder_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(sound_recorder_settings_check PRIVATE pamguard_engine)
+
+add_executable(sound_recorder_node_check
+    tools/sound_recorder_node_check.cpp
+)
+
+target_link_libraries(sound_recorder_node_check PRIVATE pamguard_engine)
+
+add_executable(clip_generator_settings_check
+    tools/clip_generator_settings_check.cpp
+)
+
+target_include_directories(clip_generator_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(clip_generator_settings_check PRIVATE pamguard_engine)
+
+add_executable(clip_generator_runtime_check
+    tools/clip_generator_runtime_check.cpp
+)
+
+target_include_directories(clip_generator_runtime_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(clip_generator_runtime_check PRIVATE pamguard_engine)
+
+add_executable(sound_recorder_controlled_unit_check
+    tools/sound_recorder_controlled_unit_check.cpp
+)
+
+target_include_directories(sound_recorder_controlled_unit_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(
+    sound_recorder_controlled_unit_check
+    PRIVATE pamguard_engine
+)
+
+add_executable(clip_generator_controlled_unit_check
+    tools/clip_generator_controlled_unit_check.cpp
+)
+
+target_include_directories(clip_generator_controlled_unit_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(
+    clip_generator_controlled_unit_check
+    PRIVATE pamguard_engine
+)
+
+add_executable(user_input_controlled_unit_check
+    tools/user_input_controlled_unit_check.cpp
+)
+
+target_include_directories(user_input_controlled_unit_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(
+    user_input_controlled_unit_check
+    PRIVATE pamguard_engine
+)
+
+add_executable(aural_listening_controlled_unit_check
+    tools/aural_listening_controlled_unit_check.cpp
+)
+
+target_include_directories(aural_listening_controlled_unit_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(
+    aural_listening_controlled_unit_check
+    PRIVATE pamguard_engine
+)
+
+add_executable(alarm_effort_controlled_units_check
+    tools/alarm_effort_controlled_units_check.cpp
+)
+
+target_include_directories(alarm_effort_controlled_units_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(
+    alarm_effort_controlled_units_check
+    PRIVATE pamguard_engine
+)
+
+add_executable(project_projection_check
+    tools/project_projection_check.cpp
+)
+
+target_include_directories(project_projection_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(project_projection_check PRIVATE pamguard_engine)
+
+add_executable(ishmael_settings_check
+    tools/ishmael_settings_check.cpp
+)
+
+target_include_directories(ishmael_settings_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(ishmael_settings_check PRIVATE pamguard_engine)
+
+add_executable(project_authority_json_check
+    tools/project_authority_json_check.cpp
+)
+
+target_include_directories(project_authority_json_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(project_authority_json_check PRIVATE pamguard_engine)
+
+add_executable(project_authority_check
+    tools/project_authority_check.cpp
+)
+
+target_link_libraries(project_authority_check PRIVATE pamguard_engine)
+
+add_executable(capture_service_check
+    tools/capture_service_check.cpp
+)
+
+target_link_libraries(capture_service_check PRIVATE pamguard_engine)
+
+add_executable(capture_lifecycle_test_child
+    tools/capture_lifecycle_test_child.cpp
+)
+
+add_executable(decimator_fixture_check
+    tools/decimator_fixture_check.cpp
+)
+
+target_link_libraries(decimator_fixture_check PRIVATE pamguard_engine)
+
+add_executable(signal_routing_fixture_check
+    tools/signal_routing_fixture_check.cpp
+)
+
+target_include_directories(signal_routing_fixture_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(signal_routing_fixture_check PRIVATE pamguard_engine)
+
+add_executable(tracked_click_events_check
+    tools/tracked_click_events_check.cpp
+)
+
+target_include_directories(tracked_click_events_check
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+)
+
+target_link_libraries(tracked_click_events_check PRIVATE pamguard_engine)
+
+add_executable(tracked_target_motion_fixture_check
+    tools/tracked_target_motion_fixture_check.cpp
+)
+
+target_link_libraries(
+    tracked_target_motion_fixture_check
+    PRIVATE pamguard_engine
+)
 
 add_executable(correlation_delay_fixture_check
     tools/correlation_delay_fixture_check.cpp
@@ -526,6 +933,11 @@ add_test(
 )
 
 add_test(
+    NAME pamfft_frame_click_removal_parity
+    COMMAND pamfft_frame_fixture_check 2 16 8 32 ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/pamfft-frame/hann-16-hop-8-click-removal.csv true 5.0 6
+)
+
+add_test(
     NAME click_trigger_basic_2ch_parity
     COMMAND click_trigger_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-trigger/basic-2ch-threshold10.csv
 )
@@ -671,8 +1083,195 @@ add_test(
 )
 
 add_test(
+    NAME click_localiser_platform_pose
+    COMMAND click_localiser_platform_pose_check
+)
+
+add_test(
     NAME session_manager_instanced_pipeline
     COMMAND session_manager_check
+)
+
+add_test(
+    NAME module_graph_and_typed_data_blocks
+    COMMAND module_graph_check
+)
+
+add_test(
+    NAME controlled_unit_parity_manifest
+    COMMAND controlled_unit_manifest_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/../platform/controlled-unit-parity-manifest.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/../PAMGuard_Java
+)
+
+add_test(
+    NAME project_document_contract
+    COMMAND project_document_check
+)
+
+add_test(
+    NAME project_store_atomic_persistence
+    COMMAND project_store_check
+)
+
+add_test(
+    NAME project_identity_contract
+    COMMAND project_identity_check
+)
+
+add_test(
+    NAME controlled_unit_registry_first_slice
+    COMMAND controlled_unit_registry_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/../platform/controlled-unit-parity-manifest.json
+)
+
+add_test(
+    NAME controlled_unit_catalogue_json
+    COMMAND controlled_unit_json_check
+)
+
+add_test(
+    NAME filter_decimator_controlled_units
+    COMMAND filter_decimator_settings_check
+)
+
+add_test(
+    NAME whistle_moan_controlled_unit
+    COMMAND whistle_moan_settings_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/whistle/whistle-moan-settings-defaults.json
+)
+
+add_test(
+    NAME mht_click_train_controlled_unit
+    COMMAND mht_click_train_settings_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-train/settings-defaults.json
+)
+
+add_test(
+    NAME matched_template_controlled_unit
+    COMMAND matched_template_settings_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/matched-template/settings-defaults.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/matched-template/template-resample.csv
+        ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/matched-template-default-templates.json
+)
+
+add_test(
+    NAME noise_ltsa_controlled_units
+    COMMAND noise_ltsa_controlled_units_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/noise-ltsa/settings-defaults.json
+)
+
+add_test(
+    NAME level_meter_controlled_unit
+    COMMAND level_meter_settings_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/level-meter/settings-defaults.csv
+)
+
+add_test(
+    NAME array_manager_global_settings
+    COMMAND array_manager_settings_check
+)
+
+add_test(
+    NAME sound_output_portable_settings
+    COMMAND sound_output_settings_check
+)
+
+add_test(
+    NAME sound_recorder_portable_settings
+    COMMAND sound_recorder_settings_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sound-recorder/settings-defaults.json
+)
+
+add_test(
+    NAME sound_recorder_node_runtime
+    COMMAND sound_recorder_node_check
+)
+
+add_test(
+    NAME clip_generator_portable_settings
+    COMMAND clip_generator_settings_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/clip-generator/settings-defaults.json
+)
+
+add_test(
+    NAME clip_generator_runtime_parity
+    COMMAND clip_generator_runtime_check
+)
+
+add_test(
+    NAME sound_recorder_controlled_unit
+    COMMAND sound_recorder_controlled_unit_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sound-recorder/settings-defaults.json
+)
+
+add_test(
+    NAME clip_generator_controlled_unit
+    COMMAND clip_generator_controlled_unit_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/clip-generator/settings-defaults.json
+)
+
+add_test(
+    NAME user_input_controlled_unit
+    COMMAND user_input_controlled_unit_check
+)
+
+add_test(
+    NAME aural_listening_controlled_unit
+    COMMAND aural_listening_controlled_unit_check
+)
+
+add_test(
+    NAME alarm_effort_controlled_units
+    COMMAND alarm_effort_controlled_units_check
+)
+
+add_test(
+    NAME project_projection_first_slice
+    COMMAND project_projection_check
+)
+
+add_test(
+    NAME ishmael_controlled_units
+    COMMAND ishmael_settings_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ishmael/ishmael-settings.json
+)
+
+add_test(
+    NAME project_authority_json_contract
+    COMMAND project_authority_json_check
+)
+
+add_test(
+    NAME project_authority_transactions
+    COMMAND project_authority_check
+)
+
+add_test(
+    NAME capture_service_command_trust_and_reaping
+    COMMAND capture_service_check
+)
+
+add_test(
+    NAME decimator_java_stream_parity
+    COMMAND decimator_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/decimator/decimator-stream.csv
+)
+
+add_test(
+    NAME signal_routing_java_parity
+    COMMAND signal_routing_fixture_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/signal-routing/signal-routing.csv
+)
+
+add_test(
+    NAME tracked_click_events_java_semantics
+    COMMAND tracked_click_events_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/click-localisation/tracked-click-params.csv
+)
+
+add_test(
+    NAME tracked_target_motion_java_parity
+    COMMAND tracked_target_motion_fixture_check
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/localisation/tracked-target-motion.csv
 )
 
 add_test(
@@ -830,6 +1429,13 @@ add_test(
     NAME session_mht_train_wiring
     COMMAND session_mht_train_check
 )
+set_tests_properties(
+    session_manager_instanced_pipeline
+    session_lsq_bearing_wiring
+    session_whistle_delay_wiring
+    session_mht_train_wiring
+    PROPERTIES LABELS "compatibility;legacy-session;scientific-parity"
+)
 
 add_test(
     NAME whistle_peak_basic_parity
@@ -888,6 +1494,10 @@ add_test(
     NAME ffmpeg_stream_ingest_help_source_id
     COMMAND ffmpeg_stream_ingest --help
 )
+add_test(
+    NAME ffmpeg_stream_ingest_help_module
+    COMMAND ffmpeg_stream_ingest --help
+)
 set_tests_properties(
     ffmpeg_stream_ingest_help
     PROPERTIES PASS_REGULAR_EXPRESSION "--api-key-env"
@@ -900,6 +1510,10 @@ set_tests_properties(
     ffmpeg_stream_ingest_help_source_id
     PROPERTIES PASS_REGULAR_EXPRESSION "--source-id"
 )
+set_tests_properties(
+    ffmpeg_stream_ingest_help_module
+    PROPERTIES PASS_REGULAR_EXPRESSION "--module <id>"
+)
 
 if(Python3_Interpreter_FOUND)
     add_test(
@@ -910,6 +1524,11 @@ if(Python3_Interpreter_FOUND)
         NAME archive_retention_grouped_smoke
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../ops/archive_retention_smoke.py
     )
+    set_tests_properties(
+        archive_event_index_rebuild_smoke
+        archive_retention_grouped_smoke
+        PROPERTIES LABELS "archive;compatibility;legacy-session"
+    )
     add_test(
         NAME ingest_supervisor_status_smoke
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../ops/ingest_supervisor_status_smoke.py
@@ -917,6 +1536,10 @@ if(Python3_Interpreter_FOUND)
     add_test(
         NAME ingest_supervisor_command_smoke
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../ops/ingest_supervisor_command_smoke.py
+    )
+    add_test(
+        NAME ingest_supervisor_project_api_smoke
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../ops/ingest_supervisor_project_smoke.py
     )
 endif()
 
@@ -943,13 +1566,259 @@ if(WIN32)
             NAME service_job_smoke
             COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/service-job-smoke.ps1 -Port 18189 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service>
         )
+        add_test(
+            NAME project_authority_service_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/project-service-smoke.ps1 -Port 18201 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service>
+        )
+        add_test(
+            NAME project_acquisition_http_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/project-acquisition-http-smoke.ps1 -Port 18204 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service> -IngestExe $<TARGET_FILE:ffmpeg_stream_ingest> -ChildExe $<TARGET_FILE:capture_lifecycle_test_child>
+        )
+        add_test(
+            NAME project_sound_recorder_http_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/project-sound-recorder-http-smoke.ps1 -Port 18205 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service>
+        )
+        add_test(
+            NAME project_tracked_click_localisation_http_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/project-tracked-click-localisation-http-smoke.ps1 -Port 18206 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service>
+        )
+        add_test(
+            NAME module_runtime_http_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/module-runtime-smoke.ps1 -Port 18191 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service>
+        )
+        add_test(
+            NAME module_runtime_concurrency_soak
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/module-runtime-soak.ps1 -Port 18194 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service> -DurationSeconds 5
+        )
+        add_test(
+            NAME project_runtime_concurrency_soak
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/project-runtime-soak.ps1 -Port 18207 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service> -DurationSeconds 5
+        )
+        set_tests_properties(
+            project_runtime_concurrency_soak
+            PROPERTIES
+                LABELS "project-authority;runtime;soak"
+                TIMEOUT 60
+        )
+        add_test(
+            NAME capture_service_http_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/capture-service-http-smoke.ps1 -Port 18198 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service>
+        )
+        add_test(
+            NAME capture_lifecycle_browser_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/capture-lifecycle-browser-smoke.ps1 -Port 18199 -DebugPort 19229 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service> -ChildExe $<TARGET_FILE:capture_lifecycle_test_child>
+        )
+        set_tests_properties(
+            capture_lifecycle_browser_smoke
+            PROPERTIES
+                LABELS "browser;capture;compatibility;legacy-session;lifecycle"
+                TIMEOUT 120
+        )
+        add_test(
+            NAME web_assets_service_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/web-assets-service-smoke.ps1 -Port 18197 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service>
+        )
+        add_test(
+            NAME pamguard_operator_shell_browser_contract
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/pamguard-operator-shell-contract.ps1 -Port 18196 -DebugPort 19228 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service> -EnforceTarget
+        )
+        add_test(
+            NAME project_shell_browser_smoke
+            COMMAND ${PAMGUARD_POWERSHELL} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/project-shell-browser-smoke.ps1 -Port 18203 -DebugPort 19231 -BuildDir $<TARGET_FILE_DIR:pamguard_engine_service>
+        )
+        set_tests_properties(
+            pamguard_operator_shell_browser_contract
+            PROPERTIES
+                LABELS "browser;compatibility-isolation;operator-shell;target-contract"
+                TIMEOUT 90
+        )
+        set_tests_properties(
+            project_shell_browser_smoke
+            PROPERTIES
+                LABELS "browser;operator-shell;project-authority"
+                TIMEOUT 120
+        )
+        set_tests_properties(
+            project_authority_service_smoke
+            PROPERTIES
+                LABELS "compatibility-isolation;project-authority;service"
+        )
+        set_tests_properties(
+            service_smoke_http
+            service_smoke_api_key
+            service_smoke_api_key_file
+            service_load_smoke_foundation
+            PROPERTIES
+                LABELS "compatibility;legacy-session;service"
+        )
+        set_tests_properties(
+            service_job_smoke
+            PROPERTIES
+                LABELS "archive;compatibility;job;legacy-session;service"
+        )
+        set_tests_properties(
+            module_runtime_http_smoke
+            module_runtime_concurrency_soak
+            capture_service_http_smoke
+            PROPERTIES
+                LABELS "compatibility;low-level-runtime;service"
+        )
         set_tests_properties(
             service_smoke_http
             service_smoke_api_key
             service_smoke_api_key_file
             service_load_smoke_foundation
             service_job_smoke
+            project_authority_service_smoke
+            project_acquisition_http_smoke
+            project_tracked_click_localisation_http_smoke
+            module_runtime_http_smoke
+            module_runtime_concurrency_soak
+            capture_service_http_smoke
+            web_assets_service_smoke
             PROPERTIES TIMEOUT 90
         )
     endif()
+endif()
+
+if(PAMGUARD_NODE)
+    add_test(
+        NAME production_compatibility_isolation_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/production-compatibility-isolation.contract.test.js
+    )
+    set_tests_properties(
+        production_compatibility_isolation_browser_contract
+        PROPERTIES
+            LABELS "browser;compatibility-isolation;project-authority"
+    )
+    add_test(
+        NAME project_shell_dialog_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-shell-dialog.contract.test.js
+    )
+    set_tests_properties(
+        project_shell_dialog_browser_contract
+        PROPERTIES
+            LABELS "browser;project-authority"
+    )
+    add_test(
+        NAME project_displays_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-displays.contract.test.js
+    )
+    add_test(
+        NAME project_audio_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-audio.contract.test.js
+    )
+    add_test(
+        NAME project_click_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-click-settings.contract.test.js
+    )
+    add_test(
+        NAME project_tracked_clicks_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-tracked-clicks.contract.test.js
+    )
+    add_test(
+        NAME project_signal_routing_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-signal-routing-settings.contract.test.js
+    )
+    add_test(
+        NAME project_filter_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-filter-settings.contract.test.js
+    )
+    add_test(
+        NAME project_level_meter_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-level-meter-settings.contract.test.js
+    )
+    add_test(
+        NAME project_level_meter_display_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-level-meter-display.contract.test.js
+    )
+    add_test(
+        NAME project_noise_ltsa_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-noise-ltsa-settings.contract.test.js
+    )
+    add_test(
+        NAME project_whistle_moan_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-whistle-moan-settings.contract.test.js
+    )
+    add_test(
+        NAME project_ishmael_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-ishmael-settings.contract.test.js
+    )
+    add_test(
+        NAME project_mht_click_train_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-mht-click-train-settings.contract.test.js
+    )
+    add_test(
+        NAME project_matched_template_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-matched-template-settings.contract.test.js
+    )
+    add_test(
+        NAME project_sound_recorder_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-sound-recorder-settings.contract.test.js
+    )
+    add_test(
+        NAME project_clip_generator_settings_browser_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/project-clip-generator-settings.contract.test.js
+    )
+    set_tests_properties(
+        project_audio_browser_contract
+        PROPERTIES LABELS "audio;browser;project-authority"
+    )
+    set_tests_properties(
+        project_click_settings_browser_contract
+        PROPERTIES LABELS "click;browser;project-authority"
+    )
+    set_tests_properties(
+        project_tracked_clicks_browser_contract
+        PROPERTIES LABELS "click;browser;project-authority"
+    )
+    set_tests_properties(
+        project_signal_routing_settings_browser_contract
+        PROPERTIES LABELS "signal-routing;browser;project-authority"
+    )
+    set_tests_properties(
+        project_filter_settings_browser_contract
+        PROPERTIES LABELS "filter;decimator;browser;project-authority"
+    )
+    set_tests_properties(
+        project_level_meter_settings_browser_contract
+        project_level_meter_display_browser_contract
+        PROPERTIES LABELS "level-meter;browser;project-authority"
+    )
+    set_tests_properties(
+        project_noise_ltsa_settings_browser_contract
+        PROPERTIES LABELS "noise;noise-band;ltsa;browser;project-authority"
+    )
+    set_tests_properties(
+        project_whistle_moan_settings_browser_contract
+        PROPERTIES LABELS "whistle;moan;browser;project-authority"
+    )
+    set_tests_properties(
+        project_ishmael_settings_browser_contract
+        PROPERTIES LABELS "ishmael;browser;project-authority"
+    )
+    set_tests_properties(
+        project_mht_click_train_settings_browser_contract
+        PROPERTIES LABELS "click;mht;click-train;browser;project-authority"
+    )
+    set_tests_properties(
+        project_matched_template_settings_browser_contract
+        PROPERTIES LABELS "click;matched-template;browser;project-authority"
+    )
+    set_tests_properties(
+        project_sound_recorder_settings_browser_contract
+        PROPERTIES LABELS "sound-recorder;browser;project-authority"
+    )
+    set_tests_properties(
+        project_clip_generator_settings_browser_contract
+        PROPERTIES LABELS "clip-generator;browser;project-authority"
+    )
+    add_test(
+        NAME project_browser_client_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/platform/project-client.contract.test.js
+    )
+    add_test(
+        NAME project_browser_identifier_contract
+        COMMAND ${PAMGUARD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/../web-ui/assets/platform/identifiers.contract.test.js
+    )
 endif()

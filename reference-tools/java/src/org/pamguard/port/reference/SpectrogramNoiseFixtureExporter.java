@@ -115,7 +115,9 @@ public final class SpectrogramNoiseFixtureExporter {
                 }
             }
             ComplexArray result = unit.getFftData();
-            if (threshold && finalOutput == SpectrogramThreshold.OUTPUT_RAW) {
+            // SpectrogramNoiseProcess performs this OUTPUT_RAW restoration
+            // even when the threshold method itself is disabled.
+            if (finalOutput == SpectrogramThreshold.OUTPUT_RAW) {
                 spectrogramThreshold.pickEarlierData(input, result);
             }
             for (int bin = 0; bin < result.length(); bin++) {

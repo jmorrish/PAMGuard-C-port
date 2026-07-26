@@ -1,0 +1,46 @@
+{
+  "authority": {
+    "version": "2.02.18e",
+    "commit": "dca55c81ef6f1498a8a3b926c69e7182afb915ee",
+    "exporter": "SoundRecorder.SoundRecorderSettingsFixtureExporter",
+    "settingsClass": "SoundRecorder.RecorderSettings",
+    "triggerPolicyClass": "SoundRecorder.trigger.RecorderTriggerData"
+  },
+  "portableOmissions": {
+    "rawDataSource": "owned by the controlled-unit rawAudio binding",
+    "outputFolder": "host-derived deployment path; Java defaults to PamFolders project/PAMRecordings",
+    "decisionMaker": "transient RecorderTriggerData runtime state"
+  },
+  "portableSettingsDefaults": {
+    "operationMode": "idle",
+    "channelBitmap": 3,
+    "bitDepth": 16,
+    "enableBuffer": false,
+    "bufferLengthSeconds": 30,
+    "fileInitials": "PAM",
+    "fileType": "WAVE",
+    "autoIntervalSeconds": 300,
+    "autoDurationSeconds": 10,
+    "limitLengthSeconds": true,
+    "maxLengthSeconds": 3600,
+    "roundFileStarts": true,
+    "limitLengthMegaBytes": true,
+    "maxLengthMegaBytes": 640,
+    "datedSubFolders": true,
+    "triggerPolicies": []
+  },
+  "triggerPolicyFieldDefaults": {
+    "triggerName": "__fixture_trigger__",
+    "enabled": false,
+    "secondsBeforeTrigger": 0.0,
+    "secondsAfterTrigger": 10.0,
+    "minDetectionCount": 1,
+    "countSeconds": 0,
+    "minGapBetweenTriggersSeconds": 0,
+    "maxTotalTriggerLengthSeconds": 0,
+    "dayBudgetMegaBytes": 0,
+    "lastTriggerStartUnixMs": 0,
+    "lastTriggerEndUnixMs": 0,
+    "usedDayBudgetBytes": 0
+  }
+}

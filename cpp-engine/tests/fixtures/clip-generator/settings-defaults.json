@@ -1,0 +1,67 @@
+{
+  "authority": {
+    "version": "2.02.18e",
+    "commit": "dca55c81ef6f1498a8a3b926c69e7182afb915ee",
+    "exporter": "clipgenerator.ClipGeneratorSettingsFixtureExporter",
+    "settingsClass": "clipgenerator.ClipSettings",
+    "triggerPolicyClass": "clipgenerator.ClipGenSetting"
+  },
+  "portableOmissions": {
+    "dataSourceName": "owned by the controlled-unit rawAudio graph binding",
+    "outputFolder": "host/deployment-owned filesystem destination",
+    "compressorIndex": "unfinished Java annotation-storage path",
+    "mapLineLength": "Clip display/map preference",
+    "hadMapLine": "private legacy display-setting migration state",
+    "dataName": "replaced by stable triggerSource unitId and outputRole"
+  },
+  "sourceEligibilityBoundary": {
+    "receiverOwnedPolicies": true,
+    "requiresCanClipGenerate": true,
+    "clickDetectorOutputEligible": false,
+    "spectrogramMarksEligible": true,
+    "spectrogramMarkUsesDataBudget": false
+  },
+  "javaStoredConstants": {
+    "storage": {
+      "wavFiles": 0,
+      "binary": 1,
+      "annotation": 2,
+      "both": 3
+    },
+    "channelSelection": {
+      "detectionChannelsOnly": 0,
+      "firstDetectionChannelOnly": 1,
+      "allChannels": 2
+    }
+  },
+  "portableSettingsDefaults": {
+    "storageMode": "binary",
+    "datedSubFolders": true,
+    "triggerPolicies": []
+  },
+  "triggerPolicyFieldDefaults": {
+    "triggerSource": {
+      "unitId": "fixture-trigger-unit",
+      "outputRole": "detections"
+    },
+    "enabled": true,
+    "secondsBeforeTrigger": 0.0,
+    "secondsAfterTrigger": 0.0,
+    "channelSelection": "detection-channels-only",
+    "clipPrefix": null,
+    "useDataBudget": true,
+    "dataBudgetKilobytes": 10240,
+    "budgetPeriodHours": 24.0
+  },
+  "excludedJavaFieldDefaults": {
+    "dataSourceName": null,
+    "outputFolder": null,
+    "compressorIndex": 0,
+    "freshTriggerCount": 0,
+    "triggerDataName": "__fixture_trigger__",
+    "mapLineLengthMetres": null,
+    "hadMapLine": false,
+    "clonedMapLineLengthMetres": 1000.0,
+    "clonedHadMapLine": true
+  }
+}

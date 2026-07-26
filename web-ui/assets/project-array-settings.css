@@ -1,0 +1,70 @@
+dialog .array-item-list {
+  display: grid;
+  gap: 10px;
+}
+
+dialog .array-item {
+  margin: 0;
+  background: rgba(5, 18, 31, 0.46);
+}
+
+dialog .array-coordinate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 12px;
+}
+
+dialog .array-coordinate-grid .settings-field {
+  grid-template-columns: minmax(72px, 0.65fr) minmax(82px, 1fr) max-content;
+}
+
+dialog .array-advanced-body {
+  padding: 0 10px 10px;
+}
+
+dialog .array-editor-actions {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 12px;
+}
+
+dialog .array-item > button {
+  margin-top: 9px;
+}
+
+dialog .array-channel-map {
+  overflow-x: auto;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+}
+
+dialog .array-mapping-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--shell-dialog-text);
+  font-size: 10.5px;
+}
+
+dialog .array-mapping-table th,
+dialog .array-mapping-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(151, 181, 207, 0.11);
+  text-align: left;
+  white-space: nowrap;
+}
+
+dialog .array-mapping-table th {
+  color: #8ed2d5;
+  background: rgba(35, 137, 215, 0.09);
+  font-weight: 700;
+}
+
+dialog .array-mapping-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 760px) {
+  dialog .array-coordinate-grid {
+    grid-template-columns: 1fr;
+  }
+}

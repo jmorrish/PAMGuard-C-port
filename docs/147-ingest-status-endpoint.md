@@ -1,71 +1,56 @@
-# Ingest Status Service Endpoint
+# Ingest status service endpoint
 
-Date: 2026-07-01
+Updated: 2026-07-25
 
-## Purpose
+`GET /ingest/status` projects the JSON status file written by
+`ops/ingest_supervisor.py`.
 
-Large live deployments need a single web/API place to check whether many stream ingest workers are running, pending, degraded, or stopped.
-
-This checkpoint adds an optional authenticated engine-service endpoint:
-
-```text
-GET /ingest/status
-```
-
-## Configuration
-
-Set the service environment variable to the status file written by `ops/ingest_supervisor.py`:
+Configure the service with:
 
 ```powershell
 $env:PAMGUARD_INGEST_STATUS_FILE = "C:\pamguard\data\ingest-status.json"
 ```
 
-The supervisor keeps ownership of the status-file schema. The service only reads and projects it.
-
-`GET /health` reports `ingestStatusEnabled` so deployment tooling can discover whether this projection is configured.
+The supervisor owns the schema; the service only reads and returns it.
+`GET /health` reports `ingestStatusEnabled`.
 
 ## Response
 
-Successful response:
+The current production supervisor writes schema version 3:
 
 ```json
 {
   "configured": true,
   "exists": true,
   "status": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "health": "healthy",
-    "workerCount": 50,
-    "workers": []
+    "workerCount": 1,
+    "workers": [
+      {
+        "sourceId": "station-001",
+        "targetMode": "active-project",
+        "projectId": "11111111-1111-4111-8111-111111111111",
+        "acquisitionUnitId": "22222222-2222-4222-8222-222222222222",
+        "compatibilitySessionId": null
+      }
+    ]
   }
 }
 ```
 
-If the environment variable is unset or the file does not exist, the endpoint returns `404` with `configured` and `exists` flags.
+An unset or missing file returns `404` with `configured` and `exists` flags.
+Malformed JSON returns `500`.
 
-If the file exists but cannot be parsed as JSON, the endpoint returns `500`.
+The endpoint uses the same API-key/Bearer authentication as the rest of the
+service. Supervisor status omits commands and secrets.
 
-## Security
+## Prometheus projection
 
-The endpoint uses the same API-key/Bearer auth as session and archive APIs. It does not expose launch commands or API keys; the supervisor status document deliberately omits those fields.
+`/metrics` projects worker counts, health, restart counts, uptime, and last
+observation time. The existing metric label remains named `session` for
+backward dashboard compatibility. Schema-v3 status no longer emits that old
+field, so the label is empty; use the JSON endpoint's stable project/unit IDs
+until the metrics contract receives a separately versioned label migration.
 
-## Prometheus metrics
-
-When `PAMGUARD_INGEST_STATUS_FILE` is configured, `/metrics` also projects the same status file into operational gauges:
-
-- `pamguard_ingest_status_configured`
-- `pamguard_ingest_status_file_exists`
-- `pamguard_ingest_status_parse_error`
-- `pamguard_ingest_workers`
-- `pamguard_ingest_health_count{health="..."}`
-- `pamguard_ingest_status_count{status="..."}`
-- `pamguard_ingest_worker_health{source="...",session="...",status="...",health="..."}`
-- `pamguard_ingest_worker_restarts{...}`
-- `pamguard_ingest_worker_uptime_ms{...}`
-- `pamguard_ingest_worker_last_observed_unix_ms{...}`
-
-These metrics are intended for fleet dashboards and alerting across many live streams.
-
-## Validation
-
-`cpp-engine/scripts/service-smoke.ps1` now writes a temporary supervisor status file, starts the service with `PAMGUARD_INGEST_STATUS_FILE`, asserts that `/ingest/status` returns the expected healthy status document, and checks that `/metrics` includes ingest supervisor gauges.
+The service smoke covers status-file projection and the operational gauges.
