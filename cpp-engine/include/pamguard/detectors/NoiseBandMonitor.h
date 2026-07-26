@@ -35,6 +35,13 @@ struct NoiseBandConfig {
     double reference_frequency_hz = 1000.0;
     /** NoiseBandSettings.iirOrder; decimators use iirOrder + 2, as PAMGuard does. */
     int iir_order = 6;
+    /** NoiseBandSettings.filterType; Java exposes only these two here. */
+    dsp::IirFilterType filter_type =
+        dsp::IirFilterType::Butterworth;
+    /** NoiseBandSettings.firOrder is a power-of-two exponent. */
+    int fir_order = 7;
+    /** NoiseBandSettings.firGamma, used by FIR Window filters. */
+    double fir_gamma = 2.5;
     double output_interval_seconds = 10.0;
 };
 

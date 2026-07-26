@@ -2,6 +2,7 @@ package org.pamguard.port.reference;
 
 import PamUtils.complex.ComplexArray;
 import Spectrogram.WindowFunction;
+import fftManager.ClickRemoval;
 import fftManager.FastFFT;
 
 /**
@@ -17,8 +18,8 @@ public final class PamFftFrameFixtureExporter {
     }
 
     public static void main(String[] args) {
-        if (args.length < 5) {
-            System.err.println("Usage: PamFftFrameFixtureExporter <windowType> <fftLength> <fftHop> <sampleRate> <chunkLength>");
+        if (args.length != 5 && args.length != 8) {
+            System.err.println("Usage: PamFftFrameFixtureExporter <windowType> <fftLength> <fftHop> <sampleRate> <chunkLength> [<clickRemoval> <clickThreshold> <clickPower>]");
             System.exit(2);
         }
 
@@ -27,16 +28,22 @@ public final class PamFftFrameFixtureExporter {
         int fftHop = Integer.parseInt(args[2]);
         double sampleRate = Double.parseDouble(args[3]);
         int chunkLength = Integer.parseInt(args[4]);
+        boolean clickRemoval = args.length == 8 && Boolean.parseBoolean(args[5]);
+        double clickThreshold = args.length == 8 ? Double.parseDouble(args[6]) : 5.0;
+        int clickPower = args.length == 8 ? Integer.parseInt(args[7]) : 6;
 
         double[] rawData = new double[chunkLength];
         for (int i = 0; i < chunkLength; i++) {
-            rawData[i] = syntheticSample(i);
+            rawData[i] = syntheticSample(i, clickRemoval);
         }
 
-        exportFrames(windowType, fftLength, fftHop, sampleRate, rawData);
+        exportFrames(windowType, fftLength, fftHop, sampleRate, rawData,
+                clickRemoval, clickThreshold, clickPower);
     }
 
-    private static void exportFrames(int windowType, int fftLength, int fftHop, double sampleRate, double[] rawData) {
+    private static void exportFrames(int windowType, int fftLength, int fftHop,
+            double sampleRate, double[] rawData, boolean runClickRemoval,
+            double clickThreshold, int clickPower) {
         int fftOverlap = fftLength - fftHop;
         int dataPointer = 0;
         int fftSlice = 0;
@@ -45,6 +52,8 @@ public final class PamFftFrameFixtureExporter {
         double[] windowedData = new double[fftLength];
         double[] window = WindowFunction.getWindowFunc(windowType, fftLength);
         double[] fftRealBlock = new double[fftLength];
+        double[] dataToFFT = null;
+        ClickRemoval clickRemoval = new ClickRemoval();
         FastFFT fft = new FastFFT();
 
         System.out.println("frame,channel,fftSlice,startSample,timeMs,bin,real,imag,magsq");
@@ -55,8 +64,15 @@ public final class PamFftFrameFixtureExporter {
             }
             dataPointer++;
             if (dataPointer == fftLength) {
+                if (runClickRemoval) {
+                    dataToFFT = clickRemoval.removeClicks(
+                            windowedData, dataToFFT, clickThreshold, clickPower);
+                }
+                else {
+                    dataToFFT = windowedData;
+                }
                 for (int w = 0; w < fftLength; w++) {
-                    fftRealBlock[w] = windowedData[w] * window[w];
+                    fftRealBlock[w] = dataToFFT[w] * window[w];
                 }
 
                 long startSample = rawStartSample + i - fftLength;
@@ -87,8 +103,12 @@ public final class PamFftFrameFixtureExporter {
         return (long) (samples * 1000 / sampleRate);
     }
 
-    private static double syntheticSample(int index) {
-        return Math.sin(index * 0.2) + 0.25 * Math.cos(index * 0.7);
+    private static double syntheticSample(int index, boolean withClicks) {
+        double sample = Math.sin(index * 0.2) + 0.25 * Math.cos(index * 0.7);
+        if (withClicks && (index == 6 || index == 21)) {
+            sample += index == 6 ? 20.0 : -15.0;
+        }
+        return sample;
     }
 }
 

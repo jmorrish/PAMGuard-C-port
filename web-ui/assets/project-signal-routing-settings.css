@@ -1,0 +1,131 @@
+dialog .signal-routing-editor {
+  display: grid;
+  gap: 12px;
+}
+
+dialog .signal-routing-heading h3 {
+  margin-bottom: 4px;
+}
+
+dialog .signal-routing-heading .section-help {
+  margin: 0;
+}
+
+dialog .signal-routing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+dialog .signal-routing-table-host {
+  max-height: min(52vh, 560px);
+  overflow: auto;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  background: rgba(5, 18, 31, 0.42);
+}
+
+dialog .signal-routing-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--shell-dialog-text);
+  font-size: 11px;
+}
+
+dialog .signal-routing-table th,
+dialog .signal-routing-table td {
+  min-width: 50px;
+  padding: 6px 8px;
+  border-right: 1px solid rgba(151, 181, 207, 0.1);
+  border-bottom: 1px solid rgba(151, 181, 207, 0.1);
+  text-align: center;
+  white-space: nowrap;
+}
+
+dialog .signal-routing-table th {
+  color: #8ed2d5;
+  background: #10283b;
+  font-weight: 700;
+}
+
+dialog .signal-routing-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+dialog .signal-routing-table tbody th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+dialog .signal-routing-table input[type="number"] {
+  width: 76px;
+}
+
+dialog .signal-routing-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+dialog .amplifier-gain-table {
+  min-width: 360px;
+}
+
+dialog .amplifier-gain-table th,
+dialog .amplifier-gain-table td {
+  min-width: 90px;
+}
+
+dialog .signal-routing-matrix-host {
+  max-height: min(58vh, 620px);
+}
+
+dialog .patch-routing-matrix {
+  width: max-content;
+  min-width: 100%;
+}
+
+dialog .patch-routing-matrix th,
+dialog .patch-routing-matrix td {
+  min-width: 34px;
+  padding: 5px;
+}
+
+dialog .patch-gain-matrix th,
+dialog .patch-gain-matrix td {
+  min-width: 86px;
+}
+
+dialog .signal-routing-advanced {
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+dialog .signal-routing-advanced > summary {
+  cursor: pointer;
+  color: #8ed2d5;
+  font-weight: 700;
+}
+
+dialog .signal-routing-advanced-enable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+dialog .signal-routing-advanced-enable input {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 760px) {
+  dialog .signal-routing-table-host {
+    max-height: 50vh;
+  }
+}

@@ -1,0 +1,4 @@
+stage,isSelected,maxRange,maxHeight,minHeight,maxTime,limitLocPoints,maxLocPoints,maxLocalisationPoints
+default,true;false;false;false,20000.000000000000,5.0000000000000000,-5000.0000000000000,200,false,30,2147483647
+least-squares-and-3d-simplex,true;false;true;false,20000.000000000000,5.0000000000000000,-5000.0000000000000,200,false,30,2147483647
+limited,true;false;true;false,20000.000000000000,5.0000000000000000,-5000.0000000000000,200,true,17,17

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace pamguard::core {
@@ -23,6 +24,17 @@ struct AudioChunk {
     double orientation_heading_degrees = 0.0;
     double orientation_pitch_degrees = 0.0;
     double orientation_roll_degrees = 0.0;
+    /**
+     * Optional array-centroid position sampled with this chunk in one local
+     * Cartesian east/north/height metre frame. The reference identifies that
+     * frame/source so observations from unrelated navigation tracks cannot be
+     * combined accidentally.
+     */
+    bool navigation_origin_declared = false;
+    double navigation_origin_east_metres = 0.0;
+    double navigation_origin_north_metres = 0.0;
+    double navigation_origin_height_metres = 0.0;
+    std::string navigation_reference_id;
 
     [[nodiscard]] std::size_t frame_count() const {
         return channel_count == 0 ? 0 : interleaved_pcm.size() / channel_count;

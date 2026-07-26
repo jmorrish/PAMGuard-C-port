@@ -243,12 +243,16 @@ std::vector<std::complex<double>> SpectrogramNoiseReducer::process(
     }
     if (config_.run_threshold) {
         threshold(working);
-        if (config_.threshold_final_output == SpectrogramNoiseConfig::kOutputRaw) {
-            // pickEarlierData: surviving bins carry the raw input values.
-            for (std::size_t bin = 0; bin < working.size(); ++bin) {
-                if (working[bin].real() > 0.0) {
-                    working[bin] = slice[bin];
-                }
+    }
+    // SpectrogramNoiseProcess invokes pickEarlierData from the threshold
+    // method's parameters even when Thresholding itself is disabled. Preserve
+    // that unusual Java behavior: positive-real bins surviving any earlier
+    // methods carry the un-noise-reduced input.
+    if (config_.threshold_final_output ==
+        SpectrogramNoiseConfig::kOutputRaw) {
+        for (std::size_t bin = 0; bin < working.size(); ++bin) {
+            if (working[bin].real() > 0.0) {
+                working[bin] = slice[bin];
             }
         }
     }

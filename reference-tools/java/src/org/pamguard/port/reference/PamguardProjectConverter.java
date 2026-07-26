@@ -631,6 +631,8 @@ public final class PamguardProjectConverter {
             }
             else {
                 json.append(",\n  \"matchedTemplate\": { \"enabled\": true");
+                json.append(", \"clickType\": ")
+                        .append(Byte.toUnsignedInt(matchedTemplate.type));
                 json.append(", \"normalisationType\": ").append(matchedTemplate.normalisationType);
                 json.append(", \"peakSearch\": ").append(matchedTemplate.peakSearch);
                 json.append(", \"peakSmoothing\": ").append(matchedTemplate.peakSmoothing);
@@ -645,8 +647,10 @@ public final class PamguardProjectConverter {
                     }
                     json.append("\n      { \"thresholdToAccept\": ")
                             .append(format(classifier.thresholdToAccept));
-                    appendMatchTemplate(json, "match", classifier.waveformMatch);
-                    appendMatchTemplate(json, "reject", classifier.waveformReject);
+                    json.append(", \"normalisation\": ")
+                            .append(classifier.normalisation);
+                    appendMatchTemplate(json, "matchTemplate", classifier.waveformMatch);
+                    appendMatchTemplate(json, "rejectTemplate", classifier.waveformReject);
                     json.append(" }");
                 }
                 json.append("\n    ] }");
@@ -1208,8 +1212,12 @@ public final class PamguardProjectConverter {
     }
 
     private static void appendMatchTemplate(StringBuilder json, String key, MatchTemplate template) {
+        String name = template.name;
+        if (name == null || name.length() == 0) {
+            name = key;
+        }
         json.append(", \"").append(key).append("\": { \"name\": \"")
-                .append(template.name == null ? "" : template.name.replace("\"", "'"))
+                .append(name.replace("\"", "'"))
                 .append("\", \"sampleRateHz\": ").append(format(template.sR));
         json.append(", \"waveform\": [");
         for (int i = 0; i < template.waveform.length; i++) {

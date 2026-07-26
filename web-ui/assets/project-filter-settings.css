@@ -1,0 +1,224 @@
+dialog .filter-settings-editor {
+  display: grid;
+  gap: 12px;
+}
+
+dialog .filter-settings-editor fieldset {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+}
+
+dialog .filter-settings-editor legend {
+  color: #8ed2d5;
+  font-weight: 700;
+}
+
+dialog .filter-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+dialog .filter-settings-channel-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: 6px;
+}
+
+dialog .filter-settings-channel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid rgba(151, 181, 207, 0.13);
+  border-radius: 5px;
+  background: rgba(5, 18, 31, 0.38);
+}
+
+dialog .filter-settings-channel input {
+  width: 16px;
+  height: 16px;
+}
+
+dialog .filter-settings-design {
+  display: grid;
+  grid-template-columns: minmax(310px, 0.9fr) minmax(260px, 1.1fr);
+  gap: 14px;
+  border: 0 !important;
+}
+
+dialog .filter-settings-controls {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+dialog .filter-settings-field {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.9fr) minmax(120px, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  min-height: 31px;
+}
+
+dialog .filter-settings-field input,
+dialog .filter-settings-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+dialog .filter-settings-label {
+  color: var(--shell-dialog-muted);
+}
+
+dialog .filter-settings-unit {
+  color: var(--shell-dialog-muted);
+  font-size: 10px;
+}
+
+dialog .filter-settings-help {
+  grid-column: 2 / -1;
+  color: var(--shell-dialog-muted);
+  font-size: 10px;
+}
+
+dialog .filter-settings-response {
+  min-height: 250px;
+  padding: 12px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+  background: rgba(5, 18, 31, 0.45);
+}
+
+dialog .filter-settings-response h4 {
+  margin: 0 0 8px;
+  color: #8ed2d5;
+}
+
+dialog .filter-settings-response-plot {
+  position: relative;
+  min-height: 180px;
+  overflow: hidden;
+  border: 1px solid rgba(151, 181, 207, 0.18);
+  border-radius: 4px;
+  background:
+    linear-gradient(
+      to bottom,
+      transparent 24%,
+      rgba(151, 181, 207, 0.1) 25%,
+      transparent 26%,
+      transparent 49%,
+      rgba(151, 181, 207, 0.1) 50%,
+      transparent 51%,
+      transparent 74%,
+      rgba(151, 181, 207, 0.1) 75%,
+      transparent 76%),
+    linear-gradient(
+      to right,
+      transparent 24%,
+      rgba(151, 181, 207, 0.08) 25%,
+      transparent 26%,
+      transparent 49%,
+      rgba(151, 181, 207, 0.08) 50%,
+      transparent 51%,
+      transparent 74%,
+      rgba(151, 181, 207, 0.08) 75%,
+      transparent 76%);
+}
+
+dialog .filter-settings-response-plot::after {
+  position: absolute;
+  inset: 42% 7% auto;
+  height: 3px;
+  border-radius: 2px;
+  background: #ef6f61;
+  box-shadow: 0 0 9px rgba(239, 111, 97, 0.4);
+  content: "";
+}
+
+dialog .filter-settings-response-plot[data-band="highPass"]::after {
+  inset: 68% 7% auto 32%;
+  transform: skewY(-18deg);
+  transform-origin: left;
+}
+
+dialog .filter-settings-response-plot[data-band="lowPass"]::after {
+  inset: 28% 32% auto 7%;
+  transform: skewY(18deg);
+  transform-origin: right;
+}
+
+dialog .filter-settings-response-plot[data-band="bandPass"]::after {
+  inset: 38% 27% auto;
+  box-shadow:
+    -70px 30px 0 -1px rgba(239, 111, 97, 0.65),
+    70px 30px 0 -1px rgba(239, 111, 97, 0.65);
+}
+
+dialog .filter-settings-response-plot[data-band="bandStop"]::after {
+  inset: 63% 35% auto;
+  box-shadow:
+    -95px -35px 0 -1px rgba(239, 111, 97, 0.75),
+    95px -35px 0 -1px rgba(239, 111, 97, 0.75);
+}
+
+dialog .filter-settings-response-plot[data-type="none"]::after {
+  inset: 28% 7% auto;
+}
+
+dialog .filter-settings-arbitrary {
+  display: grid;
+  gap: 8px;
+}
+
+dialog .filter-settings-arbitrary[hidden] {
+  display: none;
+}
+
+dialog .filter-settings-arbitrary-rows {
+  display: grid;
+  gap: 6px;
+  max-height: 210px;
+  overflow: auto;
+}
+
+dialog .filter-settings-arbitrary-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr max-content;
+  align-items: start;
+  gap: 8px;
+}
+
+dialog .filter-settings-arbitrary-row .filter-settings-field {
+  grid-template-columns: minmax(70px, 0.7fr) minmax(72px, 1fr) max-content;
+}
+
+dialog .filter-settings-decimator {
+  display: grid;
+  gap: 8px;
+}
+
+dialog .filter-settings-decimator > button {
+  justify-self: start;
+}
+
+@media (max-width: 860px) {
+  dialog .filter-settings-design {
+    grid-template-columns: 1fr;
+  }
+
+  dialog .filter-settings-channel-list {
+    grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  dialog .filter-settings-channel-list,
+  dialog .filter-settings-arbitrary-row {
+    grid-template-columns: 1fr;
+  }
+}

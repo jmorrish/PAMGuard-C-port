@@ -112,25 +112,32 @@ double StandardMhtChi2Provider::last_time_seconds(const MhtBitset& track_bits) c
 
 StandardMhtChi2::StandardMhtChi2(const StandardMhtChi2Provider* provider)
     : provider_(provider) {
-    MhtIdiChi2Config idi_config;
+    auto idi_config = provider_->params().idi;
     idi_config.sample_rate_hz = provider_->params().sample_rate_hz;
+    idi_config.junk_track_penalty =
+        provider_->params().junk_track_penalty;
     idi_chi2_ = MhtIdiChi2(idi_config);
-    MhtAmplitudeChi2Config amplitude_config;
+    auto amplitude_config = provider_->params().amplitude;
     amplitude_config.sample_rate_hz = provider_->params().sample_rate_hz;
+    amplitude_config.junk_track_penalty =
+        provider_->params().junk_track_penalty;
     amplitude_chi2_ = MhtAmplitudeChi2(amplitude_config);
-    MhtLengthChi2Config length_config;
+    auto length_config = provider_->params().length;
     length_config.sample_rate_hz = provider_->params().sample_rate_hz;
     length_chi2_ = MhtLengthChi2(length_config);
-    MhtBearingChi2Config bearing_config;
+    auto bearing_config = provider_->params().bearing;
     bearing_config.sample_rate_hz = provider_->params().sample_rate_hz;
+    bearing_config.junk_track_penalty =
+        provider_->params().junk_track_penalty;
     bearing_chi2_ = MhtBearingChi2Delta(bearing_config);
-    MhtPeakFrequencyChi2Config peak_frequency_config;
+    auto peak_frequency_config =
+        provider_->params().peak_frequency;
     peak_frequency_config.sample_rate_hz = provider_->params().sample_rate_hz;
     peak_frequency_chi2_ = MhtPeakFrequencyChi2(peak_frequency_config);
-    MhtTimeDelayChi2Config time_delay_config;
+    auto time_delay_config = provider_->params().time_delay;
     time_delay_config.sample_rate_hz = provider_->params().sample_rate_hz;
     time_delay_chi2_ = MhtTimeDelayChi2Delta(time_delay_config);
-    MhtCorrelationChi2Config correlation_config;
+    auto correlation_config = provider_->params().correlation;
     correlation_config.sample_rate_hz = provider_->params().sample_rate_hz;
     correlation_chi2_ = MhtCorrelationChi2(correlation_config);
     // Java field initialiser: Double.MAX_VALUE (not maxChi). The distinction

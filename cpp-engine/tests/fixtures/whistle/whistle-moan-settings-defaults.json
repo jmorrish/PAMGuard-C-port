@@ -1,0 +1,64 @@
+{
+  "authority": {
+    "version": "2.02.18e",
+    "commit": "dca55c81ef6f1498a8a3b926c69e7182afb915ee",
+    "exporter": "org.pamguard.port.reference.WhistleMoanSettingsFixtureExporter"
+  },
+  "portableSettingsDefaults": {
+    "channelBitmap": 0,
+    "groupingType": "all",
+    "channelGroups": [],
+    "minFrequencyHz": 0.0,
+    "maxFrequencyHz": 0.0,
+    "connectType": 8,
+    "minLength": 10,
+    "minPixels": 20,
+    "keepShapeStubs": false,
+    "fragmentationMethod": 3,
+    "maxCrossLength": 5,
+    "noiseReduction": {
+      "medianFilter": false,
+      "medianFilterLength": 61,
+      "averageSubtraction": false,
+      "updateConstant": 0.02,
+      "kernelSmoothing": false,
+      "threshold": false,
+      "thresholdDb": 8.0,
+      "finalOutput": 2
+    }
+  },
+  "javaConstructorBackingEvidence": {
+    "whistlesAndMoans.WhistleToneParameters": {
+      "serialVersionUID": 1,
+      "dataSource": null,
+      "channelBitmap": 0,
+      "channelGroups": null,
+      "groupingType": 1,
+      "maxFrequencyBeforeGetter": 0.0,
+      "maxFrequencyAt48000FromGetter": 24000.0,
+      "specNoiseSettingsBeforeGetter": null
+    },
+    "spectrogramNoiseReduction.SpectrogramNoiseSettings": {
+      "serialVersionUID": 0,
+      "dataSource": null,
+      "channelList": 15,
+      "runMethod": null,
+      "methodSettingsCount": 0
+    }
+  },
+  "ownedNoiseMethodDefaults": {
+    "medianFilterLength": 61,
+    "averageUpdateConstant": 0.02,
+    "kernel": "fixed-3x3-gaussian",
+    "thresholdDb": 8.0,
+    "thresholdFinalOutput": 2,
+    "outputRawConstant": 2
+  },
+  "excludedJavaDefaults": {
+    "backgroundIntervalSeconds": 10.0,
+    "showContourOutline": false,
+    "stretchContours": false,
+    "shortLength": 0,
+    "shortShowPolicy": 0
+  }
+}

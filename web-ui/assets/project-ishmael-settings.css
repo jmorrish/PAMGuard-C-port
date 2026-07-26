@@ -1,0 +1,216 @@
+.ishmael-settings-editor {
+  display: grid;
+  gap: 14px;
+  min-width: min(720px, 80vw);
+}
+
+.ishmael-settings-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border, #344357);
+  border-radius: 10px;
+  background: color-mix(
+    in srgb,
+    var(--panel, #182331) 88%,
+    transparent);
+}
+
+.ishmael-settings-section > legend {
+  padding: 0 7px;
+  font-weight: 700;
+}
+
+.ishmael-settings-field {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(110px, 0.7fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.ishmael-settings-field > input,
+.ishmael-settings-field > select {
+  min-width: 0;
+}
+
+.ishmael-settings-label {
+  font-weight: 600;
+}
+
+.ishmael-settings-unit {
+  color: var(--muted, #a6b3c2);
+}
+
+.ishmael-settings-help {
+  grid-column: 1 / -1;
+  color: var(--muted, #a6b3c2);
+  line-height: 1.35;
+}
+
+.ishmael-settings-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.ishmael-settings-check > .ishmael-settings-help {
+  grid-column: 2;
+}
+
+.ishmael-settings-grouping {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.ishmael-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ishmael-settings-channel-host {
+  overflow: auto;
+  max-height: 280px;
+}
+
+.ishmael-settings-channel-table,
+.ishmael-settings-segment-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ishmael-settings-channel-table th,
+.ishmael-settings-channel-table td,
+.ishmael-settings-segment-table th,
+.ishmael-settings-segment-table td {
+  padding: 7px;
+  border-bottom: 1px solid var(--border, #344357);
+  text-align: left;
+}
+
+.ishmael-settings-channel-table td:last-child {
+  width: 110px;
+}
+
+.ishmael-settings-channel-table select,
+.ishmael-settings-segment-table input {
+  width: 100%;
+  min-width: 78px;
+}
+
+.ishmael-settings-segment-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.ishmael-settings-contour {
+  position: relative;
+  min-height: 130px;
+  overflow: hidden;
+  border: 1px solid var(--border, #344357);
+  border-radius: 8px;
+  background:
+    linear-gradient(to right, transparent 24%, #ffffff0d 25%, transparent 26%),
+    linear-gradient(to top, transparent 24%, #ffffff0d 25%, transparent 26%),
+    color-mix(in srgb, var(--panel, #182331) 75%, #000);
+  background-size: 25% 25%;
+}
+
+.ishmael-settings-contour svg {
+  position: absolute;
+  inset: 8px;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  overflow: visible;
+}
+
+.ishmael-settings-contour-line {
+  stroke: var(--accent, #4bc3ff);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.ishmael-settings-contour-point {
+  fill: var(--accent, #4bc3ff);
+  vector-effect: non-scaling-stroke;
+}
+
+.ishmael-settings-kernel-picker {
+  display: grid;
+  gap: 7px;
+  font-weight: 600;
+}
+
+.ishmael-settings-kernel-history {
+  display: grid;
+  gap: 7px;
+}
+
+.ishmael-settings-kernel-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--border, #344357);
+  border-radius: 8px;
+}
+
+.ishmael-settings-kernel-row output {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ishmael-settings-kernel-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--accent, #4bc3ff) 25%,
+    transparent);
+  color: var(--text, #eef5ff);
+  font-size: 0.78rem;
+}
+
+.ishmael-settings-waveform {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-height: 110px;
+  overflow: hidden;
+  padding: 7px;
+  border: 1px solid var(--border, #344357);
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      to bottom,
+      transparent 49.5%,
+      #ffffff20 50%,
+      transparent 50.5%),
+    color-mix(in srgb, var(--panel, #182331) 75%, #000);
+}
+
+.ishmael-settings-waveform > i {
+  flex: 1 1 0;
+  height: max(2px, calc(var(--kernel-magnitude) * 48%));
+  min-width: 1px;
+  background: var(--accent, #4bc3ff);
+  transform: translateY(
+    calc(var(--kernel-offset) * -50%));
+}
+
+@media (max-width: 720px) {
+  .ishmael-settings-editor {
+    min-width: 0;
+  }
+
+  .ishmael-settings-field {
+    grid-template-columns: 1fr minmax(90px, 0.7fr) auto;
+  }
+}

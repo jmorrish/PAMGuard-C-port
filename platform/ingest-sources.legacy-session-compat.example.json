@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "mode": "legacy-session-compatibility",
+  "engine": "http://127.0.0.1:8080",
+  "ingestExecutable": "../cpp-engine/build/ffmpeg_stream_ingest.exe",
+  "ffmpeg": "ffmpeg",
+  "apiKeyEnv": "PAMGUARD_API_KEY",
+  "defaults": {
+    "sampleRateHz": 48000,
+    "channels": 2,
+    "chunkFrames": 4096,
+    "allowExistingSession": true,
+    "resumeFromEngine": true,
+    "restart": true,
+    "realtime": true
+  },
+  "sources": [
+    {
+      "enabled": false,
+      "id": "legacy-station-001",
+      "sessionId": "legacy-station-001",
+      "source": "http://station.example/live.mp3",
+      "sessionConfig": "station-session.example.json"
+    }
+  ]
+}

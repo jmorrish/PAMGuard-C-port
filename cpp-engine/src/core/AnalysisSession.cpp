@@ -996,6 +996,9 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                 (classification.click_type == 0 && config_.detector.click_discard_unclassified)) {
                 continue;
             }
+            click.click_type = classification.click_type;
+            click.classifiers_passed =
+                classification.classifiers_passed;
             classification.click_index = kept_clicks.size();
             kept_clicks.push_back(std::move(click));
             kept_classifications.push_back(classification);
@@ -1003,8 +1006,7 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
         result.clicks = std::move(kept_clicks);
         result.click_classifications = std::move(kept_classifications);
     }
-    if (config_.detector.click_localisation_enabled ||
-        !config_.detector.click_angle_vetoes.empty()) {
+    if (!result.clicks.empty()) {
         std::vector<detectors::ClickDetectionResult> kept_clicks;
         std::vector<detectors::ClickClassificationResult> kept_classifications;
         kept_clicks.reserve(result.clicks.size());
@@ -1029,16 +1031,15 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                     click_pair_geometry(config_, click.channels);
                 const auto max_delays =
                     max_delay_samples_from_geometry(pair_geometry);
-                const int click_type =
-                    classification == result.click_classifications.end()
-                    ? 0
-                    : classification->click_type;
                 auto delay_config = config_.detector.click_delay_measurement;
-                if (const auto override_it =
-                        config_.detector.click_delay_measurement_by_type.find(click_type);
-                    override_it !=
-                    config_.detector.click_delay_measurement_by_type.end()) {
-                    delay_config = override_it->second;
+                if (click.click_type > 0) {
+                    if (const auto override_it =
+                            config_.detector.click_delay_measurement_by_type.find(
+                                click.click_type);
+                        override_it !=
+                        config_.detector.click_delay_measurement_by_type.end()) {
+                        delay_config = override_it->second;
+                    }
                 }
                 if (delay_config.use_leading_edge && !max_delays.empty()) {
                     const double largest_delay =
@@ -1055,6 +1056,13 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                     max_delays,
                     static_cast<double>(config_.sample_rate_hz),
                     delay_config);
+                click.delays_in_samples.clear();
+                click.delays_in_samples.reserve(
+                    localisation.delays.size());
+                for (const auto& delay : localisation.delays) {
+                    click.delays_in_samples.push_back(
+                        delay.delay.delay_samples);
+                }
 
                 // ClickDetection.getAngle() is legacy behavior: it ignores
                 // setAnglesAndErrors and derives the bearing from the first
@@ -1105,6 +1113,8 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
                 }
             }
 
+            click.bearing_radians =
+                legacy_angle_degrees * std::numbers::pi / 180.0;
             if (!detectors::ClickAngleVetoes::pass_all(
                     config_.detector.click_angle_vetoes,
                     legacy_angle_degrees)) {
@@ -1152,9 +1162,46 @@ AnalysisResult AnalysisSession::process(const AudioChunk& chunk) {
             }
             auto outcome =
                 matched_template_classifier_->classify(result.clicks[i].waveform);
+            auto& click = result.clicks[i];
+            const int matched_template_click_type =
+                config_.detector.matched_template_click_type;
+            // BeskopeClassifierManager.bespokeDataUnitFlags: a positive
+            // match overrides any earlier Click Detector type. A negative
+            // match preserves another classifier's type, but clears a stale
+            // type previously written by this MT classifier.
+            if (outcome.classified) {
+                click.click_type = matched_template_click_type;
+            }
+            else if (click.click_type == matched_template_click_type) {
+                click.click_type = 0;
+            }
+
+            const auto classifier_instance_id =
+                config_.session_id + ":matched-template";
+            detectors::ClickDetectionResult::
+                MatchedTemplateAnnotation annotation;
+            annotation.classifier_instance_id =
+                classifier_instance_id;
+            annotation.click_type = matched_template_click_type;
+            annotation.classified = outcome.classified;
+            annotation.best_results.reserve(
+                outcome.best_results.size());
+            for (const auto& item : outcome.best_results) {
+                annotation.best_results.push_back({
+                    item.threshold,
+                    item.match_corr,
+                    item.reject_corr,
+                });
+            }
+            click.matched_template_annotations.push_back(
+                std::move(annotation));
+
             MatchedTemplateClickResult entry;
             entry.click_index = i;
-            entry.click_start_sample = result.clicks[i].start_sample;
+            entry.click_start_sample = click.start_sample;
+            entry.classifier_instance_id =
+                classifier_instance_id;
+            entry.click_type = matched_template_click_type;
             entry.classified = outcome.classified;
             entry.results = std::move(outcome.best_results);
             result.matched_template_classifications.push_back(std::move(entry));

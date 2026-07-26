@@ -1,0 +1,277 @@
+dialog .mht-click-train-settings-editor {
+  display: grid;
+  gap: 12px;
+  min-width: min(760px, 82vw);
+}
+
+dialog .mht-click-train-settings-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--shell-dialog-line);
+  background: #0d1b27;
+}
+
+dialog .mht-click-train-settings-tabs button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--shell-dialog-muted);
+}
+
+dialog .mht-click-train-settings-tabs button[aria-selected="true"] {
+  border-color: var(--shell-dialog-line);
+  background: rgba(26, 55, 76, 0.88);
+  color: #8ed2d5;
+}
+
+dialog .mht-click-train-settings-panel {
+  display: grid;
+  gap: 12px;
+}
+
+dialog .mht-click-train-settings-panel[hidden],
+dialog .mht-click-train-settings-conditional[hidden],
+dialog .mht-click-train-settings-range-controls[hidden],
+dialog .mht-click-train-settings-classifier-grid[hidden] {
+  display: none;
+}
+
+dialog .mht-click-train-settings-editor fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+}
+
+dialog .mht-click-train-settings-editor legend,
+dialog .mht-click-train-settings-editor h4,
+dialog .mht-click-train-settings-editor h5 {
+  color: #8ed2d5;
+  font-weight: 700;
+}
+
+dialog .mht-click-train-settings-editor h4,
+dialog .mht-click-train-settings-editor h5 {
+  margin: 5px 0;
+}
+
+dialog .mht-click-train-settings-section {
+  display: grid;
+  gap: 8px;
+}
+
+dialog .mht-click-train-settings-subsection {
+  margin-top: 4px;
+  border-color: rgba(151, 181, 207, 0.16);
+  background: rgba(8, 24, 35, 0.22);
+}
+
+dialog .mht-click-train-settings-field {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.9fr) minmax(170px, 1.1fr)
+    max-content;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+
+dialog .mht-click-train-settings-field > input,
+dialog .mht-click-train-settings-field > select {
+  width: 100%;
+  min-width: 0;
+}
+
+dialog .mht-click-train-settings-label,
+dialog .mht-click-train-settings-unit,
+dialog .mht-click-train-settings-help,
+dialog .mht-click-train-settings-summary {
+  color: var(--shell-dialog-muted);
+}
+
+dialog .mht-click-train-settings-unit,
+dialog .mht-click-train-settings-help {
+  font-size: 10px;
+}
+
+dialog .mht-click-train-settings-help {
+  grid-column: 2 / -1;
+  line-height: 1.35;
+}
+
+dialog .mht-click-train-settings-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+}
+
+dialog .mht-click-train-settings-check input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+dialog .mht-click-train-settings-check
+  .mht-click-train-settings-help {
+  display: block;
+  grid-column: auto;
+  margin-left: 4px;
+}
+
+dialog .mht-click-train-settings-conditional {
+  display: grid;
+  gap: 7px;
+  padding: 8px 0 0 22px;
+  border-left: 1px solid rgba(142, 210, 213, 0.2);
+}
+
+dialog .mht-click-train-settings-summary {
+  margin: 0;
+  font-size: 11px;
+}
+
+dialog .mht-click-train-settings-group-host {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+  gap: 4px 12px;
+  max-height: 165px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(151, 181, 207, 0.13);
+  border-radius: 5px;
+}
+
+dialog .mht-click-train-settings-variable-grid,
+dialog .mht-click-train-settings-classifier-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+dialog .mht-click-train-settings-variable {
+  align-content: start;
+  background: rgba(8, 24, 35, 0.22);
+}
+
+dialog .mht-click-train-settings-variable
+  .mht-click-train-settings-field {
+  grid-template-columns: minmax(105px, 0.85fr)
+    minmax(90px, 1.15fr) max-content;
+}
+
+dialog .mht-click-train-settings-range {
+  display: grid;
+  gap: 3px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(151, 181, 207, 0.1);
+}
+
+dialog .mht-click-train-settings-range-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-left: 22px;
+}
+
+dialog .mht-click-train-settings-range-controls
+  .mht-click-train-settings-field {
+  grid-template-columns: minmax(70px, auto) minmax(70px, 1fr)
+    max-content;
+}
+
+dialog .mht-click-train-settings-list {
+  display: grid;
+  gap: 5px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+dialog .mht-click-train-settings-list-row {
+  display: grid;
+  grid-template-columns: minmax(105px, 1fr) minmax(75px, 120px)
+    max-content;
+  align-items: center;
+  gap: 7px;
+}
+
+dialog .mht-click-train-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+dialog .mht-click-train-settings-spectrum {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 5px;
+  max-height: 230px;
+  overflow: auto;
+  padding: 7px;
+  border: 1px solid rgba(151, 181, 207, 0.13);
+  border-radius: 5px;
+  background: rgba(8, 24, 35, 0.22);
+}
+
+dialog .mht-click-train-settings-spectrum-bin {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+}
+
+dialog .mht-click-train-settings-spectrum-bin span {
+  color: var(--shell-dialog-muted);
+  font-size: 10px;
+  text-align: right;
+}
+
+dialog .mht-click-train-settings-spectrum-bin input {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  dialog .mht-click-train-settings-editor {
+    min-width: min(520px, 86vw);
+  }
+
+  dialog .mht-click-train-settings-variable-grid,
+  dialog .mht-click-train-settings-classifier-grid {
+    grid-template-columns: 1fr;
+  }
+
+  dialog .mht-click-train-settings-field {
+    grid-template-columns: minmax(120px, 0.9fr)
+      minmax(110px, 1.1fr) max-content;
+  }
+}
+
+@media (max-width: 540px) {
+  dialog .mht-click-train-settings-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  dialog .mht-click-train-settings-tabs button {
+    border-radius: 4px;
+    border-bottom: 1px solid transparent;
+  }
+
+  dialog .mht-click-train-settings-field,
+  dialog .mht-click-train-settings-variable
+    .mht-click-train-settings-field {
+    grid-template-columns: 1fr minmax(90px, 1fr) max-content;
+  }
+
+  dialog .mht-click-train-settings-range-controls {
+    grid-template-columns: 1fr;
+  }
+}

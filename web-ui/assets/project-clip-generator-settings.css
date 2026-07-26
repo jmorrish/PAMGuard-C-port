@@ -1,0 +1,255 @@
+dialog .clip-generator-settings-editor {
+  display: grid;
+  gap: 12px;
+}
+
+dialog .clip-generator-settings-section {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 7px;
+  background: rgba(5, 18, 31, 0.28);
+}
+
+dialog .clip-generator-settings-section > h3,
+dialog .clip-generator-settings-policy > h4 {
+  margin: 0;
+  color: #d9f5f3;
+}
+
+dialog .clip-generator-settings-section > .section-help {
+  margin: -3px 0 0;
+}
+
+dialog .clip-generator-settings-boundary {
+  padding: 8px 10px;
+  border-left: 3px solid #479ca4;
+  border-radius: 4px;
+  color: #bad2df;
+  background: rgba(18, 50, 71, 0.58);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+dialog .clip-generator-settings-boundary[data-state="unbound"] {
+  border-left-color: #ca9855;
+}
+
+dialog .clip-generator-settings-storage,
+dialog .clip-generator-settings-budget-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+dialog .clip-generator-settings-check,
+dialog .clip-generator-settings-budget-modes label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  color: var(--shell-dialog-text);
+}
+
+dialog .clip-generator-settings-check input,
+dialog .clip-generator-settings-budget-modes input,
+dialog .clip-generator-settings-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+dialog .clip-generator-settings-check[data-disabled="true"] {
+  opacity: 0.52;
+}
+
+dialog .clip-generator-settings-trigger-host {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+dialog .clip-generator-settings-table-host {
+  max-height: min(40vh, 430px);
+  overflow: auto;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+}
+
+dialog .clip-generator-settings-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--shell-dialog-text);
+  font-size: 11px;
+}
+
+dialog .clip-generator-settings-table th,
+dialog .clip-generator-settings-table td {
+  padding: 8px 9px;
+  border-right: 1px solid rgba(151, 181, 207, 0.1);
+  border-bottom: 1px solid rgba(151, 181, 207, 0.1);
+  text-align: left;
+  vertical-align: middle;
+}
+
+dialog .clip-generator-settings-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: #8ed2d5;
+  background: #10283b;
+}
+
+dialog .clip-generator-settings-table tbody th {
+  min-width: 240px;
+  font-weight: 400;
+}
+
+dialog .clip-generator-settings-table tbody th strong,
+dialog .clip-generator-settings-table tbody th small {
+  display: block;
+}
+
+dialog .clip-generator-settings-table tbody th small {
+  margin-top: 2px;
+  color: #839cad;
+  font-family: var(--mono, monospace);
+}
+
+dialog .clip-generator-settings-table tbody th
+  .clip-generator-settings-reason {
+  max-width: 480px;
+  margin-top: 5px;
+  color: #a8bdc9;
+  font-family: inherit;
+  line-height: 1.35;
+}
+
+dialog .clip-generator-settings-eligibility {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+dialog .clip-generator-settings-eligibility.is-eligible {
+  color: #74d1a6;
+}
+
+dialog .clip-generator-settings-eligibility.is-ineligible {
+  color: #e0a45e;
+}
+
+dialog .clip-generator-settings-unavailable {
+  color: #8298a6;
+  font-size: 10px;
+}
+
+dialog .clip-generator-settings-policy-host {
+  display: grid;
+  gap: 10px;
+}
+
+dialog .clip-generator-settings-policy {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px 14px;
+  padding: 12px;
+  border: 1px solid rgba(97, 178, 185, 0.4);
+  border-radius: 7px;
+  background: rgba(10, 35, 51, 0.64);
+}
+
+dialog .clip-generator-settings-policy[hidden] {
+  display: none;
+}
+
+dialog .clip-generator-settings-policy > h4,
+dialog .clip-generator-settings-budget {
+  grid-column: 1 / -1;
+}
+
+dialog .clip-generator-settings-field {
+  display: grid;
+  grid-template-columns: minmax(145px, 1fr) minmax(110px, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+dialog .clip-generator-settings-field input,
+dialog .clip-generator-settings-field select {
+  min-width: 0;
+}
+
+dialog .clip-generator-settings-label {
+  color: #bed1dc;
+}
+
+dialog .clip-generator-settings-unit {
+  color: #839cad;
+  font-size: 10px;
+}
+
+dialog .clip-generator-settings-help {
+  grid-column: 1 / -1;
+  color: #839cad;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+dialog .clip-generator-settings-budget {
+  display: grid;
+  gap: 10px;
+  margin: 2px 0 0;
+  padding: 10px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+}
+
+dialog .clip-generator-settings-budget legend {
+  padding: 0 6px;
+  color: #8ed2d5;
+  font-weight: 700;
+}
+
+dialog .clip-generator-settings-budget-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px 14px;
+}
+
+dialog .clip-generator-settings-budget-fields[data-disabled="true"] {
+  opacity: 0.52;
+}
+
+dialog .clip-generator-settings-empty {
+  padding: 16px;
+  border: 1px dashed var(--shell-dialog-line);
+  border-radius: 6px;
+  color: #a9bdc9;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  dialog .clip-generator-settings-policy,
+  dialog .clip-generator-settings-budget-fields {
+    grid-template-columns: 1fr;
+  }
+
+  dialog .clip-generator-settings-field {
+    grid-template-columns: 1fr;
+  }
+
+  dialog .clip-generator-settings-unit {
+    margin-top: -5px;
+  }
+}

@@ -2,6 +2,11 @@
 
 Date: 2026-06-30
 
+Compatibility boundary (2026-07-25): this is the historical fixed-session
+bridge checkpoint. Production ingest now uses the schema-v2 active-project
+supervisor documented in `docs/91-ingest-supervisor.md`; the bridge remains
+only behind explicitly named legacy compatibility.
+
 This checkpoint adds a bridge from Icecast/BUTT/direct media URLs into the C++ engine service.
 
 ## Implemented
@@ -67,11 +72,15 @@ posted chunk 2 startSample=2048 continuity=contiguous delta=0 nextExpected=4096
 
 The smoke test intentionally used `--max-chunks 2`, so FFmpeg reported a broken-pipe warning when the bridge stopped early. That is expected for the smoke test and not expected for normal continuous streaming.
 
-## Scale model
+## Historical compatibility scale model
 
-The intended deployment model is one ingest bridge process per source/session, feeding one engine session. Multiple users or hydrophone streams can therefore be scaled horizontally by running multiple bridge processes against the same service tier or across multiple service replicas.
+The old model was one bridge per source/session. It remains available for
+regression/archive compatibility.
 
-For multi-source deployments, `ops/ingest_supervisor.py` can launch and monitor one bridge process per configured source from `platform/ingest-sources.example.json`.
+The current `platform/ingest-sources.example.json` does not launch this bridge:
+it targets stable active-project Acquisition unit IDs. The deliberately named
+`platform/ingest-sources.legacy-session-compat.example.json` demonstrates the
+retained bridge mode.
 
 ## Operational restart mode
 

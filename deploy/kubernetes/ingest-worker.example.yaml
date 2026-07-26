@@ -3,15 +3,46 @@ kind: ConfigMap
 metadata:
   name: pamguard-ingest-station-001
 data:
-  SOURCE_URL: "http://station.example/live.mp3"
-  SOURCE_ID: "station-001"
-  SESSION_ID: "station-001"
-  OWNER_ID: "demo-user"
-  TENANT_ID: "demo-project"
-  SAMPLE_RATE_HZ: "48000"
-  CHANNELS: "2"
-  CHUNK_FRAMES: "4096"
-  AUDIO_FILTER: ""
+  ingest-sources.json: |
+    {
+      "schemaVersion": 2,
+      "mode": "active-project",
+      "engine": "http://pamguard-engine:8080",
+      "projectId": "11111111-1111-4111-8111-111111111111",
+      "ffmpeg": "ffmpeg",
+      "apiKeyEnv": "PAMGUARD_API_KEY",
+      "statusFile": "/var/run/pamguard-ingest/status.json",
+      "cursorDirectory": "/var/run/pamguard-ingest/cursors",
+      "workerRestartDelaySeconds": 5,
+      "maxWorkerRestarts": 0,
+      "defaults": {
+        "sampleRateHz": 48000,
+        "channels": 2,
+        "chunkFrames": 4096,
+        "restart": true,
+        "restartDelayMs": 5000,
+        "realtime": true
+      },
+      "sources": [
+        {
+          "enabled": true,
+          "id": "station-001",
+          "acquisitionUnitId": "22222222-2222-4222-8222-222222222222",
+          "source": "http://station.example/live.mp3"
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pamguard-ingest-station-001-state
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 64Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -21,7 +52,11 @@ metadata:
     app: pamguard-ingest
     source: station-001
 spec:
+  # A second replica would race the same Acquisition timeline and cursor.
   replicas: 1
+  # Do not overlap old/new pods during an update.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: pamguard-ingest
@@ -32,43 +67,29 @@ spec:
         app: pamguard-ingest
         source: station-001
     spec:
+      terminationGracePeriodSeconds: 20
       containers:
         - name: ingest
           image: pamguard-engine:local
           imagePullPolicy: IfNotPresent
-          envFrom:
-            - configMapRef:
-                name: pamguard-ingest-station-001
           env:
             - name: PAMGUARD_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: pamguard-engine-api-key
                   key: api-key
-                  optional: true
           command:
-            - /bin/sh
-            - -lc
+            - python3
+            - /app/ops/ingest_supervisor.py
           args:
-            - >
-              exec /app/ffmpeg_stream_ingest
-              --source "$SOURCE_URL"
-              --engine "http://pamguard-engine:8080"
-              --session "$SESSION_ID"
-              --source-id "$SOURCE_ID"
-              --session-config "/app/station-session.example.json"
-              --owner-id "$OWNER_ID"
-              --tenant-id "$TENANT_ID"
-              --allow-existing-session
-              --resume-from-engine
-              --sample-rate "$SAMPLE_RATE_HZ"
-              --channels "$CHANNELS"
-              --chunk-frames "$CHUNK_FRAMES"
-              --api-key-env "PAMGUARD_API_KEY"
-              ${AUDIO_FILTER:+--audio-filter "$AUDIO_FILTER"}
-              --restart
-              --restart-delay-ms 5000
-              --realtime
+            - --config
+            - /etc/pamguard-ingest/ingest-sources.json
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pamguard-ingest
+              readOnly: true
+            - name: state
+              mountPath: /var/run/pamguard-ingest
           resources:
             requests:
               cpu: "250m"
@@ -76,3 +97,10 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: pamguard-ingest-station-001
+        - name: state
+          persistentVolumeClaim:
+            claimName: pamguard-ingest-station-001-state

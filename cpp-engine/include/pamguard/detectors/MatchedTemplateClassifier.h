@@ -12,13 +12,24 @@ struct MatchTemplateWaveform {
     std::string name;
     double sample_rate_hz = 0.0;
     std::vector<double> waveform;
+
+    bool operator==(const MatchTemplateWaveform&) const = default;
 };
 
 /** One MTClassifier: a match/reject template pair with a threshold. */
 struct MtTemplatePair {
     double threshold_to_accept = 0.01;
+    /**
+     * MTClassifier.normalisation. Java's bare constructor defaults this to
+     * peak (0), independently of MatchedTemplateParams.normalisationType
+     * (RMS/1); accepting the dialog synchronises every classifier to the
+     * global value.
+     */
+    int normalisation_type = 0;
     MatchTemplateWaveform match_template;
     MatchTemplateWaveform reject_template;
+
+    bool operator==(const MtTemplatePair&) const = default;
 };
 
 /** MatchedTemplateParams (defaults as the reference constructs them). */
@@ -69,9 +80,9 @@ struct MtClassification {
  * divides by the SIGNED maximum; templates are upsampled by the ported
  * PamInterp.interpWaveform (FFT zero-padding, unscaled inverse).
  *
- * Not supported: template sample rates ABOVE the session rate — the
- * reference decimates via an external library (jpamutils WavInterpolator)
- * that is not ported; valid() reports false and the reason.
+ * Templates above the session rate follow jpamutils WavInterpolator:
+ * fourth-order Butterworth low-pass filtering followed by the same natural
+ * cubic-spline resampling used by the Java authority.
  */
 class MatchedTemplateClassifier {
 public:
@@ -102,8 +113,10 @@ private:
     std::string invalid_reason_;
 
     [[nodiscard]] std::vector<double> interp_template(const MatchTemplateWaveform& match_template) const;
-    [[nodiscard]] std::vector<double> template_fft(const MatchTemplateWaveform& match_template,
-                                                   int fft_length) const;
+    [[nodiscard]] std::vector<double> template_fft(
+        const MatchTemplateWaveform& match_template,
+        int fft_length,
+        int normalisation_type) const;
     MtTemplateResult correlation_match(std::size_t classifier_index,
                                        const std::vector<double>& click_fft_packed);
     [[nodiscard]] std::vector<std::vector<int>> length_data(const std::vector<std::vector<double>>& wave_data) const;

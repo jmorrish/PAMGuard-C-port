@@ -17,6 +17,12 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $OutputPath,
 
+    [switch] $ClickRemoval,
+
+    [double] $ClickThreshold = 5.0,
+
+    [int] $ClickPower = 6,
+
     [string] $JavaHome = ""
 )
 
@@ -41,9 +47,15 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OutputPath) | Out
 if ($LASTEXITCODE -ne 0) {
     throw "javac failed with exit code $LASTEXITCODE"
 }
-& $environment.Java -cp "$buildDir;$fullClasspath" `
-    org.pamguard.port.reference.PamFftFrameFixtureExporter `
-    $WindowType $FftLength $FftHop $SampleRate $ChunkLength |
+$arguments = @(
+    "-cp", "$buildDir;$fullClasspath",
+    "org.pamguard.port.reference.PamFftFrameFixtureExporter",
+    $WindowType, $FftLength, $FftHop, $SampleRate, $ChunkLength
+)
+if ($ClickRemoval) {
+    $arguments += @("true", $ClickThreshold, $ClickPower)
+}
+& $environment.Java @arguments |
     Set-Content -Path $OutputPath -Encoding UTF8
 if ($LASTEXITCODE -ne 0) {
     throw "java fixture exporter failed with exit code $LASTEXITCODE"

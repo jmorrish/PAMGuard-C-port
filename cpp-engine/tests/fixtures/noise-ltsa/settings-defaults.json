@@ -1,0 +1,96 @@
+{
+  "authority": {
+    "version": "2.02.18e",
+    "commit": "dca55c81ef6f1498a8a3b926c69e7182afb915ee",
+    "exporter": "org.pamguard.port.reference.NoiseLtsaSettingsFixtureExporter"
+  },
+  "portableSettingsDefaults": {
+    "noiseMonitor": {
+      "channelBitmap": 1,
+      "measurementIntervalSeconds": 60,
+      "nMeasures": 100,
+      "useAll": true,
+      "bands": []
+    },
+    "noiseBandMonitor": {
+      "channelBitmap": 1,
+      "bandType": "thirdOctave",
+      "filterType": "butterworth",
+      "iirOrder": 6,
+      "firOrder": 7,
+      "firGamma": 2.5,
+      "outputIntervalSeconds": 10,
+      "minimumFrequencyHz": 1.7925856629456591,
+      "maximumFrequencyHz": 1133.6866687924667,
+      "referenceFrequencyHz": 1000.0
+    },
+    "ltsa": {
+      "channelBitmap": 0,
+      "intervalSeconds": 60,
+      "longerFactor": 10
+    }
+  },
+  "javaPersistedScientificDefaults": {
+    "noiseMonitor.NoiseSettings": {
+      "serialVersionUID": 1,
+      "channelBitmap": 1,
+      "measurementIntervalSeconds": 60,
+      "nMeasures": 100,
+      "useAll": true,
+      "measurementBands": []
+    },
+    "noiseBandMonitor.NoiseBandSettings": {
+      "serialVersionUID": 1,
+      "channelMap": 1,
+      "bandType": "THIRDOCTAVE",
+      "filterType": "BUTTERWORTH",
+      "iirOrder": 6,
+      "firOrder": 7,
+      "firGamma": 2.5,
+      "outputIntervalSeconds": 10,
+      "minFrequency": 0.0,
+      "maxFrequency": 0.0,
+      "referenceFrequency": 1000.0,
+      "startDecimation": 0,
+      "endDecimation": 8,
+      "lowBandNumber": 0,
+      "highBandNumber": 30
+    },
+    "ltsa.LtsaParameters": {
+      "serialVersionUID": 1,
+      "channelMap": 0,
+      "intervalSeconds": 60,
+      "longerFactor": 10
+    }
+  },
+  "javaPersistedSourceDefaults": {
+    "noiseMonitor.NoiseSettings": {
+      "dataSource": null
+    },
+    "noiseBandMonitor.NoiseBandSettings": {
+      "rawDataSource": null
+    },
+    "ltsa.LtsaParameters": {
+      "dataSource": null
+    }
+  },
+  "javaLazyBackingEvidence": {
+    "noiseBandMonitor.NoiseBandSettings": {
+      "minFrequencyBeforeGetter": 0.0,
+      "maxFrequencyBeforeGetter": 0.0,
+      "referenceFrequencyBeforeGetter": 1000.0,
+      "minimumFrequencyHzFromGetter": 1.7925856629456591,
+      "maximumFrequencyHzFromGetter": 1133.6866687924667,
+      "referenceFrequencyHzFromGetter": 1000.0
+    }
+  },
+  "excludedDisplayDefaults": {
+    "noiseBandMonitor.NoiseBandSettings": {
+      "logFreqScale": true,
+      "showGrid": true,
+      "showDecimators": true,
+      "showStandard": [false, false, false],
+      "scaleToggleState": 0
+    }
+  }
+}

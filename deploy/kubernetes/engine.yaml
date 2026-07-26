@@ -4,15 +4,13 @@ metadata:
   name: pamguard-engine-config
 data:
   PAMGUARD_HTTP_THREADS: "32"
-  PAMGUARD_MAX_SESSIONS: "64"
   PAMGUARD_MAX_PCM_BODY_BYTES: "8388608"
   PAMGUARD_MAX_ARCHIVE_QUERY_RECORDS: "10000"
   PAMGUARD_CORS_ORIGIN: "*"
-  PAMGUARD_REQUIRE_SESSION_METADATA: "1"
-  PAMGUARD_SESSION_CONFIG_DIR: "/data/sessions"
-  PAMGUARD_RESULT_ARCHIVE_DIR: "/data/results"
+  PAMGUARD_PROJECT_DIR: "/data/projects"
   PAMGUARD_WEB_UI_FILE: "/app/web-ui/index.html"
   PAMGUARD_OPENAPI_FILE: "/app/openapi.yaml"
+  # Add PAMGUARD_ACTIVE_PROJECT_ID only after replacing it with a saved UUID.
   # Enable this only when a supervisor writes the file into the shared data volume.
   # PAMGUARD_INGEST_STATUS_FILE: "/data/ingest-supervisor-status.json"
   # Enable this when lifecycle audit JSONL should be retained on the data volume.
@@ -37,6 +35,9 @@ metadata:
     app: pamguard-engine
 spec:
   replicas: 1
+  # A rolling overlap would give two processes the same project root/PVC.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: pamguard-engine

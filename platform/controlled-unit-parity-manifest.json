@@ -1,0 +1,3303 @@
+{
+  "schemaVersion": 2,
+  "manifestId": "pamguard-controlled-unit-parity",
+  "authority": {
+    "application": "PAMGuard",
+    "version": "2.02.18e",
+    "repository": "https://github.com/PAMGuard/PAMGuard.git",
+    "commit": "dca55c81ef6f1498a8a3b926c69e7182afb915ee",
+    "registrationSource": "src/PamModel/PamModel.java"
+  },
+  "parityLabels": [
+    "partial",
+    "experimental",
+    "internal-foundation",
+    "display-foundation",
+    "web-extension"
+  ],
+  "bundles": [
+    {
+      "bundleId": "pamguard.acquisition",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Sound Acquisition",
+        "menuGroup": "Sound Processing",
+        "className": "Acquisition.AcquisitionControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.acquisition"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.amplifier",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Signal Amplifier",
+        "menuGroup": "Sound Processing",
+        "className": "amplifier.AmpControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.amplifier"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.patch-panel",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Patch Panel",
+        "menuGroup": "Sound Processing",
+        "className": "patchPanel.PatchPanelControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.patch-panel"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.filter",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Filters (IIR and FIR)",
+        "menuGroup": "Sound Processing",
+        "className": "Filters.FilterControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.filter"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.decimator",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Decimator",
+        "menuGroup": "Sound Processing",
+        "className": "decimator.DecimatorControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.decimator"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.fft",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "FFT (Spectrogram) Engine",
+        "menuGroup": "Sound Processing",
+        "className": "fftManager.PamFFTControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.fft",
+          "pamguard.spectrogram-noise"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.click-detector",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Click Detector",
+        "menuGroup": "Detectors",
+        "className": "clickDetector.ClickControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.click-detector",
+          "pamguard.click-classifier",
+          "pamguard.click-features",
+          "pamguard.click-localiser",
+          "pamguard.click-train",
+          "pamguard.click-display"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.mht-click-train",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Click Train Detector",
+        "menuGroup": "Detectors",
+        "className": "clickTrainDetector.ClickTrainControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.mht-click-train"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.whistles-moans",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Whistle and Moan Detector",
+        "menuGroup": "Detectors",
+        "className": "whistlesAndMoans.WhistleMoanControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.spectrogram-noise",
+          "pamguard.whistles-moans"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.ishmael-energy-sum",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Ishmael energy sum",
+        "menuGroup": "Detectors",
+        "className": "IshmaelDetector.EnergySumControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.ishmael-energy-sum"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.ishmael-sgram-corr",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Ishmael spectrogram correlation",
+        "menuGroup": "Detectors",
+        "className": "IshmaelDetector.SgramCorrControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.ishmael-sgram-corr"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.ishmael-match-filter",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Ishmael matched filtering",
+        "menuGroup": "Detectors",
+        "className": "IshmaelDetector.MatchFiltControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.ishmael-match-filter"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.matched-template-classifier",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Matched Template Click Classifer",
+        "menuGroup": "Classifiers",
+        "className": "matchedTemplateClassifer.MTClassifierControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.matched-template-classifier"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.fft-noise-monitor",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Noise Monitor",
+        "menuGroup": "Sound Processing",
+        "className": "noiseMonitor.NoiseControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.fft-noise-monitor"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.noise-band-monitor",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Noise Band Monitor",
+        "menuGroup": "Sound Processing",
+        "className": "noiseBandMonitor.NoiseBandControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.noise-band-monitor"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.ltsa",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Long Term Spectral Average",
+        "menuGroup": "Sound Processing",
+        "className": "ltsa.LtsaControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.ltsa"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.sound-recorder",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Sound recorder",
+        "menuGroup": "Sound Processing",
+        "className": "SoundRecorder.RecorderControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.sound-recorder"
+        ]
+      },
+      "parityLabel": "experimental"
+    },
+    {
+      "bundleId": "pamguard.clip-generator",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Clip generator",
+        "menuGroup": "Sound Processing",
+        "className": "clipgenerator.ClipControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.clip-generator"
+        ]
+      },
+      "parityLabel": "experimental"
+    },
+    {
+      "bundleId": "pamguard.sound-output",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Sound Output",
+        "menuGroup": "Sound Processing",
+        "className": "soundPlayback.PlaybackControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.sound-output"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.level-meter",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Level Meter",
+        "menuGroup": "Displays",
+        "className": "levelMeter.LevelMeterControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.level-meter",
+          "pamguard.level-meter-display"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.alarm-event-counter",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Alarm",
+        "menuGroup": "Utilities",
+        "className": "alarm.AlarmControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.alarm-event-counter"
+        ]
+      },
+      "parityLabel": "experimental"
+    },
+    {
+      "bundleId": "pamguard.effort-monitor",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Scroll Effort",
+        "menuGroup": "Utilities",
+        "className": "effortmonitor.EffortControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.effort-monitor"
+        ]
+      },
+      "parityLabel": "experimental"
+    },
+    {
+      "bundleId": "pamguard.aural-listening",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "Aural Listening Form",
+        "menuGroup": "Utilities",
+        "className": "listening.ListeningControl",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.aural-listening"
+        ]
+      },
+      "parityLabel": "experimental"
+    },
+    {
+      "bundleId": "pamguard.user-input",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "User input",
+        "menuGroup": "Utilities",
+        "className": "UserInput.UserInputController",
+        "relationship": "direct"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.user-input"
+        ]
+      },
+      "parityLabel": "experimental"
+    },
+    {
+      "bundleId": "pamguard.user-display",
+      "kind": "controlled-unit",
+      "javaAuthority": {
+        "registeredName": "User Display",
+        "menuGroup": "Displays",
+        "className": "userDisplay.UserDisplayControl",
+        "relationship": "provider-owner"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.spectrogram-display"
+        ]
+      },
+      "parityLabel": "partial"
+    },
+    {
+      "bundleId": "pamguard.system-diagnostics",
+      "kind": "system-extension",
+      "javaAuthority": {
+        "registeredName": "Backup Manager",
+        "menuGroup": "Utilities",
+        "className": "backupmanager.BackupManager",
+        "relationship": "comparison-target"
+      },
+      "runtimeRecipe": {
+        "version": 1,
+        "runtimeTypeIds": [
+          "pamguard.storage-health"
+        ]
+      },
+      "parityLabel": "web-extension"
+    }
+  ],
+  "controlledUnitContracts": [
+    {
+      "bundleId": "pamguard.acquisition",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": ["Acquisition.AcquisitionParameters"],
+        "sources": [
+          "src/Acquisition/AcquisitionControl.java",
+          "src/Acquisition/AcquisitionParameters.java",
+          "src/Acquisition/AcquisitionDialog.java",
+          "src/Acquisition/layoutFX/AcquisitionPaneFX.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.amplifier",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": ["amplifier.AmpParameters"],
+        "sources": [
+          "src/amplifier/AmpControl.java",
+          "src/amplifier/AmpParameters.java",
+          "src/amplifier/AmpDialog.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.patch-panel",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": ["patchPanel.PatchPanelParameters"],
+        "sources": [
+          "src/patchPanel/PatchPanelControl.java",
+          "src/patchPanel/PatchPanelParameters.java",
+          "src/patchPanel/PatchPanelDialog.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.filter",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "Filters.FilterParameters_2",
+          "Filters.FilterParams"
+        ],
+        "sources": [
+          "src/Filters/FilterControl.java",
+          "src/Filters/FilterParameters_2.java",
+          "src/Filters/FilterParams.java",
+          "src/Filters/FilterDialog.java",
+          "src/Filters/FilterDialogPanel.java",
+          "src/Filters/FilterProcess.java",
+          "src/Filters/layoutFX/FilterSettingsPaneFX.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.decimator",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "decimator.DecimatorParams",
+          "Filters.FilterParams"
+        ],
+        "sources": [
+          "src/decimator/DecimatorControl.java",
+          "src/decimator/DecimatorParams.java",
+          "src/decimator/DecimatorParamsDialog.java",
+          "src/decimator/DecimatorProcessW.java",
+          "src/decimator/DecimatorWorker.java",
+          "src/decimator/layoutFX/DecimatorSettingsPane.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.fft",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "fftManager.FFTParameters",
+          "spectrogramNoiseReduction.SpectrogramNoiseSettings"
+        ],
+        "sources": [
+          "src/fftManager/PamFFTControl.java",
+          "src/fftManager/FFTParameters.java",
+          "src/fftManager/FFTParametersDialog.java",
+          "src/fftManager/layoutFX/FFTPaneFX.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.click-detector",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "clickDetector.ClickParameters",
+          "clickDetector.ClickClassifiers.ClickClassifierManager",
+          "clickDetector.BasicClickIdParameters",
+          "clickDetector.ClickTypeParams",
+          "clickDetector.ClickClassifiers.ClickTypeCommonParams",
+          "clickDetector.ClickClassifiers.basicSweep.SweepClassifierParameters",
+          "clickDetector.ClickClassifiers.basicSweep.SweepClassifierSet",
+          "clickDetector.clicktrains.ClickTrainIdParams",
+          "clickDetector.localisation.ClickLocParams",
+          "Localiser.DelayMeasurementParams",
+          "angleVetoes.AngleVetoParameters",
+          "clickDetector.echoDetection.SimpleEchoParams",
+          "clickDetector.BTDisplayParameters"
+        ],
+        "sources": [
+          "src/clickDetector/ClickControl.java",
+          "src/clickDetector/ClickParameters.java",
+          "src/clickDetector/BasicClickIdParameters.java",
+          "src/clickDetector/ClickTypeParams.java",
+          "src/clickDetector/ClickClassifiers/ClickTypeCommonParams.java",
+          "src/clickDetector/ClickClassifiers/basic/BasicClickIdentifier.java",
+          "src/clickDetector/ClickClassifiers/basicSweep/SweepClassifier.java",
+          "src/clickDetector/ClickClassifiers/basicSweep/SweepClassifierParameters.java",
+          "src/clickDetector/ClickClassifiers/basicSweep/SweepClassifierSet.java",
+          "src/clickDetector/dialogs/ClickParamsDialog.java",
+          "src/clickDetector/layoutFX/ClickSettingsPane.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.mht-click-train",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "clickDetector.ClickControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "clickTrainDetector.ClickTrainParams",
+          "clickTrainDetector.clickTrainAlgorithms.mht.MHTParams",
+          "clickTrainDetector.clickTrainAlgorithms.mht.MHTKernelParams",
+          "clickTrainDetector.clickTrainAlgorithms.mht.MHTChi2Params",
+          "clickTrainDetector.clickTrainAlgorithms.mht.StandardMHTChi2Params",
+          "clickTrainDetector.clickTrainAlgorithms.mht.electricalNoiseFilter.SimpleElectricalNoiseParams",
+          "clickTrainDetector.clickTrainAlgorithms.mht.mhtvar.SimpleChi2VarParams",
+          "clickTrainDetector.clickTrainAlgorithms.mht.mhtvar.IDIChi2Params",
+          "clickTrainDetector.clickTrainAlgorithms.mht.mhtvar.AmplitudeChi2Params",
+          "clickTrainDetector.clickTrainAlgorithms.mht.mhtvar.BearingChi2VarParams",
+          "clickTrainDetector.clickTrainAlgorithms.mht.mhtvar.CorrelationChi2Params",
+          "clickTrainDetector.clickTrainAlgorithms.mht.mhtvar.TimeDelayParams",
+          "clickTrainDetector.classification.simplechi2classifier.Chi2ThresholdParams",
+          "clickTrainDetector.classification.idiClassifier.IDIClassifierParams",
+          "clickTrainDetector.classification.bearingClassifier.BearingClassifierParams",
+          "clickTrainDetector.classification.templateClassifier.TemplateClassifierParams",
+          "clickTrainDetector.classification.templateClassifier.SpectrumTemplateParams",
+          "clickTrainDetector.localisation.CTLocParams",
+          "clickDetector.alarm.ClickAlarmParameters"
+        ],
+        "sources": [
+          "src/clickTrainDetector/ClickTrainControl.java",
+          "src/clickTrainDetector/ClickTrainParams.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/MHTParams.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/MHTKernelParams.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/MHTChi2Params.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/StandardMHTChi2Params.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/electricalNoiseFilter/SimpleElectricalNoiseParams.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/mhtvar/SimpleChi2VarParams.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/mhtvar/IDIChi2Params.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/mhtvar/AmplitudeChi2Params.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/mhtvar/BearingChi2VarParams.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/mhtvar/CorrelationChi2Params.java",
+          "src/clickTrainDetector/clickTrainAlgorithms/mht/mhtvar/TimeDelayParams.java",
+          "src/clickTrainDetector/classification/simplechi2classifier/Chi2ThresholdParams.java",
+          "src/clickTrainDetector/classification/idiClassifier/IDIClassifierParams.java",
+          "src/clickTrainDetector/classification/bearingClassifier/BearingClassifierParams.java",
+          "src/clickTrainDetector/classification/templateClassifier/TemplateClassifierParams.java",
+          "src/clickTrainDetector/classification/templateClassifier/SpectrumTemplateParams.java",
+          "src/clickTrainDetector/localisation/CTLocParams.java",
+          "src/clickDetector/alarm/ClickAlarmParameters.java",
+          "src/clickTrainDetector/layout/ClickTrainAlgorithmPaneFX.java",
+          "src/clickTrainDetector/layout/CTSwingGUI.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.whistles-moans",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "fftManager.FFTDataUnit",
+          "defaultProviderClass": "fftManager.PamFFTControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "whistlesAndMoans.WhistleToneParameters",
+          "PamView.GroupedSourceParameters",
+          "spectrogramNoiseReduction.SpectrogramNoiseSettings",
+          "spectrogramNoiseReduction.medianFilter.MedianFilterParams",
+          "spectrogramNoiseReduction.averageSubtraction.AverageSubtractionParameters",
+          "spectrogramNoiseReduction.threshold.ThresholdParams"
+        ],
+        "sources": [
+          "src/whistlesAndMoans/WhistleMoanControl.java",
+          "src/whistlesAndMoans/WhistleToneParameters.java",
+          "src/whistlesAndMoans/WhistleToneDialog.java",
+          "src/whistlesAndMoans/layoutFX/WhistleMoanSettingsPaneFX.java",
+          "src/PamView/GroupedSourceParameters.java",
+          "src/PamView/dialog/GroupedSourcePanel.java",
+          "src/spectrogramNoiseReduction/SpectrogramNoiseSettings.java",
+          "src/spectrogramNoiseReduction/SpectrogramNoiseProcess.java",
+          "src/spectrogramNoiseReduction/SpectrogramNoiseDialogPanel.java",
+          "src/whistlesAndMoans/WhistleToneConnectProcess.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.ishmael-energy-sum",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "fftManager.FFTDataUnit",
+          "defaultProviderClass": "fftManager.PamFFTControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "java-fixture-validated",
+        "settingsClasses": [
+          "IshmaelDetector.EnergySumParams",
+          "IshmaelDetector.IshDetParams",
+          "PamView.GroupedSourceParameters"
+        ],
+        "sources": [
+          "src/PamModel/PamModel.java",
+          "src/IshmaelDetector/EnergySumControl.java",
+          "src/IshmaelDetector/EnergySumParams.java",
+          "src/IshmaelDetector/IshDetParams.java",
+          "src/IshmaelDetector/IshDetControl.java",
+          "src/IshmaelDetector/IshDetFnProcess.java",
+          "src/IshmaelDetector/EnergySumProcess.java",
+          "src/IshmaelDetector/IshPeakProcess.java",
+          "src/PamView/GroupedSourceParameters.java",
+          "src/PamView/dialog/GroupedSourcePanel.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.ishmael-sgram-corr",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "fftManager.FFTDataUnit",
+          "defaultProviderClass": "fftManager.PamFFTControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "java-fixture-validated",
+        "settingsClasses": [
+          "IshmaelDetector.SgramCorrParams",
+          "IshmaelDetector.IshDetParams",
+          "PamView.GroupedSourceParameters"
+        ],
+        "sources": [
+          "src/PamModel/PamModel.java",
+          "src/IshmaelDetector/SgramCorrControl.java",
+          "src/IshmaelDetector/SgramCorrParams.java",
+          "src/IshmaelDetector/IshDetParams.java",
+          "src/IshmaelDetector/IshDetControl.java",
+          "src/IshmaelDetector/IshDetFnProcess.java",
+          "src/IshmaelDetector/SgramCorrProcess.java",
+          "src/IshmaelDetector/IshPeakProcess.java",
+          "src/PamView/GroupedSourceParameters.java",
+          "src/PamView/dialog/GroupedSourcePanel.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.ishmael-match-filter",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "java-fixture-validated",
+        "settingsClasses": [
+          "IshmaelDetector.MatchFiltParams",
+          "IshmaelDetector.IshDetParams",
+          "PamView.GroupedSourceParameters"
+        ],
+        "sources": [
+          "src/PamModel/PamModel.java",
+          "src/IshmaelDetector/MatchFiltControl.java",
+          "src/IshmaelDetector/MatchFiltParams.java",
+          "src/IshmaelDetector/IshDetParams.java",
+          "src/IshmaelDetector/IshDetControl.java",
+          "src/IshmaelDetector/IshDetFnProcess.java",
+          "src/IshmaelDetector/MatchFiltProcess2.java",
+          "src/IshmaelDetector/IshPeakProcess.java",
+          "src/PamView/GroupedSourceParameters.java",
+          "src/PamView/dialog/GroupedSourcePanel.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.matched-template-classifier",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "clickDetector.ClickDetection",
+          "defaultProviderClass": "clickDetector.ClickControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "java-fixture-validated",
+        "settingsClasses": [
+          "matchedTemplateClassifer.MatchedTemplateParams",
+          "matchedTemplateClassifer.MTClassifier",
+          "matchedTemplateClassifer.MatchTemplate"
+        ],
+        "sources": [
+          "src/matchedTemplateClassifer/MTClassifierControl.java",
+          "src/matchedTemplateClassifer/MatchedTemplateParams.java",
+          "src/matchedTemplateClassifer/MTClassifier.java",
+          "src/matchedTemplateClassifer/MatchTemplate.java",
+          "src/matchedTemplateClassifer/DefaultTemplates.java",
+          "src/matchedTemplateClassifer/MTProcess.java",
+          "src/matchedTemplateClassifer/ImportTemplateMAT.java",
+          "src/matchedTemplateClassifer/layoutFX/MTSettingsPane.java",
+          "src/matchedTemplateClassifer/layoutFX/MTClassifierPane.java",
+          "src/matchedTemplateClassifer/bespokeClassification/BeskopeClassifierManager.java",
+          "src/matchedTemplateClassifer/bespokeClassification/MTClkTrnClassification.java",
+          "src/clickDetector/ClickClassifiers/ClickTypeProvider.java",
+          "src/clickTrainDetector/CTDataUnit.java"
+        ]
+      },
+      "implementationBoundary": {
+        "portableDeviations": [
+          {
+            "id": "stable-unsigned-click-type",
+            "status": "implemented",
+            "authoritySource": "src/matchedTemplateClassifer/layoutFX/MTSettingsPane.java",
+            "description": "The project format preserves click types 128..255 as unsigned integers and maps the dialog's displayed 256 to portable 0. Java stores the spinner value in a signed byte, so 128..255 reopen as negative values and 256 wraps to 0; reproducing those reopen and downstream defects would make portable projects unstable."
+          }
+        ],
+        "notYetImplemented": [
+          {
+            "id": "click-train-average-waveform-input",
+            "authoritySource": "src/matchedTemplateClassifer/layoutFX/MTSettingsPane.java",
+            "description": "CTDataUnit input and classification of its AverageWaveform are not implemented."
+          },
+          {
+            "id": "click-train-matchedclick-flags",
+            "authoritySource": "src/matchedTemplateClassifer/bespokeClassification/BeskopeClassifierManager.java",
+            "description": "Writing and replacing CTClassifierType.MATCHEDCLICK classifications on click trains is not implemented."
+          },
+          {
+            "id": "click-type-provider",
+            "authoritySource": "src/matchedTemplateClassifer/MTClassifierControl.java",
+            "description": "The ClickTypeProvider code/name integration used by downstream Java displays and consumers is not implemented."
+          },
+          {
+            "id": "mat-template-import",
+            "authoritySource": "src/matchedTemplateClassifer/ImportTemplateMAT.java",
+            "description": "MAT template import is unavailable in the browser; CSV import and the built-in templates are available."
+          }
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.fft-noise-monitor",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "fftManager.FFTDataUnit",
+          "defaultProviderClass": "fftManager.PamFFTControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "noiseMonitor.NoiseSettings",
+          "noiseMonitor.NoiseMeasurementBand",
+          "noiseBandMonitor.BandType"
+        ],
+        "sources": [
+          "src/noiseMonitor/NoiseControl.java",
+          "src/noiseMonitor/NoiseSettings.java",
+          "src/noiseMonitor/NoiseMeasurementBand.java",
+          "src/noiseBandMonitor/BandType.java",
+          "src/noiseMonitor/NoiseDialog.java",
+          "src/noiseMonitor/UserBandDialog.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.noise-band-monitor",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "noiseBandMonitor.NoiseBandSettings",
+          "noiseBandMonitor.BandType",
+          "Filters.FilterType"
+        ],
+        "sources": [
+          "src/noiseBandMonitor/NoiseBandControl.java",
+          "src/noiseBandMonitor/NoiseBandSettings.java",
+          "src/noiseBandMonitor/NoiseBandDialog.java",
+          "src/noiseBandMonitor/layoutFX/NoiseBandSettingsPane.java",
+          "src/noiseBandMonitor/BandType.java",
+          "src/Filters/FilterType.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.ltsa",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "fftManager.PamFFTControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": ["ltsa.LtsaParameters"],
+        "sources": [
+          "src/ltsa/LtsaControl.java",
+          "src/ltsa/LtsaParameters.java",
+          "src/ltsa/LtsaDialog.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.sound-recorder",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "java-fixture-validated",
+        "settingsClasses": [
+          "SoundRecorder.RecorderSettings",
+          "SoundRecorder.trigger.RecorderTriggerData"
+        ],
+        "sources": [
+          "src/SoundRecorder/RecorderControl.java",
+          "src/SoundRecorder/RecorderSettings.java",
+          "src/SoundRecorder/RecorderSettingsDialog.java",
+          "src/SoundRecorder/trigger/RecorderTriggerData.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.clip-generator",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "java-fixture-validated",
+        "settingsClasses": [
+          "clipgenerator.ClipSettings",
+          "clipgenerator.ClipGenSetting"
+        ],
+        "sources": [
+          "src/clipgenerator/ClipControl.java",
+          "src/clipgenerator/ClipSettings.java",
+          "src/clipgenerator/ClipGenSetting.java",
+          "src/clipgenerator/ClipDialog.java",
+          "src/clipgenerator/StandardClipBudgetMaker.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.sound-output",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [
+          {
+            "mode": "viewer",
+            "minimumInstances": 1,
+            "maximumInstances": 1
+          }
+        ],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": ["soundPlayback.PlaybackParameters"],
+        "sources": [
+          "src/soundPlayback/PlaybackControl.java",
+          "src/soundPlayback/PlaybackParameters.java",
+          "src/soundPlayback/swing/PlaybackDialog.java",
+          "src/soundPlayback/fx/PlayBackPane.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.level-meter",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [
+        {
+          "requiredDataClass": "PamDetection.RawDataUnit",
+          "defaultProviderClass": "Acquisition.AcquisitionControl",
+          "authoritySource": "src/PamModel/PamModel.java"
+        }
+      ],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "levelMeter.LevelMeterParams",
+          "levelMeter.LevelMeterSidePanel"
+        ],
+        "sources": [
+          "src/levelMeter/LevelMeterControl.java",
+          "src/levelMeter/LevelMeterParams.java",
+          "src/levelMeter/LevelMeterDialog.java",
+          "src/levelMeter/LevelMeterSidePanel.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.alarm-event-counter",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": ["alarm.AlarmParameters"],
+        "sources": [
+          "src/alarm/AlarmControl.java",
+          "src/alarm/AlarmParameters.java",
+          "src/alarm/AlarmDialog.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.effort-monitor",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": 1,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": ["effortmonitor.EffortParams"],
+        "sources": [
+          "src/effortmonitor/EffortControl.java",
+          "src/effortmonitor/EffortParams.java",
+          "src/effortmonitor/swing/EffortDialog.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.aural-listening",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "java-source-validated-operational-settings",
+        "settingsClasses": [
+          "listening.ListeningParameters",
+          "listening.SpeciesItem"
+        ],
+        "sources": [
+          "src/listening/ListeningParameters.java",
+          "src/listening/SpeciesItem.java",
+          "src/listening/ListeningDialog.java",
+          "src/listening/ListeningControl.java",
+          "src/listening/ThingHeardTabPanelControl.java",
+          "src/listening/ListeningProcess.java",
+          "src/listening/ListeningEffortData.java",
+          "src/listening/ThingHeard.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.user-input",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": 1,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "java-source-validated-no-settings",
+        "settingsClasses": ["UserInput.UserInputController"],
+        "sources": [
+          "src/UserInput/UserInputController.java",
+          "src/UserInput/UserInputProcess.java",
+          "src/UserInput/UserInputDataUnit.java",
+          "src/UserInput/UserInputPanel.java",
+          "src/UserInput/UserInputSidePanel.java"
+        ]
+      }
+    },
+    {
+      "bundleId": "pamguard.user-display",
+      "instanceRules": {
+        "allowedModes": ["normal", "mixed", "viewer"],
+        "minimumInstances": 0,
+        "maximumInstances": null,
+        "modeOverrides": [],
+        "authoritySources": [
+          "src/PamModel/PamModuleInfo.java",
+          "src/PamModel/PamModel.java"
+        ]
+      },
+      "dependencies": [],
+      "configurationAuthority": {
+        "status": "discovered",
+        "cppParityClaim": "not-claimed",
+        "settingsClasses": [
+          "userDisplay.UserDisplayParameters",
+          "Spectrogram.SpectrogramParameters"
+        ],
+        "sources": [
+          "src/userDisplay/UserDisplayControl.java",
+          "src/userDisplay/UserDisplayParameters.java",
+          "src/Spectrogram/SpectrogramDiplayProvider.java",
+          "src/Spectrogram/SpectrogramParameters.java",
+          "src/Spectrogram/SpectrogramParamsDialog.java"
+        ]
+      }
+    }
+  ],
+  "coreConfigurationContracts": [
+    {
+      "bundleId": "pamguard.amplifier",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.dialog",
+          "labels": [
+            "Raw Data input",
+            "Channel Gains",
+            "Gain (dB)",
+            "invert"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> ..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "gain[].magnitudeDb",
+          "value": 0,
+          "condition": "all 32 absolute channels",
+          "authority": "amplifier.AmpParameters#AmpParameters / amplifier.AmpDialog#getParams"
+        },
+        {
+          "path": "gain[].invert",
+          "value": false,
+          "condition": "all 32 absolute channels",
+          "authority": "amplifier.AmpParameters#AmpParameters / amplifier.AmpDialog#getParams"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.patch-panel",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.dialog",
+          "labels": [
+            "Data Source",
+            "Channel Connections",
+            "Inputs",
+            "Outputs"
+          ]
+        },
+        {
+          "surface": "settings.advanced",
+          "labels": [
+            "Gain matrix (C++ extension)"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> ..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "patches.diagonal",
+          "value": true,
+          "condition": "all 32 diagonal input/output pairs",
+          "authority": "patchPanel.PatchPanelParameters#PatchPanelParameters / patchPanel.PatchPanelDialog#getParams"
+        },
+        {
+          "path": "patches.offDiagonal",
+          "value": false,
+          "condition": "all 992 off-diagonal input/output pairs",
+          "authority": "patchPanel.PatchPanelParameters#PatchPanelParameters / patchPanel.PatchPanelDialog#getParams"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.filter",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.dialog",
+          "labels": [
+            "Data input",
+            "Filter Type",
+            "Filter Response",
+            "Filter shape",
+            "Filter parameters",
+            "Pole/impulse response",
+            "Bode Plot",
+            "Log Scale",
+            "Linear Scale"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> Settings..."]
+        },
+        {
+          "surface": "settings-dialog",
+          "labels": ["Import", "Plot"]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "channelBitmap",
+          "value": 0,
+          "condition": "before the operator selects source channels",
+          "authority": "Filters.FilterParameters_2#channelBitmap"
+        },
+        {
+          "path": "filterParams.filterType",
+          "value": "butterworth",
+          "authority": "Filters.FilterParams#filterType"
+        },
+        {
+          "path": "filterParams.filterBand",
+          "value": "bandPass",
+          "authority": "Filters.FilterParams#filterBand"
+        },
+        {
+          "path": "filterParams.filterOrder",
+          "value": 4,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.lowPassFreq",
+          "value": 20000,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.highPassFreq",
+          "value": 2000,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.passBandRipple",
+          "value": 2,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.stopBandRipple",
+          "value": 2,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.chebyGamma",
+          "value": 3,
+          "authority": "Filters.FilterParams#chebyGamma"
+        },
+        {
+          "path": "filterParams.arbFreqs",
+          "value": [],
+          "condition": "Java null normalized to a portable empty array",
+          "authority": "Filters.FilterParams#arbFreqs"
+        },
+        {
+          "path": "filterParams.arbGains",
+          "value": [],
+          "condition": "Java null normalized to a portable empty array",
+          "authority": "Filters.FilterParams#arbGains"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.decimator",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.dialog",
+          "labels": [
+            "Input Data Source",
+            "Decimator settings",
+            "Source sample rate",
+            "Output sample rate",
+            "Anti-aliasing filter",
+            "Interpolation"
+          ]
+        },
+        {
+          "surface": "settings.viewer-tabs",
+          "labels": ["Offline Files", "Runtime Settings"]
+        },
+        {
+          "surface": "filter-settings.dialog",
+          "labels": [
+            "Filter Type",
+            "Filter Response",
+            "Filter shape",
+            "Filter parameters",
+            "Pole/impulse response",
+            "Bode Plot",
+            "Log Scale",
+            "Linear Scale"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName>..."]
+        },
+        {
+          "surface": "settings-dialog",
+          "labels": [
+            "Filter settings",
+            "Default Filter",
+            "Set Defaults"
+          ]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "newSampleRate",
+          "value": 2000,
+          "authority": "decimator.DecimatorParams#newSampleRate"
+        },
+        {
+          "path": "channelMap",
+          "value": 0,
+          "condition": "bare default before source/channel selection; the obsolete clone migration is excluded",
+          "authority": "decimator.DecimatorParams#channelMap"
+        },
+        {
+          "path": "interpolation",
+          "value": 0,
+          "authority": "decimator.DecimatorParams#interpolation"
+        },
+        {
+          "path": "filterParams.filterType",
+          "value": "butterworth",
+          "authority": "Filters.FilterParams#filterType"
+        },
+        {
+          "path": "filterParams.filterBand",
+          "value": "lowPass",
+          "authority": "Filters.FilterParams#filterBand"
+        },
+        {
+          "path": "filterParams.filterOrder",
+          "value": 6,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.lowPassFreq",
+          "value": 1000,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.highPassFreq",
+          "value": 2000,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.passBandRipple",
+          "value": 2,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.stopBandRipple",
+          "value": 2,
+          "authority": "Filters.FilterParams#FilterParams"
+        },
+        {
+          "path": "filterParams.chebyGamma",
+          "value": 3,
+          "authority": "Filters.FilterParams#chebyGamma"
+        },
+        {
+          "path": "filterParams.arbFreqs",
+          "value": [],
+          "condition": "Java null normalized to a portable empty array",
+          "authority": "Filters.FilterParams#arbFreqs"
+        },
+        {
+          "path": "filterParams.arbGains",
+          "value": [],
+          "condition": "Java null normalized to a portable empty array",
+          "authority": "Filters.FilterParams#arbGains"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.acquisition",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.normal",
+          "labels": [
+            "Data Source Type",
+            "Device-specific settings",
+            "Sampling",
+            "Channel mapping",
+            "Calibration"
+          ]
+        },
+        {
+          "surface": "settings.viewer-tabs",
+          "labels": [
+            "Offline Files",
+            "DAQ Settings"
+          ]
+        },
+        {
+          "surface": "settings.smru-tabs",
+          "labels": [
+            "DAQ Settings",
+            "GPS Timing"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> ..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "daqSystemType",
+          "value": "Sound Card",
+          "authority": "Acquisition.AcquisitionParameters#daqSystemType"
+        },
+        {
+          "path": "sampleRate",
+          "value": 48000,
+          "authority": "Acquisition.AcquisitionParameters#sampleRate"
+        },
+        {
+          "path": "nChannels",
+          "value": 2,
+          "authority": "Acquisition.AcquisitionParameters#nChannels"
+        },
+        {
+          "path": "voltsPeak2Peak",
+          "value": 5,
+          "authority": "Acquisition.AcquisitionParameters#voltsPeak2Peak"
+        },
+        {
+          "path": "channelList",
+          "value": [0, 1],
+          "authority": "Acquisition.AcquisitionParameters#getHardwareChannelList"
+        },
+        {
+          "path": "hydrophoneList",
+          "value": [0, 1],
+          "authority": "Acquisition.AcquisitionParameters#getHydrophoneList"
+        },
+        {
+          "path": "preamplifier",
+          "value": {
+            "gainDb": 0,
+            "bandwidthHz": [0, 20000]
+          },
+          "authority": "Acquisition.AcquisitionParameters#preamplifier"
+        },
+        {
+          "path": "subtractDC",
+          "value": true,
+          "authority": "Acquisition.AcquisitionParameters#subtractDC"
+        },
+        {
+          "path": "dcTimeConstant",
+          "value": 1,
+          "authority": "Acquisition.AcquisitionParameters#dcTimeConstant"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.fft",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.tabs",
+          "labels": [
+            "FFT",
+            "Click Removal",
+            "Spectral Noise Removal"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> settings ..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "fftLength",
+          "value": 1024,
+          "authority": "fftManager.FFTParameters#fftLength"
+        },
+        {
+          "path": "fftHop",
+          "value": 512,
+          "authority": "fftManager.FFTParameters#fftHop"
+        },
+        {
+          "path": "channelMap",
+          "value": 3,
+          "authority": "fftManager.FFTParameters#channelMap"
+        },
+        {
+          "path": "windowFunction",
+          "value": 2,
+          "authority": "Spectrogram.WindowFunction#HANNING"
+        },
+        {
+          "path": "clickRemoval",
+          "value": false,
+          "authority": "fftManager.FFTParameters#clickRemoval"
+        },
+        {
+          "path": "clickThreshold",
+          "value": 5,
+          "authority": "fftManager.FFTParameters#clickThreshold"
+        },
+        {
+          "path": "clickPower",
+          "value": 6,
+          "authority": "fftManager.FFTParameters#clickPower"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.fft-noise-monitor",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.dialog",
+          "labels": [
+            "FFT Data Source",
+            "FFT Resolution",
+            "Measurements",
+            "Interval between measurements",
+            "Number of measures in interval",
+            "Use all FFT data",
+            "Third Octave",
+            "Deci Decade",
+            "Octave",
+            "Decade",
+            "Add Other bands",
+            "Remove",
+            "Edit ..."
+          ]
+        },
+        {
+          "surface": "settings.custom-band-dialog",
+          "labels": [
+            "Frequency Resolution",
+            "Name",
+            "Range"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> settings ..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "channelBitmap",
+          "value": 1,
+          "authority": "noiseMonitor.NoiseSettings#channelBitmap"
+        },
+        {
+          "path": "measurementIntervalSeconds",
+          "value": 60,
+          "authority": "noiseMonitor.NoiseSettings#measurementIntervalSeconds"
+        },
+        {
+          "path": "nMeasures",
+          "value": 100,
+          "condition": "ignored while useAll is true",
+          "authority": "noiseMonitor.NoiseSettings#nMeasures"
+        },
+        {
+          "path": "useAll",
+          "value": true,
+          "authority": "noiseMonitor.NoiseSettings#useAll"
+        },
+        {
+          "path": "measurementBands",
+          "value": [],
+          "condition": "the Java constructor creates an empty list; at least one band is required before runtime",
+          "authority": "noiseMonitor.NoiseSettings#NoiseSettings"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.noise-band-monitor",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.dialog",
+          "labels": [
+            "Raw Data Source",
+            "Output",
+            "Output Interval",
+            "Measurement Bands",
+            "Band Type",
+            "Reference Frequency",
+            "Default",
+            "Maximum Frequency",
+            "Max",
+            "Minimum Frequency",
+            "Filters",
+            "Filter Type",
+            "Filter Order",
+            "Filter Gamma"
+          ]
+        },
+        {
+          "surface": "display.preferences",
+          "labels": [
+            "Log Scale",
+            "Show Grid",
+            "Show Decimators",
+            "Show ANSI standards",
+            "Class 0",
+            "Class 1",
+            "Class 2"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> Settings..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "channelMap",
+          "value": 1,
+          "authority": "noiseBandMonitor.NoiseBandSettings#channelMap"
+        },
+        {
+          "path": "bandType",
+          "value": "thirdOctave",
+          "authority": "noiseBandMonitor.NoiseBandSettings#bandType"
+        },
+        {
+          "path": "filterType",
+          "value": "butterworth",
+          "authority": "noiseBandMonitor.NoiseBandSettings#filterType"
+        },
+        {
+          "path": "iirOrder",
+          "value": 6,
+          "authority": "noiseBandMonitor.NoiseBandSettings#iirOrder"
+        },
+        {
+          "path": "firOrder",
+          "value": 7,
+          "authority": "noiseBandMonitor.NoiseBandSettings#firOrder"
+        },
+        {
+          "path": "firGamma",
+          "value": 2.5,
+          "authority": "noiseBandMonitor.NoiseBandSettings#firGamma"
+        },
+        {
+          "path": "outputIntervalSeconds",
+          "value": 10,
+          "authority": "noiseBandMonitor.NoiseBandSettings#outputIntervalSeconds"
+        },
+        {
+          "path": "minFrequency",
+          "value": 1.7925856629456591,
+          "condition": "Java lazily derives this from endDecimation/startDecimation, bandType, and getMaxFrequency",
+          "authority": "noiseBandMonitor.NoiseBandSettings#getMinFrequency"
+        },
+        {
+          "path": "maxFrequency",
+          "value": 1133.6866687924667,
+          "condition": "Java lazily derives this from highBandNumber 30 and bandType",
+          "authority": "noiseBandMonitor.NoiseBandSettings#getMaxFrequency"
+        },
+        {
+          "path": "referenceFrequency",
+          "value": 1000,
+          "authority": "noiseBandMonitor.NoiseBandSettings#getReferenceFrequency"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.ltsa",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.dialog",
+          "labels": [
+            "FFT Data source",
+            "Measurement",
+            "Measurement interval"
+          ]
+        },
+        {
+          "surface": "settings.advanced",
+          "labels": [
+            "Longer average factor (persisted, dormant)"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> settings..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "channelMap",
+          "value": 0,
+          "condition": "bare Java default before the operator selects channels",
+          "authority": "ltsa.LtsaParameters#channelMap"
+        },
+        {
+          "path": "intervalSeconds",
+          "value": 60,
+          "authority": "ltsa.LtsaParameters#intervalSeconds"
+        },
+        {
+          "path": "longerFactor",
+          "value": 10,
+          "condition": "persisted by Java but its longer-average process/output is commented out",
+          "authority": "ltsa.LtsaParameters#longerFactor"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.whistles-moans",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.tabs",
+          "labels": [
+            "Detection",
+            "Noise and Thresholding"
+          ]
+        },
+        {
+          "surface": "settings.detection",
+          "labels": [
+            "Source of FFT data",
+            "Channel/Sequence list and grouping",
+            "Connections",
+            "Min Frequency",
+            "Max Frequency",
+            "Connection Type",
+            "Minimum length",
+            "Minimum total size",
+            "Shape 'stubs'",
+            "Crossing and Joining",
+            "Max Cross length"
+          ]
+        },
+        {
+          "surface": "settings.noise-methods",
+          "labels": [
+            "Median Filter",
+            "Average Subtraction",
+            "Gaussian Kernel Smoothing",
+            "Thresholding"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "detection-menu",
+          "labels": ["<unitName>"]
+        },
+        {
+          "surface": "display-menu",
+          "labels": ["<unitName>"]
+        },
+        {
+          "surface": "settings-dialog",
+          "labels": ["Set Defaults"]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "channelBitmap",
+          "value": 0,
+          "condition": "before the operator selects FFT channels or sequences",
+          "authority": "PamView.GroupedSourceParameters#channelBitmap"
+        },
+        {
+          "path": "groupingType",
+          "value": "all",
+          "condition": "Java GROUP_ALL integer 1 is represented by the stable portable name",
+          "authority": "PamView.GroupedSourceParameters#groupingType"
+        },
+        {
+          "path": "channelGroups",
+          "value": [],
+          "condition": "Java null normalized to a portable empty array",
+          "authority": "PamView.GroupedSourceParameters#channelGroups"
+        },
+        {
+          "path": "minFrequency",
+          "value": 0,
+          "authority": "whistlesAndMoans.WhistleToneParameters#minFrequency"
+        },
+        {
+          "path": "maxFrequency",
+          "value": 0,
+          "condition": "zero is the constructor sentinel resolved to source Nyquist by getMaxFrequency",
+          "authority": "whistlesAndMoans.WhistleToneParameters#maxFrequency"
+        },
+        {
+          "path": "connectType",
+          "value": 8,
+          "authority": "whistlesAndMoans.WhistleToneParameters#connectType"
+        },
+        {
+          "path": "minLength",
+          "value": 10,
+          "authority": "whistlesAndMoans.WhistleToneParameters#minLength"
+        },
+        {
+          "path": "minPixels",
+          "value": 20,
+          "authority": "whistlesAndMoans.WhistleToneParameters#minPixels"
+        },
+        {
+          "path": "keepShapeStubs",
+          "value": false,
+          "authority": "whistlesAndMoans.WhistleToneParameters#keepShapeStubs"
+        },
+        {
+          "path": "fragmentationMethod",
+          "value": 3,
+          "condition": "Java FRAGMENT_RELINK",
+          "authority": "whistlesAndMoans.WhistleToneParameters#fragmentationMethod"
+        },
+        {
+          "path": "maxCrossLength",
+          "value": 5,
+          "authority": "whistlesAndMoans.WhistleToneParameters#maxCrossLength"
+        },
+        {
+          "path": "specNoiseSettings.runMethod[0]",
+          "value": false,
+          "condition": "bare SpectrogramNoiseSettings has a null runMethod array",
+          "authority": "spectrogramNoiseReduction.SpectrogramNoiseSettings#isRunMethod"
+        },
+        {
+          "path": "specNoiseSettings.methodSettings[0].filterLength",
+          "value": 61,
+          "condition": "methodSettings is initially empty; the owned process supplies its method default",
+          "authority": "spectrogramNoiseReduction.medianFilter.MedianFilterParams#filterLength"
+        },
+        {
+          "path": "specNoiseSettings.runMethod[1]",
+          "value": false,
+          "condition": "bare SpectrogramNoiseSettings has a null runMethod array",
+          "authority": "spectrogramNoiseReduction.SpectrogramNoiseSettings#isRunMethod"
+        },
+        {
+          "path": "specNoiseSettings.methodSettings[1].updateConstant",
+          "value": 0.02,
+          "condition": "methodSettings is initially empty; the owned process supplies its method default",
+          "authority": "spectrogramNoiseReduction.averageSubtraction.AverageSubtractionParameters#updateConstant"
+        },
+        {
+          "path": "specNoiseSettings.runMethod[2]",
+          "value": false,
+          "condition": "bare SpectrogramNoiseSettings has a null runMethod array",
+          "authority": "spectrogramNoiseReduction.SpectrogramNoiseSettings#isRunMethod"
+        },
+        {
+          "path": "specNoiseSettings.runMethod[3]",
+          "value": false,
+          "condition": "bare SpectrogramNoiseSettings has a null runMethod array",
+          "authority": "spectrogramNoiseReduction.SpectrogramNoiseSettings#isRunMethod"
+        },
+        {
+          "path": "specNoiseSettings.methodSettings[3].thresholdDB",
+          "value": 8,
+          "condition": "methodSettings is initially empty; the owned process supplies its method default",
+          "authority": "spectrogramNoiseReduction.threshold.ThresholdParams#thresholdDB"
+        },
+        {
+          "path": "specNoiseSettings.methodSettings[3].finalOutput",
+          "value": 2,
+          "condition": "Java SpectrogramThreshold.OUTPUT_RAW",
+          "authority": "spectrogramNoiseReduction.threshold.ThresholdParams#finalOutput"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.ishmael-energy-sum",
+      "cppParityClaim": "java-fixture-validated",
+      "sectionOrder": [
+        {
+          "surface": "settings.source",
+          "labels": [
+            "FFT Data Source",
+            "Channel/Sequence list and grouping"
+          ]
+        },
+        {
+          "surface": "settings.energy-sum",
+          "labels": [
+            "Lower Frequency Bound",
+            "Upper Frequency Bound",
+            "Use Energy Ratio",
+            "Lower Ratio Bound",
+            "Upper Ratio Bound",
+            "Use Adaptive Threshold",
+            "Long filter",
+            "Spike Threshold",
+            "Use Detector Smoothing",
+            "Short filter",
+            "Use log scale"
+          ]
+        },
+        {
+          "surface": "settings.peak-detection",
+          "labels": [
+            "Threshold",
+            "Min time over threshold",
+            "Max time over threshold",
+            "Min IDI"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "detection-menu",
+          "labels": ["<unitName>"]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "groupedSourceParmas.channelBitmap",
+          "value": 0,
+          "condition": "before an operator selects channels or sequences",
+          "authority": "PamView.GroupedSourceParameters#channelBitmap"
+        },
+        {
+          "path": "groupedSourceParmas.groupingType",
+          "value": "all",
+          "condition": "Java GROUP_ALL integer 1 uses a stable portable name",
+          "authority": "PamView.GroupedSourceParameters#groupingType"
+        },
+        {
+          "path": "groupedSourceParmas.channelGroups",
+          "value": [],
+          "condition": "Java null normalized to a portable empty array",
+          "authority": "PamView.GroupedSourceParameters#channelGroups"
+        },
+        {
+          "path": "thresh",
+          "value": 1,
+          "authority": "IshmaelDetector.IshDetParams#thresh"
+        },
+        {
+          "path": "minTime",
+          "value": 0,
+          "authority": "IshmaelDetector.IshDetParams#minTime"
+        },
+        {
+          "path": "maxTime",
+          "value": 99999,
+          "authority": "IshmaelDetector.IshDetParams#maxTime"
+        },
+        {
+          "path": "refractoryTime",
+          "value": 0,
+          "authority": "IshmaelDetector.IshDetParams#refractoryTime"
+        },
+        {
+          "path": "f0",
+          "value": 0,
+          "authority": "IshmaelDetector.EnergySumParams#f0"
+        },
+        {
+          "path": "f1",
+          "value": 1000,
+          "authority": "IshmaelDetector.EnergySumParams#f1"
+        },
+        {
+          "path": "ratiof0",
+          "value": 1000,
+          "authority": "IshmaelDetector.EnergySumParams#ratiof0"
+        },
+        {
+          "path": "ratiof1",
+          "value": 2000,
+          "authority": "IshmaelDetector.EnergySumParams#ratiof1"
+        },
+        {
+          "path": "useRatio",
+          "value": false,
+          "authority": "IshmaelDetector.EnergySumParams#useRatio"
+        },
+        {
+          "path": "adaptiveThreshold",
+          "value": false,
+          "authority": "IshmaelDetector.EnergySumParams#adaptiveThreshold"
+        },
+        {
+          "path": "longFilter",
+          "value": 0.0001,
+          "authority": "IshmaelDetector.EnergySumParams#longFilter"
+        },
+        {
+          "path": "useLog",
+          "value": false,
+          "authority": "IshmaelDetector.EnergySumParams#useLog"
+        },
+        {
+          "path": "spikeDecay",
+          "value": 100,
+          "authority": "IshmaelDetector.EnergySumParams#spikeDecay"
+        },
+        {
+          "path": "outPutSmoothing",
+          "value": false,
+          "authority": "IshmaelDetector.EnergySumParams#outPutSmoothing"
+        },
+        {
+          "path": "shortFilter",
+          "value": 0.1,
+          "authority": "IshmaelDetector.EnergySumParams#shortFilter"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.ishmael-sgram-corr",
+      "cppParityClaim": "java-fixture-validated",
+      "sectionOrder": [
+        {
+          "surface": "settings.source",
+          "labels": [
+            "FFT Data Source",
+            "Channel/Sequence list and grouping"
+          ]
+        },
+        {
+          "surface": "settings.spectrogram-correlation",
+          "labels": [
+            "Segments (t0, f0, t1, f1)",
+            "Add Row",
+            "Remove Selected Row",
+            "Paste from Clipboard",
+            "Kernel Width, Hz",
+            "Use log-scaled spectrogram",
+            "Time-Frequency Contour"
+          ]
+        },
+        {
+          "surface": "settings.peak-detection",
+          "labels": [
+            "Threshold",
+            "Min time over threshold",
+            "Max time over threshold",
+            "Min IDI"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "detection-menu",
+          "labels": ["<unitName>"]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "groupedSourceParmas.channelBitmap",
+          "value": 0,
+          "condition": "before an operator selects channels or sequences",
+          "authority": "PamView.GroupedSourceParameters#channelBitmap"
+        },
+        {
+          "path": "groupedSourceParmas.groupingType",
+          "value": "all",
+          "condition": "Java GROUP_ALL integer 1 uses a stable portable name",
+          "authority": "PamView.GroupedSourceParameters#groupingType"
+        },
+        {
+          "path": "groupedSourceParmas.channelGroups",
+          "value": [],
+          "condition": "Java null normalized to a portable empty array",
+          "authority": "PamView.GroupedSourceParameters#channelGroups"
+        },
+        {
+          "path": "thresh",
+          "value": 1,
+          "authority": "IshmaelDetector.IshDetParams#thresh"
+        },
+        {
+          "path": "minTime",
+          "value": 0,
+          "authority": "IshmaelDetector.IshDetParams#minTime"
+        },
+        {
+          "path": "maxTime",
+          "value": 99999,
+          "authority": "IshmaelDetector.IshDetParams#maxTime"
+        },
+        {
+          "path": "refractoryTime",
+          "value": 0,
+          "authority": "IshmaelDetector.IshDetParams#refractoryTime"
+        },
+        {
+          "path": "segment",
+          "value": [],
+          "condition": "constructor default requires operator configuration",
+          "authority": "IshmaelDetector.SgramCorrParams#segment"
+        },
+        {
+          "path": "spread",
+          "value": 100,
+          "authority": "IshmaelDetector.SgramCorrParams#spread"
+        },
+        {
+          "path": "useLog",
+          "value": false,
+          "condition": "uninitialized Java boolean default",
+          "authority": "IshmaelDetector.SgramCorrParams#useLog"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.ishmael-match-filter",
+      "cppParityClaim": "java-fixture-validated",
+      "sectionOrder": [
+        {
+          "surface": "settings.source",
+          "labels": [
+            "Data Source",
+            "Channel list and grouping"
+          ]
+        },
+        {
+          "surface": "settings.matched-filter",
+          "labels": [
+            "Kernel sound file",
+            "Select another file..."
+          ]
+        },
+        {
+          "surface": "settings.peak-picking",
+          "labels": [
+            "Threshold",
+            "Min time over threshold",
+            "Min time before next detection"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "detection-menu",
+          "labels": ["<unitName>"]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "groupedSourceParmas.channelBitmap",
+          "value": 0,
+          "condition": "before an operator selects channels or sequences",
+          "authority": "PamView.GroupedSourceParameters#channelBitmap"
+        },
+        {
+          "path": "groupedSourceParmas.groupingType",
+          "value": "all",
+          "condition": "Java GROUP_ALL integer 1 uses a stable portable name",
+          "authority": "PamView.GroupedSourceParameters#groupingType"
+        },
+        {
+          "path": "groupedSourceParmas.channelGroups",
+          "value": [],
+          "condition": "Java null normalized to a portable empty array",
+          "authority": "PamView.GroupedSourceParameters#channelGroups"
+        },
+        {
+          "path": "thresh",
+          "value": 1,
+          "authority": "IshmaelDetector.IshDetParams#thresh"
+        },
+        {
+          "path": "minTime",
+          "value": 0,
+          "authority": "IshmaelDetector.IshDetParams#minTime"
+        },
+        {
+          "path": "maxTime",
+          "value": 99999,
+          "authority": "IshmaelDetector.IshDetParams#maxTime"
+        },
+        {
+          "path": "refractoryTime",
+          "value": 0,
+          "authority": "IshmaelDetector.IshDetParams#refractoryTime"
+        },
+        {
+          "path": "kernelFilenameList",
+          "value": [],
+          "condition": "element zero becomes the active kernel; history is capped at ten",
+          "authority": "IshmaelDetector.MatchFiltParams#kernelFilenameList"
+        },
+        {
+          "path": "MatchFiltProcess2.kernel",
+          "value": [],
+          "condition": "portable embedded form of the active file's first channel",
+          "authority": "IshmaelDetector.MatchFiltProcess2#prepareKernel"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.click-detector",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "detection-parameters.tabs",
+          "labels": [
+            "Source",
+            "Trigger",
+            "Click Length",
+            "Delays",
+            "Echoes",
+            "Noise"
+          ]
+        },
+        {
+          "surface": "display.operational",
+          "labels": [
+            "Channel groups",
+            "Time window",
+            "Bearing axis",
+            "Amplitude axis",
+            "ICI axis",
+            "Echo visibility"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu.normal",
+          "items": [
+            {
+              "label": "Detection Parameters ...",
+              "implementationScope": "required"
+            },
+            {
+              "label": "Mark observer options",
+              "implementationScope": "requires-display-marking"
+            },
+            {
+              "label": "Digital pre filter ...",
+              "implementationScope": "required"
+            },
+            {
+              "label": "Digital trigger filter ...",
+              "implementationScope": "required"
+            },
+            {
+              "label": "Angle Vetoes ...",
+              "implementationScope": "required"
+            },
+            {
+              "label": "Click Classification ...",
+              "implementationScope": "required"
+            },
+            {
+              "label": "Click Train Identification ...",
+              "implementationScope": "required"
+            },
+            {
+              "label": "Click Train Localisation ...",
+              "implementationScope": "required"
+            },
+            {
+              "label": "Audible Alarm ...",
+              "implementationScope": "agreed-exclusion"
+            }
+          ]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "groupedSourceParameters.channelBitmap",
+          "value": 3,
+          "authority": "clickDetector.ClickParameters#groupedSourceParameters"
+        },
+        {
+          "path": "groupedSourceParameters.groupingType",
+          "value": "all",
+          "authority": "PamView.dialog.GroupedSourcePanel#GROUP_ALL"
+        },
+        {
+          "path": "triggerBitmap",
+          "value": 4294967295,
+          "authority": "clickDetector.ClickParameters#triggerBitmap"
+        },
+        {
+          "path": "minTriggerChannels",
+          "value": 1,
+          "authority": "clickDetector.ClickParameters#minTriggerChannels"
+        },
+        {
+          "path": "dbThreshold",
+          "value": 10,
+          "authority": "clickDetector.ClickParameters#dbThreshold"
+        },
+        {
+          "path": "longFilter",
+          "value": 0.00001,
+          "authority": "clickDetector.ClickParameters#longFilter"
+        },
+        {
+          "path": "longFilter2",
+          "value": 0.000001,
+          "authority": "clickDetector.ClickParameters#longFilter2"
+        },
+        {
+          "path": "shortFilter",
+          "value": 0.1,
+          "authority": "clickDetector.ClickParameters#shortFilter"
+        },
+        {
+          "path": "preSample",
+          "value": 40,
+          "authority": "clickDetector.ClickParameters#preSample"
+        },
+        {
+          "path": "postSample",
+          "value": 40,
+          "authority": "clickDetector.ClickParameters#postSample"
+        },
+        {
+          "path": "minSep",
+          "value": 100,
+          "authority": "clickDetector.ClickParameters#minSep"
+        },
+        {
+          "path": "maxLength",
+          "value": 1024,
+          "authority": "clickDetector.ClickParameters#maxLength"
+        },
+        {
+          "path": "preFilter.filterType",
+          "value": "BUTTERWORTH",
+          "authority": "clickDetector.ClickParameters#ClickParameters"
+        },
+        {
+          "path": "preFilter.filterBand",
+          "value": "HIGHPASS",
+          "authority": "clickDetector.ClickParameters#ClickParameters"
+        },
+        {
+          "path": "preFilter.filterOrder",
+          "value": 4,
+          "authority": "clickDetector.ClickParameters#ClickParameters"
+        },
+        {
+          "path": "preFilter.highPassFreq",
+          "value": 500,
+          "authority": "clickDetector.ClickParameters#ClickParameters"
+        },
+        {
+          "path": "triggerFilter.filterType",
+          "value": "BUTTERWORTH",
+          "authority": "clickDetector.ClickParameters#ClickParameters"
+        },
+        {
+          "path": "triggerFilter.filterBand",
+          "value": "HIGHPASS",
+          "authority": "clickDetector.ClickParameters#ClickParameters"
+        },
+        {
+          "path": "triggerFilter.filterOrder",
+          "value": 2,
+          "authority": "clickDetector.ClickParameters#ClickParameters"
+        },
+        {
+          "path": "triggerFilter.highPassFreq",
+          "value": 2000,
+          "authority": "clickDetector.ClickParameters#ClickParameters"
+        },
+        {
+          "path": "sampleNoise",
+          "value": true,
+          "authority": "clickDetector.ClickParameters#sampleNoise"
+        },
+        {
+          "path": "noiseSampleInterval",
+          "value": 5,
+          "authority": "clickDetector.ClickParameters#noiseSampleInterval"
+        },
+        {
+          "path": "storeBackground",
+          "value": true,
+          "authority": "clickDetector.ClickParameters#storeBackground"
+        },
+        {
+          "path": "backgroundIntervalMillis",
+          "value": 5000,
+          "authority": "clickDetector.ClickParameters#backgroundIntervalMillis"
+        },
+        {
+          "path": "clickClassifierType",
+          "value": "sweep",
+          "authority": "clickDetector.ClickClassifiers.ClickClassifierManager#CLASSIFY_BETTER"
+        },
+        {
+          "path": "runEchoOnline",
+          "value": false,
+          "authority": "clickDetector.ClickParameters#runEchoOnline"
+        },
+        {
+          "path": "discardEchoes",
+          "value": false,
+          "authority": "clickDetector.ClickParameters#discardEchoes"
+        },
+        {
+          "path": "publishTriggerFunction",
+          "value": false,
+          "authority": "clickDetector.ClickParameters#publishTriggerFunction"
+        },
+        {
+          "path": "classifyOnline",
+          "value": false,
+          "authority": "clickDetector.ClickParameters#classifyOnline"
+        },
+        {
+          "path": "runClickTrainId",
+          "value": false,
+          "authority": "clickDetector.clicktrains.ClickTrainIdParams#runClickTrainId"
+        },
+        {
+          "path": "minTrainClicks",
+          "value": 6,
+          "authority": "clickDetector.clicktrains.ClickTrainIdParams#minTrainClicks"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.user-display",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "spectrogram-settings.tabs",
+          "labels": [
+            "Data Source",
+            "Scales",
+            "Plug ins",
+            "Mark Observers"
+          ]
+        },
+        {
+          "surface": "spectrogram-scales.sections",
+          "labels": [
+            "Frequency Range",
+            "Amplitude Range",
+            "Time Range",
+            "Scrolling"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "display-menu",
+          "items": [
+            {
+              "label": "New Spectrogram Display",
+              "condition": "always"
+            },
+            {
+              "label": "New Radar Display",
+              "condition": "always"
+            },
+            {
+              "label": "New Time base data display",
+              "condition": "SMRU enabled"
+            },
+            {
+              "label": "New Time base data display fx",
+              "condition": "Java compliance >= 1.8"
+            },
+            {
+              "label": "Arrange Windows ...",
+              "condition": "always"
+            },
+            {
+              "label": "Scroller Coupling",
+              "condition": "viewer mode and coupling supplies an options item"
+            }
+          ]
+        },
+        {
+          "surface": "spectrogram-context-menu",
+          "labels": ["Settings ..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "nPanels",
+          "valueSource": "Array.ArrayManager current hydrophone count",
+          "authority": "Spectrogram.SpectrogramParameters#nPanels"
+        },
+        {
+          "path": "channelList",
+          "value": [0],
+          "condition": "portable settings retain only the active panel entries",
+          "authority": "Spectrogram.SpectrogramParameters#channelList"
+        },
+        {
+          "path": "frequencyLimits",
+          "value": [0, 0],
+          "authority": "Spectrogram.SpectrogramParameters#frequencyLimits"
+        },
+        {
+          "path": "amplitudeLimits",
+          "value": [50, 120],
+          "condition": "default underwater scale before the global-medium air override",
+          "authority": "Spectrogram.SpectrogramParameters#amplitudeLimits"
+        },
+        {
+          "path": "colourMap",
+          "value": "GREY",
+          "authority": "Spectrogram.SpectrogramParameters#getColourMap"
+        },
+        {
+          "path": "wrapDisplay",
+          "value": true,
+          "authority": "Spectrogram.SpectrogramParameters#wrapDisplay"
+        },
+        {
+          "path": "timeScaleFixed",
+          "value": false,
+          "authority": "Spectrogram.SpectrogramParameters#timeScaleFixed"
+        },
+        {
+          "path": "displayLength",
+          "value": 20,
+          "authority": "Spectrogram.SpectrogramParameters#displayLength"
+        },
+        {
+          "path": "pixelsPerSlics",
+          "value": 1,
+          "authority": "Spectrogram.SpectrogramParameters#pixelsPerSlics"
+        },
+        {
+          "path": "showScale",
+          "value": true,
+          "authority": "Spectrogram.SpectrogramParameters#showScale"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.sound-output",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.tabs",
+          "labels": [
+            "Playback",
+            "Side Bar"
+          ]
+        },
+        {
+          "surface": "playback.sections",
+          "labels": [
+            "Data source",
+            "Source-specific playback options"
+          ]
+        },
+        {
+          "surface": "runtime-controls",
+          "labels": [
+            "High-pass filter",
+            "Envelope mix",
+            "Playback speed",
+            "Gain"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> ..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "dataSource",
+          "value": 0,
+          "authority": "soundPlayback.PlaybackParameters#dataSource"
+        },
+        {
+          "path": "channelBitmap",
+          "value": 0,
+          "authority": "soundPlayback.PlaybackParameters#channelBitmap"
+        },
+        {
+          "path": "deviceNumber",
+          "value": 0,
+          "authority": "soundPlayback.PlaybackParameters#deviceNumber"
+        },
+        {
+          "path": "deviceType",
+          "value": 0,
+          "authority": "soundPlayback.PlaybackParameters#deviceType"
+        },
+        {
+          "path": "defaultSampleRate",
+          "value": true,
+          "authority": "soundPlayback.PlaybackParameters#defaultSampleRate"
+        },
+        {
+          "path": "playbackRate",
+          "value": 48000,
+          "authority": "soundPlayback.PlaybackControl#DEFAULT_OUTPUT_RATE"
+        },
+        {
+          "path": "logPlaybackSpeed",
+          "value": 0,
+          "authority": "soundPlayback.PlaybackParameters#logPlaybackSpeed"
+        },
+        {
+          "path": "playbackSpeed",
+          "value": 1,
+          "authority": "soundPlayback.PlaybackParameters#getPlaybackSpeed"
+        },
+        {
+          "path": "playbackGain",
+          "value": 0,
+          "authority": "soundPlayback.PlaybackParameters#playbackGain"
+        },
+        {
+          "path": "hpFilter",
+          "value": 0,
+          "authority": "soundPlayback.PlaybackParameters#hpFilter"
+        }
+      ]
+    },
+    {
+      "bundleId": "pamguard.level-meter",
+      "cppParityClaim": "not-claimed",
+      "sectionOrder": [
+        {
+          "surface": "settings.dialog",
+          "labels": [
+            "Raw Data Source",
+            "Scale selection",
+            "Peak",
+            "RMS",
+            "Scale range"
+          ]
+        },
+        {
+          "surface": "scale-reference.order",
+          "labels": [
+            "Relative to full scale",
+            "Volts",
+            "Micropascal"
+          ]
+        }
+      ],
+      "actionOrder": [
+        {
+          "surface": "settings-menu",
+          "labels": ["<unitName> ..."]
+        }
+      ],
+      "priorityDefaults": [
+        {
+          "path": "minLevel",
+          "value": -80,
+          "authority": "levelMeter.LevelMeterParams#minLevel"
+        },
+        {
+          "path": "scaleReference",
+          "value": 0,
+          "condition": "0=full scale, 1=volts, 2=micropascal",
+          "authority": "levelMeter.LevelMeterParams#scaleReference"
+        },
+        {
+          "path": "scaleType",
+          "value": 0,
+          "condition": "0=peak, 1=RMS",
+          "authority": "levelMeter.LevelMeterParams#scaleType"
+        }
+      ]
+    }
+  ],
+  "runtimeTypes": [
+    {
+      "runtimeTypeId": "pamguard.acquisition",
+      "runtimeName": "Acquisition",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.acquisition"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.amplifier",
+      "runtimeName": "Amplifier",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.amplifier"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.patch-panel",
+      "runtimeName": "Patch Panel",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.patch-panel"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.filter",
+      "runtimeName": "Filter",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.filter"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.decimator",
+      "runtimeName": "Decimator",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.decimator"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.fft",
+      "runtimeName": "FFT",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.fft"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.spectrogram-noise",
+      "runtimeName": "Spectrogram Noise Reduction",
+      "operatorDisposition": "hidden-adapter",
+      "recipeOwners": [
+        "pamguard.fft",
+        "pamguard.whistles-moans"
+      ],
+      "parityLabel": "internal-foundation"
+    },
+    {
+      "runtimeTypeId": "pamguard.click-detector",
+      "runtimeName": "Click Detector",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.click-detector"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.click-features",
+      "runtimeName": "Click Features",
+      "operatorDisposition": "hidden-adapter",
+      "recipeOwners": [
+        "pamguard.click-detector"
+      ],
+      "parityLabel": "internal-foundation"
+    },
+    {
+      "runtimeTypeId": "pamguard.click-localiser",
+      "runtimeName": "Click Localiser",
+      "operatorDisposition": "hidden-adapter",
+      "recipeOwners": [
+        "pamguard.click-detector"
+      ],
+      "parityLabel": "internal-foundation"
+    },
+    {
+      "runtimeTypeId": "pamguard.click-classifier",
+      "runtimeName": "Click Classifier",
+      "operatorDisposition": "hidden-adapter",
+      "recipeOwners": [
+        "pamguard.click-detector"
+      ],
+      "parityLabel": "internal-foundation"
+    },
+    {
+      "runtimeTypeId": "pamguard.matched-template-classifier",
+      "runtimeName": "Matched Template Classifier",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.matched-template-classifier"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.click-train",
+      "runtimeName": "Click Train Tracker",
+      "operatorDisposition": "hidden-adapter",
+      "recipeOwners": [
+        "pamguard.click-detector"
+      ],
+      "parityLabel": "internal-foundation"
+    },
+    {
+      "runtimeTypeId": "pamguard.click-display",
+      "runtimeName": "Click Display",
+      "operatorDisposition": "display-provider",
+      "recipeOwners": [
+        "pamguard.click-detector"
+      ],
+      "javaImplementationClass": "clickDetector.ClickBTDisplay",
+      "parityLabel": "display-foundation"
+    },
+    {
+      "runtimeTypeId": "pamguard.mht-click-train",
+      "runtimeName": "MHT Click Train Detector",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.mht-click-train"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.noise-band-monitor",
+      "runtimeName": "Noise Band Monitor",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.noise-band-monitor"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.fft-noise-monitor",
+      "runtimeName": "Noise Monitor",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.fft-noise-monitor"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.ltsa",
+      "runtimeName": "Long Term Spectral Average",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.ltsa"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.ishmael-energy-sum",
+      "runtimeName": "Ishmael Energy Sum",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.ishmael-energy-sum"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.whistles-moans",
+      "runtimeName": "Whistle Tone Connect Process",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.whistles-moans"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.ishmael-sgram-corr",
+      "runtimeName": "Ishmael Spectrogram Correlation",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.ishmael-sgram-corr"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.ishmael-match-filter",
+      "runtimeName": "Ishmael Matched Filter",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.ishmael-match-filter"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.level-meter",
+      "runtimeName": "Level Meter",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.level-meter"
+      ],
+      "parityLabel": "partial"
+    },
+    {
+      "runtimeTypeId": "pamguard.level-meter-display",
+      "runtimeName": "Level Meter Display",
+      "operatorDisposition": "display-provider",
+      "recipeOwners": [
+        "pamguard.level-meter"
+      ],
+      "javaImplementationClass": "levelMeter.LevelMeterSidePanel",
+      "parityLabel": "display-foundation"
+    },
+    {
+      "runtimeTypeId": "pamguard.sound-recorder",
+      "runtimeName": "Sound Recorder",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.sound-recorder"
+      ],
+      "parityLabel": "experimental"
+    },
+    {
+      "runtimeTypeId": "pamguard.clip-generator",
+      "runtimeName": "Clip Generator",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.clip-generator"
+      ],
+      "parityLabel": "experimental"
+    },
+    {
+      "runtimeTypeId": "pamguard.alarm-event-counter",
+      "runtimeName": "Alarm and Event Counter",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.alarm-event-counter"
+      ],
+      "parityLabel": "experimental"
+    },
+    {
+      "runtimeTypeId": "pamguard.effort-monitor",
+      "runtimeName": "Effort Monitor",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.effort-monitor"
+      ],
+      "parityLabel": "experimental"
+    },
+    {
+      "runtimeTypeId": "pamguard.aural-listening",
+      "runtimeName": "Aural Listening",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.aural-listening"
+      ],
+      "parityLabel": "experimental"
+    },
+    {
+      "runtimeTypeId": "pamguard.user-input",
+      "runtimeName": "User Input",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.user-input"
+      ],
+      "parityLabel": "experimental"
+    },
+    {
+      "runtimeTypeId": "pamguard.storage-health",
+      "runtimeName": "Backup / Storage Health",
+      "operatorDisposition": "extension",
+      "recipeOwners": [
+        "pamguard.system-diagnostics"
+      ],
+      "parityLabel": "web-extension"
+    },
+    {
+      "runtimeTypeId": "pamguard.spectrogram-display",
+      "runtimeName": "Spectrogram",
+      "operatorDisposition": "display-provider",
+      "recipeOwners": [
+        "pamguard.user-display"
+      ],
+      "javaImplementationClass": "Spectrogram.SpectrogramDiplayProvider",
+      "parityLabel": "display-foundation"
+    },
+    {
+      "runtimeTypeId": "pamguard.sound-output",
+      "runtimeName": "Sound Output",
+      "operatorDisposition": "controlled-unit",
+      "recipeOwners": [
+        "pamguard.sound-output"
+      ],
+      "parityLabel": "partial"
+    }
+  ]
+}

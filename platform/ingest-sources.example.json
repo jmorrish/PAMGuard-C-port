@@ -1,9 +1,12 @@
 {
+  "schemaVersion": 2,
+  "mode": "active-project",
   "engine": "http://127.0.0.1:8080",
-  "ingestExecutable": "../cpp-engine/build/ffmpeg_stream_ingest.exe",
+  "projectId": "11111111-1111-4111-8111-111111111111",
   "ffmpeg": "ffmpeg",
   "apiKeyEnv": "PAMGUARD_API_KEY",
   "statusFile": "../data/ingest-supervisor-status.json",
+  "cursorDirectory": "../data/ingest-cursors",
   "statusIntervalSeconds": 5,
   "workerRestartDelaySeconds": 5,
   "maxWorkerRestarts": 0,
@@ -13,30 +16,25 @@
     "chunkFrames": 4096,
     "restart": true,
     "restartDelayMs": 5000,
-    "allowExistingSession": true,
-    "resumeFromEngine": true,
     "realtime": true
   },
   "sources": [
     {
       "enabled": false,
       "id": "station-001",
-      "session": "station-001",
-      "ownerId": "demo-user",
-      "tenantId": "demo-project",
-      "source": "http://station.example/live.mp3",
-      "sessionConfig": "station-session.example.json"
+      "acquisitionUnitId": "22222222-2222-4222-8222-222222222222",
+      "source": "http://station.example/live.mp3"
     },
     {
       "enabled": false,
       "id": "harbour-array",
-      "session": "harbour-array",
-      "ownerId": "demo-user",
-      "tenantId": "demo-project",
+      "acquisitionUnitId": "33333333-3333-4333-8333-333333333333",
       "source": "http://icecast.example/hydrophones.wav",
-      "sessionConfig": "array-session.example.json",
       "channels": 4,
-      "ffmpegInputOptions": ["-fflags", "nobuffer"],
+      "ffmpegInputOptions": [
+        "-fflags",
+        "nobuffer"
+      ],
       "audioFilter": "pan=4c|c0=c0|c1=c1|c2=c2|c3=c3"
     }
   ]

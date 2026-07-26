@@ -1,0 +1,229 @@
+dialog .noise-ltsa-settings-editor {
+  display: grid;
+  gap: 12px;
+}
+
+dialog .noise-ltsa-settings-editor fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+}
+
+dialog .noise-ltsa-settings-editor legend,
+dialog .noise-ltsa-settings-editor summary {
+  color: #8ed2d5;
+  font-weight: 700;
+}
+
+dialog .noise-ltsa-settings-field {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.9fr)
+    max-content;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+dialog .noise-ltsa-settings-field input,
+dialog .noise-ltsa-settings-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+dialog .noise-ltsa-settings-label,
+dialog .noise-ltsa-settings-unit,
+dialog .noise-ltsa-settings-help,
+dialog .noise-ltsa-settings-generated {
+  color: var(--shell-dialog-muted);
+}
+
+dialog .noise-ltsa-settings-unit,
+dialog .noise-ltsa-settings-help,
+dialog .noise-ltsa-settings-generated {
+  font-size: 10px;
+}
+
+dialog .noise-ltsa-settings-help {
+  grid-column: 2 / -1;
+}
+
+dialog .noise-ltsa-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 7px 0;
+}
+
+dialog .noise-ltsa-settings-channel-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: 6px;
+}
+
+dialog .noise-ltsa-settings-channel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid rgba(151, 181, 207, 0.13);
+  border-radius: 5px;
+  background: rgba(5, 18, 31, 0.38);
+}
+
+dialog .noise-ltsa-settings-channel input,
+dialog .noise-ltsa-settings-check input,
+dialog .noise-ltsa-settings-standard-bands input {
+  width: 16px;
+  height: 16px;
+}
+
+dialog .noise-ltsa-settings-resolution {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 2px 18px;
+}
+
+dialog .noise-ltsa-settings-resolution legend {
+  grid-column: 1 / -1;
+}
+
+dialog .noise-ltsa-settings-resolution output {
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid rgba(151, 181, 207, 0.13);
+  border-radius: 4px;
+  background: rgba(5, 18, 31, 0.25);
+  font-family: var(--shell-mono);
+}
+
+dialog .noise-ltsa-settings-check,
+dialog .noise-ltsa-settings-standard-bands label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+dialog .noise-ltsa-settings-check {
+  margin: 6px 0;
+}
+
+dialog .noise-ltsa-settings-standard-bands {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+  padding: 9px;
+  border: 1px solid rgba(151, 181, 207, 0.13);
+  border-radius: 5px;
+  background: rgba(5, 18, 31, 0.25);
+}
+
+dialog .noise-ltsa-settings-band-table-host {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 5px;
+}
+
+dialog .noise-ltsa-settings-band-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+dialog .noise-ltsa-settings-band-table th,
+dialog .noise-ltsa-settings-band-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid rgba(151, 181, 207, 0.12);
+  text-align: left;
+  white-space: nowrap;
+}
+
+dialog .noise-ltsa-settings-band-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #102333;
+  color: #8ed2d5;
+}
+
+dialog .noise-ltsa-settings-band-table td:last-child {
+  display: flex;
+  gap: 5px;
+}
+
+dialog .noise-ltsa-settings-band-table button {
+  min-height: 26px;
+  padding: 3px 7px;
+}
+
+dialog .noise-ltsa-settings-custom-band {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px !important;
+  background: rgba(5, 18, 31, 0.3);
+}
+
+dialog .noise-ltsa-settings-custom-band[hidden] {
+  display: none;
+}
+
+dialog .noise-ltsa-settings-inline-action {
+  display: grid;
+  grid-template-columns: 1fr max-content;
+  align-items: center;
+  gap: 8px;
+}
+
+dialog .noise-ltsa-settings-inline-action > button {
+  min-width: 74px;
+}
+
+dialog .noise-ltsa-settings-retained-orders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(151, 181, 207, 0.12);
+}
+
+dialog .noise-ltsa-settings-advanced {
+  padding: 10px 12px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 6px;
+}
+
+dialog .noise-ltsa-settings-advanced summary {
+  cursor: pointer;
+}
+
+dialog .noise-ltsa-settings-advanced[open] summary {
+  margin-bottom: 8px;
+}
+
+@media (max-width: 760px) {
+  dialog .noise-ltsa-settings-channel-list,
+  dialog .noise-ltsa-settings-standard-bands,
+  dialog .noise-ltsa-settings-resolution,
+  dialog .noise-ltsa-settings-retained-orders {
+    grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  dialog .noise-ltsa-settings-channel-list,
+  dialog .noise-ltsa-settings-standard-bands,
+  dialog .noise-ltsa-settings-resolution,
+  dialog .noise-ltsa-settings-retained-orders,
+  dialog .noise-ltsa-settings-inline-action {
+    grid-template-columns: 1fr;
+  }
+
+  dialog .noise-ltsa-settings-field {
+    grid-template-columns: 1fr minmax(100px, 1fr) max-content;
+  }
+}

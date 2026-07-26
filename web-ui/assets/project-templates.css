@@ -1,0 +1,88 @@
+dialog .configuration-template-preview {
+  min-width: min(720px, 78vw);
+}
+
+dialog .template-branch-diagram {
+  display: grid;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--shell-dialog-line);
+  border-radius: 7px;
+  background: rgba(5, 18, 31, 0.58);
+}
+
+dialog .template-module-card {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(76, 126, 165, 0.55);
+  border-radius: 5px;
+  color: var(--shell-dialog-text);
+  background: rgba(35, 137, 215, 0.12);
+}
+
+dialog .template-module-card strong {
+  font-size: 11px;
+}
+
+dialog .template-module-card small {
+  color: var(--shell-dialog-muted);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+dialog .template-branch {
+  display: grid;
+  grid-template-columns: 20px repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+
+dialog .template-branch-line {
+  position: relative;
+}
+
+dialog .template-branch-line::before,
+dialog .template-branch-line::after {
+  position: absolute;
+  content: "";
+  background: rgba(90, 170, 185, 0.68);
+}
+
+dialog .template-branch-line::before {
+  top: -9px;
+  bottom: 50%;
+  left: 7px;
+  width: 1px;
+}
+
+dialog .template-branch-line::after {
+  top: 50%;
+  right: -1px;
+  left: 7px;
+  height: 1px;
+}
+
+dialog .template-warning {
+  border-color: rgba(222, 171, 74, 0.5);
+}
+
+dialog .template-error {
+  border-color: rgba(218, 102, 102, 0.55);
+  color: #f0b1b1;
+}
+
+@media (max-width: 720px) {
+  dialog .configuration-template-preview {
+    min-width: 0;
+  }
+
+  dialog .template-branch {
+    grid-template-columns: 14px minmax(0, 1fr);
+  }
+
+  dialog .template-branch .template-module-card:last-child {
+    grid-column: 2;
+  }
+}

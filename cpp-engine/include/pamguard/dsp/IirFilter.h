@@ -46,6 +46,17 @@ struct IirFilterParams {
     std::vector<double> arbitrary_gains_db;
 };
 
+/**
+ * Validate the scientific FilterParams fields consumed by FastIirFilter.
+ *
+ * A positive sample rate also checks the active corner/control-point
+ * frequencies against Nyquist. Pass 0 when parsing settings before a source
+ * sample rate is known.
+ */
+void validate_filter_params(
+    const IirFilterParams& params,
+    double sample_rate_hz = 0.0);
+
 class FastIirFilter {
 public:
     FastIirFilter(double sample_rate_hz, const IirFilterParams& params);

@@ -25,6 +25,14 @@ struct StandardMhtChi2Params {
     bool enable_correlation = false;
     /** FFT length used for the on-demand pairwise click correlation. */
     std::size_t correlation_fft_length = 512;
+    /** Exact operator-persisted settings for each Java chi2 variable. */
+    MhtIdiChi2Config idi;
+    MhtAmplitudeChi2Config amplitude;
+    MhtLengthChi2Config length;
+    MhtBearingChi2Config bearing;
+    MhtPeakFrequencyChi2Config peak_frequency;
+    MhtTimeDelayChi2Config time_delay;
+    MhtCorrelationChi2Config correlation;
     /** StandardMHTChi2Params defaults. */
     double coast_penalty = 10.0;
     double new_track_penalty = 50.0;

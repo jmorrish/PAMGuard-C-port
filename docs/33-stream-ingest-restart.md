@@ -2,6 +2,10 @@
 
 Date: 2026-07-01
 
+Compatibility boundary (2026-07-25): the options below still describe the
+retained fixed-session bridge, not the production ingest identity model.
+Production uses the active-project supervisor in `docs/91`.
+
 This checkpoint hardens the FFmpeg ingest bridge for long-running Icecast/BUTT/direct internet streams.
 
 ## Implemented
@@ -30,7 +34,9 @@ Run one bridge process per source/session:
   --restart-delay-ms 5000
 ```
 
-This remains the recommended enterprise shape: the engine service owns deterministic detector state, while ingest workers own codec/network instability.
+This remains available only for fixed-session compatibility. The production
+shape is one supervised direct-FFmpeg writer per stable Sound Acquisition
+instance.
 
 ## Remaining ingest work
 

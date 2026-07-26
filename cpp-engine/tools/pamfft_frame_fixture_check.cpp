@@ -35,8 +35,13 @@ pamguard::dsp::WindowType parse_window_type(const std::string& raw) {
     return static_cast<pamguard::dsp::WindowType>(type);
 }
 
-double synthetic_sample(std::size_t index) {
-    return std::sin(static_cast<double>(index) * 0.2) + 0.25 * std::cos(static_cast<double>(index) * 0.7);
+double synthetic_sample(std::size_t index, bool with_clicks) {
+    double sample = std::sin(static_cast<double>(index) * 0.2) +
+        0.25 * std::cos(static_cast<double>(index) * 0.7);
+    if (with_clicks && (index == 6 || index == 21)) {
+        sample += index == 6 ? 20.0 : -15.0;
+    }
+    return sample;
 }
 
 std::vector<FrameBinRow> read_fixture(const std::string& path) {
@@ -112,8 +117,8 @@ std::vector<FrameBinRow> flatten_frames(const std::vector<pamguard::dsp::Spectro
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 6) {
-        std::cerr << "Usage: pamfft_frame_fixture_check <windowType> <fftLength> <fftHop> <chunkLength> <fixture.csv>\n";
+    if (argc != 6 && argc != 9) {
+        std::cerr << "Usage: pamfft_frame_fixture_check <windowType> <fftLength> <fftHop> <chunkLength> <fixture.csv> [<clickRemoval> <clickThreshold> <clickPower>]\n";
         return 2;
     }
 
@@ -124,6 +129,13 @@ int main(int argc, char** argv) {
         config.fft_hop = static_cast<std::size_t>(std::stoull(argv[3]));
         const auto chunk_length = static_cast<std::size_t>(std::stoull(argv[4]));
         const auto fixture = read_fixture(argv[5]);
+        const bool click_removal =
+            argc == 9 && std::string(argv[6]) == "true";
+        config.click_removal = click_removal;
+        if (argc == 9) {
+            config.click_threshold = std::stod(argv[7]);
+            config.click_power = std::stoi(argv[8]);
+        }
 
         pamguard::core::AudioChunk chunk;
         chunk.start_sample = 0;
@@ -132,7 +144,8 @@ int main(int argc, char** argv) {
         chunk.channel_count = 1;
         chunk.interleaved_pcm.resize(chunk_length);
         for (std::size_t i = 0; i < chunk_length; ++i) {
-            chunk.interleaved_pcm[i] = synthetic_sample(i);
+            chunk.interleaved_pcm[i] =
+                synthetic_sample(i, click_removal);
         }
 
         pamguard::dsp::SpectrogramEngine engine(config);

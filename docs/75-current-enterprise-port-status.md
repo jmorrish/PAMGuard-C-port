@@ -1,27 +1,94 @@
 # Current enterprise port status
 
-Date: 2026-07-24
+Updated: 2026-07-25
 
-## Implemented engine foundations
+Status: **the one-project/Data Model workflow in `docs/247` is current.
+Session, Workspace, and low-level graph measurements retained later in this
+document are compatibility/core-runtime evidence, not the normal operator
+architecture.**
 
-- C++ session-per-source processing model with optional owner/tenant metadata for web-tier orchestration.
-- PAMGuard-compatible FFT/window/spectrogram scaffold with parity fixtures.
+## Primary architecture
+
+- One active, ETag-guarded project is the configuration authority. Ordered
+  controlled units own canonical settings, typed source bindings,
+  deterministic hidden runtime nodes, data blocks, display providers/tabs,
+  graph positions, and saved layout.
+- The normal browser is a PAMGuard-style Data Model shell. A blank project has
+  Data Model and global lifecycle controls only; menus and displays are
+  generated from loaded controlled units and compatible data-block
+  capabilities.
+- Project Acquisition, capture, supervised ingest, Sound Output, Sound
+  Recorder transport, retained clicks/tracked events, and PCM ingress use
+  stable project/controlled-unit identities. Low-level graph/Workspace writes
+  cannot mutate the project.
+- Fixed `AnalysisSession`, session archive/jobs, legacy capture identities,
+  low-level Acquisition/operator-input writes, persisted Workspace state, and
+  the old browser are available only in explicit
+  `PAMGUARD_LEGACY_MODEL_COMPAT=1` oracle mode.
+- Current phased evidence is `docs/249` through `docs/257`. Documents
+  `docs/240` through `docs/246` describe historical typed-runtime and UI
+  foundations superseded by `docs/247` for the normal workflow.
+
+## Engine foundations and retained compatibility evidence
+
+The scientific foundations and measurements below remain valid. References to
+session dashboards, Workspace, archive, or `/jobs` describe the isolated
+compatibility harness unless a stable `/v1/projects/**` route is stated.
+
+- Typed C++ module/data-block graph, plus the legacy session-per-source
+  compatibility model with optional owner/tenant metadata.
+- PAMGuard-compatible FFT/window/spectrogram scaffold with parity fixtures,
+  Java-exact FFT click removal, and reusable spectrogram noise-reduction graph
+  nodes.
 - Click detector foundation with trigger filters, waveform capture, feature extraction, basic classifier, train timing summaries, delay localisation with derived physical delay units and geometry constraint metadata, click localisation readiness status, per-click far-field bearing foundation, derived train-localisation summaries, and derived train-bearing summaries.
 - Whistles & Moans connected-region tracker fed directly from positive bins in the noise-reduced FFT output, including Java frequency/default settings, audio-channel grouping, fragment handling, cross-PCM-chunk continuity, contour summaries, localisation, flush, and schema-v32 raw-FFT background spectra. The older peak detector remains an independent optional output (`docs/231`, `docs/233`, `docs/234`).
 - Per-session configuration for FFT, click detector/features/classifier/trains, whistle peaks/regions, array geometry, and output selectors.
-- FFmpeg bridge for WAV/MP3/Icecast/BUTT-style sources, restart/backoff, realtime pacing, API key/env-key auth, session bootstrap with source/owner/tenant overlays, continuity logging, resume controls, session shape checks, repeated FFmpeg input-option passthrough, and optional FFmpeg audio filters for channel mapping.
+- Active-project supervisor for WAV/MP3/Icecast/BUTT-style sources, direct
+  shell-free FFmpeg launch, restart/backoff, realtime pacing, API-key/env-key
+  auth, stable project/Acquisition discovery, audio-shape and running-state
+  checks, working-revision fencing, durable sample cursors, repeated FFmpeg
+  input-option passthrough, and optional audio filters for channel mapping.
+  The session-bootstrap bridge is retained only as explicitly named
+  compatibility.
 - HTTP service with API-key/env-file protection, optional session owner/tenant enforcement, optional JSONL audit logging, static web UI serving, Prometheus metrics including optional ingest supervisor gauges, health readiness fields, optional ingest supervisor status projection, per-session operational status, owner/tenant/source session and archive filters, persistence, result archiving, detector-event archive projection and summaries, indexed event sidecar persistence, cursor paging, interval-overlap detection filters, live and archived click-to-train links, archive query caps/range filters, PCM body caps, HTTP thread pool, and transactional session creation.
 - Browser dashboard for session creation/listing, optional ingest status lookup, per-session operational cards with click localisation readiness, detector configuration, click classifier JSON overrides, spectrogram preview, whistle contour overlay and contour summary cards, result counters, API key use, flush/delete, click output selectors, array geometry overrides, owner/tenant-scoped archive event querying/export, click-track link display, and PCM continuity display.
-- Multi-source ingest supervisor for one bridge process per source/session, with restart supervision, source/session metadata, top-level health summaries in optional status-file output, source manifests, validation preflight, and redacted command previews.
+- Multi-source ingest supervisor for one direct FFmpeg worker per stable Sound
+  Acquisition instance, with restart supervision, project/unit target
+  metadata, schema-v3 health summaries, schema-v2 manifests, validation
+  preflight, revision-keyed cursors, and redacted command previews.
 - Dry-run-first grouped archive retention utility, detector-event index rebuild utility, and Kubernetes CronJob example for archive cleanup.
 - Container runtime with FFmpeg, Python supervisor support, web UI, data volume, healthcheck, and deployment guardrails.
-- Starter Kubernetes manifests for the engine service, API-key secret mounting, example ingest workers, archive retention CronJob, and autoscaling/disruption examples.
+- Starter Kubernetes manifests for the engine service, API-key secret mounting,
+  a one-replica active-project ingest supervisor with persistent cursor/status
+  state, archive retention CronJob, and autoscaling/disruption examples.
 - Windows GitHub Actions workflow for C++ build, CTest, service smoke, archive index rebuild smoke, and Python ops syntax checks.
 
 ## Current validation signal
 
 - Full C++ build is green.
-- `ctest` passes `95/95` tests on this Windows build, including the pinned Java-oracle fixtures, registered service smokes, API-key-file coverage, FFmpeg ingest coverage, supervisor checks, archive index rebuilding, and retention checks.
+- The configured Windows CTest corpus now contains 163 scientific,
+  controlled-unit, project-authority, browser, service, compatibility, and
+  soak checks. The final integrated pass count is recorded in the Phase 7
+  evidence rather than maintained as a second mutable number here.
+- The real-Chromium project workflow covers blank startup, raw and true
+  Decimator-to-FFT Spectrogram branches, continuous Click display,
+  selected-source AudioWorklet delivery, Sound Recorder transport/WAV
+  finalisation, remove/re-add with fresh identities, source loss, Save As,
+  service restart, and restored project/display ownership.
+- The project-authoritative pressure soak repeats an identical PCM prefix with
+  and without six fast/throttled FFT-click-audio subscribers and requires exact
+  count plus SHA-256 scientific payload equality. Its 60-second candidate
+  passed 1,255 chunks / 5,140,480 frames, 20,204 FFT units, 2,526 clicks,
+  22.7 ms maximum ingest, 48.5 MiB growth, queue depth at most four, and clean
+  subscriber/runtime drain.
+- The exact two-hour composable-graph soak passes with 154,042 chunks /
+  315,478,016 frames through seven live nodes and four simultaneous fast/slow
+  FFT, click-event, and audio clients; maximum ingest was 112.6 ms, peak
+  working-set growth was 29.3 MiB, and no queue, history, observer, memory, or
+  ingest invariant failed.
+- `workspace-browser-smoke.ps1` still passes against a live service as
+  explicitly labelled compatibility evidence. It is not the normal project
+  display workflow.
 - HTTP service smoke coverage is available through `cpp-engine/scripts/service-smoke.ps1` and passed against the current build, including optional ingest status projection and metrics, optional audit logging, session metadata enforcement, session listing, owner/tenant metadata propagation, per-session operational status, multi-channel click localisation/bearing outputs, physical delay units, geometry constraint metadata, schema-v5 PAMGuard pair bearing outputs on geometry-constrained delay pairs, schema-v6 PAMGuard LSQ bearing outputs for four-plus hydrophone sessions, and schema-v7 train-level pair bearing aggregation, archive sample-range, interval-overlap, and metadata filtering, detector-event summaries, indexed detector-event queries, cursor paging, metadata-aware CSV export, click-track/localisation/bearing events, and live/archived click-to-train event links.
 - Multi-session service load smoke is available through `cpp-engine/scripts/service-load-smoke.ps1` and passed locally with `50` sessions and `2` chunks per session in both unauthenticated and API-key modes.
 - The noise band monitor is ported with exact band-table parity across all six ANSI band types and served as `noiseBands` at schema v23, calibrated to dB re 1 uPa via ported `rawAmplitude2dB` — hydrophone `sensitivityDb` is now actually used (`docs/214-noise-band-monitor.md`).
@@ -36,7 +103,7 @@ Date: 2026-07-24
   and membership (`docs/234`).
 - The LTSA is ported with exact fixture parity against the real `LtsaProcess.ChannelProcess` (maxError 0 across 16 averaging periods, gap and alignment quirks pinned) and served as `ltsa` at schema v24 (`docs/215-ltsa.md`).
 - The Ishmael energy-sum detector is ported with bit-exact fixture parity against the real `EnergySumProcess` + `IshPeakProcess` chain (640 values, 11 detections, maxRelError 0) and served as `ishmaelDetections` at schema v25 (`docs/216-ishmael-energy-sum.md`).
-- The matched-template click classifier is ported with 5.1e-15 fixture parity against the real `MTClassifier`/`ClickLength` chain and served as `matchedTemplateClassifications` at schema v26; template decimation is a recorded non-port (`docs/217-matched-template-classifier.md`).
+- The matched-template click classifier's maths is pinned to 5.1e-15 against the real `MTClassifier`/`ClickLength` chain, with Java-default settings/templates and `WavInterpolator` decimation pinned separately. It remains a partial module: click-train average-waveform input/`MATCHEDCLICK` flags, the click code/name provider, and MAT import are not yet implemented (`docs/217-matched-template-classifier.md`).
 - The Ishmael spectrogram correlation detector is ported with 2.2e-16 fixture parity against the real `SgramCorrProcess` + `IshPeakProcess` chain (kernel exported row by row) and served as `sgramCorrDetections` at schema v27 (`docs/218-sgram-corr-detector.md`).
 - The Ishmael matched filter is ported with 7.5e-14 fixture parity against the real `MatchFiltProcess2` + `IshPeakProcess` chain (kernel round-tripped through a real WAV) and served as `matchFiltDetections` at schema v28 — all three Ishmael detectors are now ported (`docs/219-match-filt-detector.md`).
 - Archive-enabled throughput is measured: 50 detector-loaded sessions sustain 12.0× realtime with full result + audio archiving, 11.6× with the monitoring modules added on top (`docs/221-archive-throughput-benchmark.md`).
@@ -66,17 +133,21 @@ Date: 2026-07-24
 - `docs/136-multichannel-localisation-operation.md` describes the current multi-channel localisation path and its claim boundary.
 - Click train tracking is still a foundation and not a full PAMGuard click train/localisation module clone.
 - Bearing/localisation output is a far-field foundation and needs more PAMGuard array model parity before being treated as final scientific output.
-- The web UI exposes the major module controls implemented here, including
-  eight focused Click Detector control sections (`docs/232`) and eight
-  noise/monitoring module sections (`docs/236`), but not every PAMGuard
-  desktop parameter.
+- The graph editor exposes every registered module's complete settings JSON,
+  typed inputs, defaults, validation, and lifecycle. The older focused
+  detector dialogs remain useful for operator-friendly editing, but
+  Java Swing layout/preferences, legacy colours, and other desktop-only
+  presentation state are not port targets.
 - Result storage is append-only NDJSON plus indexed detector-event sidecars, not yet a query-indexed database with migrations and richer ad-hoc query planning.
 - Service validation is strong for this engine, but not a substitute for full PAMGuard project/config import parity.
 
-## Next correctness priorities
+## Subsequent correctness priorities
 
 - Continue Java fixture extraction for click train/localisation edge cases.
 - Continue refining derived train-level localisation/bearing aggregation as PAMGuard reference behaviour is pinned down.
-- Add deeper API/integration tests around persistence/archive/continuity/error paths.
 - Add indexed result storage, retention policies, and migration tooling.
-- Keep expanding OpenAPI and browser config surfaces as detector parity grows.
+- Consider a public module/display plugin ABI only after the compiled-in
+  contracts have remained stable.
+- Add policy-driven copy/move/remote backup actions only with explicit
+  destination, credential, retention, and destructive-action requirements;
+  periodic storage-health monitoring is already present.

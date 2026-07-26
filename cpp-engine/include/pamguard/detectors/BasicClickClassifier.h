@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "pamguard/detectors/ClickDetectorEngine.h"
@@ -23,7 +24,13 @@ enum class BasicClickStandardType {
 };
 
 struct BasicClickTypeConfig {
+    std::string name;
     int species_code = 0;
+    /**
+     * Persisted because ClickTypeParams inherits ClickTypeCommonParams.
+     * BasicClickIdentifier in the pinned Java authority does not consult it.
+     */
+    bool enabled = true;
     bool discard = false;
     std::uint32_t which_selections = EnableEnergyBand | EnablePeakFreqPos;
     FrequencyRange band1_freq_hz;

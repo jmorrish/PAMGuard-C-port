@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <numbers>
 
 #include "pamguard/dsp/JtFft.h"
+#include "pamguard/dsp/WavInterpolator.h"
 
 namespace pamguard::detectors {
 
@@ -116,18 +118,101 @@ inline void packed_multiply(const std::vector<double>& a, const std::vector<doub
 
 MatchedTemplateClassifier::MatchedTemplateClassifier(double sample_rate_hz,
                                                      const MatchedTemplateClassifierConfig& config)
-    : sample_rate_hz_(sample_rate_hz),
+    : sample_rate_hz_(
+          static_cast<double>(
+              static_cast<float>(sample_rate_hz))),
       config_(config),
       template_states_(config.classifiers.size()) {
-    for (const auto& pair : config_.classifiers) {
-        for (const auto* t : {&pair.match_template, &pair.reject_template}) {
-            if (t->sample_rate_hz > sample_rate_hz_) {
-                invalid_reason_ = "template '" + t->name + "' is at " +
-                    std::to_string(t->sample_rate_hz) + " Hz, above the session rate; the reference " +
-                    "decimates via jpamutils WavInterpolator, which is not ported";
+    if (!(sample_rate_hz_ > 0.0) ||
+        !std::isfinite(sample_rate_hz_)) {
+        invalid_reason_ =
+            "session sample rate must be finite and positive";
+    }
+    if (config_.classifiers.empty()) {
+        invalid_reason_ =
+            "at least one classifier is required";
+    }
+    if (config_.normalisation_type < 0 ||
+        config_.normalisation_type > 2) {
+        invalid_reason_ =
+            "click normalisation must be 0, 1, or 2";
+    }
+    if (config_.channel_classification < 0 ||
+        config_.channel_classification > 1) {
+        invalid_reason_ =
+            "channel classification must be 0 or 1";
+    }
+    if (config_.peak_smoothing < 3 ||
+        config_.peak_smoothing > 1025 ||
+        (config_.peak_smoothing % 2) == 0) {
+        invalid_reason_ =
+            "peak smoothing must be an odd value from 3 to 1025";
+    }
+    if (!std::isfinite(config_.length_db) ||
+        config_.length_db < 0.1 ||
+        config_.length_db > 300.0) {
+        invalid_reason_ =
+            "length dB must be finite and within 0.1 to 300";
+    }
+    if (config_.restricted_bins < 4 ||
+        config_.restricted_bins > 131072 ||
+        (config_.restricted_bins &
+         (config_.restricted_bins - 1)) != 0) {
+        invalid_reason_ =
+            "restricted bins must be a power of two from 4 to 131072";
+    }
+    for (auto& pair : config_.classifiers) {
+        if (pair.normalisation_type < 0 ||
+            pair.normalisation_type > 2) {
+            invalid_reason_ =
+                "classifier normalisation must be 0, 1, or 2";
+        }
+        if (!std::isfinite(pair.threshold_to_accept) ||
+            pair.threshold_to_accept < -5000.0 ||
+            pair.threshold_to_accept > 5000.0) {
+            invalid_reason_ =
+                "classifier threshold is outside -5000 to 5000";
+        }
+        for (auto* t : {&pair.match_template, &pair.reject_template}) {
+            // MatchTemplate.sR is a Java float even for direct and legacy
+            // callers. Quantise before selecting the equal/decimate/interp
+            // branch so a value such as 48000.0001 behaves as 48000 in Java.
+            t->sample_rate_hz =
+                static_cast<double>(
+                    static_cast<float>(
+                        t->sample_rate_hz));
+            if (!(t->sample_rate_hz > 0.0) ||
+                !std::isfinite(t->sample_rate_hz)) {
+                invalid_reason_ =
+                    "template '" + t->name +
+                    "' has an invalid sample rate";
             }
             if (t->waveform.empty()) {
                 invalid_reason_ = "template '" + t->name + "' has an empty waveform";
+            }
+            if (std::find_if(
+                    t->waveform.begin(),
+                    t->waveform.end(),
+                    [](double value) {
+                        return !std::isfinite(value);
+                    }) != t->waveform.end()) {
+                invalid_reason_ =
+                    "template '" + t->name +
+                    "' contains a non-finite sample";
+            }
+            if (invalid_reason_.empty()) {
+                try {
+                    // Java performs this work when the template is first
+                    // used. Preflight it during prepare so malformed
+                    // downsampling inputs fail Start deterministically.
+                    (void) interp_template(*t);
+                }
+                catch (const std::exception& error) {
+                    invalid_reason_ =
+                        "template '" + t->name +
+                        "' cannot be prepared: " +
+                        error.what();
+                }
             }
         }
     }
@@ -164,6 +249,12 @@ std::vector<double> MatchedTemplateClassifier::normalise_waveform(const std::vec
 }
 
 std::vector<double> MatchedTemplateClassifier::interp_template(const MatchTemplateWaveform& match_template) const {
+    if (match_template.sample_rate_hz > sample_rate_hz_) {
+        return dsp::wav_interpolator_decimate(
+            match_template.waveform,
+            match_template.sample_rate_hz,
+            sample_rate_hz_);
+    }
     if (match_template.sample_rate_hz < sample_rate_hz_) {
         // PamInterp.interpWaveform(waveform, 1/binSize): FFT zero-pad
         // upsampling with ratio-scaled bins and an UNSCALED inverse.
@@ -186,14 +277,16 @@ std::vector<double> MatchedTemplateClassifier::interp_template(const MatchTempla
         }
         return out;
     }
-    // Equal rates: used as-is. (Higher rates are rejected in the ctor.)
+    // Equal rates are used as-is.
     return match_template.waveform;
 }
 
-std::vector<double> MatchedTemplateClassifier::template_fft(const MatchTemplateWaveform& match_template,
-                                                            int fft_length) const {
+std::vector<double> MatchedTemplateClassifier::template_fft(
+    const MatchTemplateWaveform& match_template,
+    int fft_length,
+    int normalisation_type) const {
     auto interp = interp_template(match_template);
-    interp = normalise_waveform(interp, config_.normalisation_type);
+    interp = normalise_waveform(interp, normalisation_type);
 
     // calcTemplateFFT: a long template is windowed around its peak; the
     // reference's end-EXCLUSIVE subarray leaves it one sample short of the
@@ -227,8 +320,16 @@ MtTemplateResult MatchedTemplateClassifier::correlation_match(std::size_t classi
     if (!state.prepared) {
         // The reference caches by sample rate only, so the template FFTs
         // freeze at the FIRST click's FFT length.
-        state.match_fft = template_fft(config_.classifiers[classifier_index].match_template, fft_length);
-        state.reject_fft = template_fft(config_.classifiers[classifier_index].reject_template, fft_length);
+        const auto& pair =
+            config_.classifiers[classifier_index];
+        state.match_fft = template_fft(
+            pair.match_template,
+            fft_length,
+            pair.normalisation_type);
+        state.reject_fft = template_fft(
+            pair.reject_template,
+            fft_length,
+            pair.normalisation_type);
         state.prepared = true;
     }
 

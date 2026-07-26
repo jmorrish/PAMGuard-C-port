@@ -1,0 +1,130 @@
+{
+  "authority": {
+    "version": "2.02.18e",
+    "commit": "dca55c81ef6f1498a8a3b926c69e7182afb915ee",
+    "exporter": "org.pamguard.port.reference.MhtClickTrainSettingsFixtureExporter"
+  },
+  "portableSettingsDefaults": {
+    "algorithm": "mht",
+    "channelGroups": [1],
+    "dataSelector": {
+      "enabled": false,
+      "useEchoes": true,
+      "minimumAmplitudeDb": 0.0,
+      "includedClickTypes": []
+    },
+    "kernel": {
+      "nHold": 20,
+      "nPruneback": 4,
+      "nPrunebackStart": 5,
+      "maxCoast": 3
+    },
+    "chi2": {
+      "maximumIciSeconds": 0.4,
+      "coastPenalty": 10.0,
+      "newTrackPenalty": 50.0,
+      "newTrackClicks": 3,
+      "longTrackExponent": 0.1,
+      "lowIciExponent": 0.1,
+      "electricalNoiseFilter": {
+        "enabled": false,
+        "minimumChi2": 1.0E-5,
+        "dataUnits": 30
+      },
+      "variables": {
+        "idi": {
+          "enabled": true,
+          "error": 0.2,
+          "minimumError": 5.0E-4,
+          "minimumIdiSeconds": 5.0E-4
+        },
+        "amplitude": {
+          "enabled": true,
+          "error": 30.0,
+          "minimumError": 1.0,
+          "jumpEnabled": true,
+          "maximumJumpDb": 10.0
+        },
+        "bearing": {
+          "enabled": true,
+          "errorRadians": 0.06981317007977318,
+          "minimumErrorRadians": 0.03490658503988659,
+          "jumpEnabled": false,
+          "maximumJumpRadians": 0.3490658503988659,
+          "jumpDirection": "positive"
+        },
+        "correlation": {
+          "enabled": true,
+          "error": 1.0,
+          "minimumError": 0.01
+        },
+        "timeDelay": {
+          "enabled": true,
+          "error": 1.0E-6,
+          "minimumError": 1.0E-9
+        },
+        "length": {
+          "enabled": true,
+          "error": 0.2,
+          "minimumError": 0.002
+        },
+        "peakFrequency": {
+          "enabled": true,
+          "error": 30.0,
+          "minimumError": 1.0
+        }
+      }
+    },
+    "classifier": {
+      "runClassifier": false,
+      "preClassifier": {
+        "chi2Threshold": 1500.0,
+        "minimumClicks": 5,
+        "minimumSelectedPercentage": 0.0,
+        "minimumTimeSeconds": 0.0,
+        "speciesFlag": 1
+      },
+      "idi": {
+        "enabled": false,
+        "useMedianIdi": true,
+        "minimumMedianIdi": 0.0,
+        "maximumMedianIdi": 2.0,
+        "useMeanIdi": false,
+        "minimumMeanIdi": 0.0,
+        "maximumMeanIdi": 2.0,
+        "useStdIdi": false,
+        "minimumStdIdi": 0.0,
+        "maximumStdIdi": 100.0,
+        "speciesFlag": 1
+      },
+      "bearing": {
+        "enabled": false,
+        "minimumBearingRadians": 1.4835298641951802,
+        "maximumBearingRadians": 1.6580627893946132,
+        "useMean": false,
+        "minimumMeanDerivative": -8.726646259971648E-5,
+        "maximumMeanDerivative": 8.726646259971648E-5,
+        "useMedian": true,
+        "minimumMedianDerivative": -8.726646259971648E-5,
+        "maximumMedianDerivative": 8.726646259971648E-5,
+        "useStd": true,
+        "minimumStdDerivative": 0.0,
+        "maximumStdDerivative": 0.026179938779914945,
+        "speciesFlag": -1
+      },
+      "spectrumTemplate": {
+        "enabled": false,
+        "name": "Beaked Whale",
+        "sampleRateHz": 192000.0,
+        "spectrum": [0.0207928796815748,0.0306907634391936,0.0542618013334441,0.0927715736291923,0.160880226335102,0.296684784810738,0.597646428735672,1.30240513409102,2.89418728104064,5.90182387336775,9.56798776063848,10.8497298549224,10.6268357383588,7.67719642764775,4.25588468454799,2.03543953486809,0.944338665649875,0.464770071613377,0.254353569529111,0.155756953724082,0.105040575926229,0.0764551025180798,0.0590657823674759,0.0478494061986734,0.040305203133092,0.0350966305067761,0.0314672978023124,0.0289713012337297,0.0273407573040125,0.0264177207215999],
+        "correlationThreshold": 0.5,
+        "speciesFlag": 1
+      }
+    },
+    "localisation": {
+      "enabled": false,
+      "minimumDataUnits": 20,
+      "minimumAngleRangeRadians": 0.5235987755982988
+    }
+  }
+}

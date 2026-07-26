@@ -71,6 +71,13 @@ struct ArrayStreamer {
     double heading_degrees = 0.0;
     double pitch_degrees = 0.0;
     double roll_degrees = 0.0;
+    /**
+     * PAMGuard Streamer coordinate uncertainty. Separation-error maths uses
+     * these only when a hydrophone pair spans different streamers.
+     */
+    double x_error_m = 0.0;
+    double y_error_m = 0.0;
+    double z_error_m = 0.0;
 };
 
 /**
@@ -194,6 +201,12 @@ struct DetectorConfig {
     detectors::IshmaelEnergySumConfig ishmael;
     /** PAMGuard matched-template click classifier. */
     detectors::MatchedTemplateClassifierConfig matched_template;
+    /**
+     * MatchedTemplateParams.type, kept outside the numerical classifier
+     * config because it mutates the accepted ClickDetection only after the
+     * correlation verdict is known.
+     */
+    int matched_template_click_type = 101;
     /** PAMGuard Ishmael spectrogram correlation detector. */
     detectors::SgramCorrConfig sgram_corr;
     /** PAMGuard Ishmael matched filter (MatchFiltProcess2). */
